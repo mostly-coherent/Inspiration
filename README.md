@@ -59,6 +59,7 @@ Inspiration reads your local Cursor chat history database (`state.vscdb`), extra
 **Environment Variables (.env):**
 - `ANTHROPIC_API_KEY` (Required)
 - `OPENAI_API_KEY` (Optional fallback)
+- `APP_PASSWORD` (Optional - if set, password-protects the app)
 
 </details>
 
