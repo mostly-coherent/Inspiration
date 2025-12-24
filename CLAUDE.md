@@ -154,7 +154,16 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 # Optional (for fallback)
 OPENAI_API_KEY=sk-...
+
+# Optional (password protection)
+APP_PASSWORD=your-secure-password
 ```
+
+**Password Protection:**
+- If `APP_PASSWORD` is set, the app requires authentication to access
+- Users are redirected to `/login` if not authenticated
+- Authentication cookie expires after 30 days
+- Logout button available in header (next to settings icon)
 
 ---
 
