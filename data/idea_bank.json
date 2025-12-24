@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "last_updated": "2025-12-21",
+  "ideas": [
+    {
+      "id": "idea-001",
+      "title": "Conflict-Check for Documentation",
+      "problem": "When building agentically, AI generates tons of documentation (PRDs, specs, diagrams), but there's no easy way to catch contradictions between documents. You manually spot-check an ERD against other docs, but miss conflicts that could cause downstream confusion or rework.",
+      "solution": "A tool that ingests multiple docs (markdown, PDFs, diagrams) and flags potential conflicts \u2014 inconsistent naming, contradictory requirements, misaligned assumptions. Think \"diff\" but for semantic meaning across document types, not just text changes.",
+      "audience": [
+        "PMs",
+        "Technical Writers",
+        "Builders",
+        "Product Teams"
+      ],
+      "first_seen": "2025-12-21",
+      "last_updated": "2025-12-21",
+      "occurrence_count": 1,
+      "nuances": [
+        "MVP scope: Upload 2-5 documents, parse entities/relationships, flag conflicts with confidence scores",
+        "Medium build complexity",
+        "Prevents costly misalignments before they hit development"
+      ],
+      "source_runs": [
+        "2025-12-20"
+      ],
+      "solved_score": "partially_solved",
+      "solved_by": "Prompts/ListConflicts.md",
+      "solved_reason": "The ListConflicts.md prompt appears to be designed for identifying conflicts in documentation, which directly relates to the core problem. However, it's likely a prompt-based approach rather than a comprehensive tool that can ingest multiple document types and perform semantic conflict detection across formats."
+    },
+    {
+      "id": "idea-002",
+      "title": "README Optimizer for Open Source",
+      "problem": "Most open-source projects have terrible READMEs that bury the value proposition and make it hard for newcomers to see what the tool actually does. Builders know their README sucks but don't know how to fix it systematically.",
+      "solution": "A README analyzer that scores existing READMEs on \"time-to-aha\" and suggests specific improvements. Checks for: clear value prop, working demo/screenshots, simple setup instructions, and whether a beginner can understand the purpose in 30 seconds.",
+      "audience": [
+        "Open Source Maintainers",
+        "Developers",
+        "Side Project Builders"
+      ],
+      "first_seen": "2025-12-21",
+      "last_updated": "2025-12-21",
+      "occurrence_count": 1,
+      "nuances": [
+        "Focus on getting users to \"first aha moment\" quickly",
+        "Score on 5-6 key criteria with specific suggestions and examples",
+        "Simple build complexity",
+        "Before/after comparison tool feature"
+      ],
+      "source_runs": [
+        "2025-12-20"
+      ],
+      "solved_score": "partially_solved",
+      "solved_by": "Prompts/README-project-refine-prompt.md",
+      "solved_reason": "The README-project-refine-prompt addresses README optimization through AI prompts, but lacks the systematic scoring, automated analysis, and 'time-to-aha' metrics that the proposed idea specifically targets. It's a manual prompt-based approach rather than a comprehensive analyzer tool."
+    },
+    {
+      "id": "idea-003",
+      "title": "Prompt Library with Context Matching",
+      "problem": "Valuable prompts are often context-specific (company size, tech stack, role) and not directly shareable. There's no good way to find prompts that match your specific work context or toolchain, and most prompt libraries are too generic.",
+      "solution": "A prompt library where prompts are tagged by context with pattern extraction. Instead of copying prompts verbatim, users find patterns and get help adapting them to their specific context and workflow.",
+      "audience": [
+        "PMs",
+        "Builders",
+        "Professionals Using AI Tools"
+      ],
+      "first_seen": "2025-12-21",
+      "last_updated": "2025-12-21",
+      "occurrence_count": 1,
+      "nuances": [
+        "Focus on transferable patterns rather than verbatim copying",
+        "Context tags include role, tools, company type, industry",
+        "\"Adapt this pattern\" feature for customization",
+        "Community voting on most helpful adaptations",
+        "Medium build complexity"
+      ],
+      "source_runs": [
+        "2025-12-20"
+      ],
+      "solved_score": "partially_solved",
+      "solved_by": "Helpful Prompts",
+      "solved_reason": "The 'Helpful Prompts' project provides a collection of reusable prompts, but appears to be generic rather than context-aware. The extensive Prompts/ directory shows systematic prompt organization, but lacks the key innovation of context matching and pattern extraction for specific work environments."
+    }
+  ]
+}

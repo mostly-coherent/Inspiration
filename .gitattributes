@@ -1,0 +1,11 @@
+# GitHub Linguist configuration
+# Force TypeScript detection for Next.js projects
+
+*.ts linguist-language=TypeScript
+*.tsx linguist-language=TypeScript
+*.js linguist-language=TypeScript
+*.jsx linguist-language=TypeScript
+
+# Mark documentation as documentation (excluded from language stats)
+*.md linguist-documentation=true
+

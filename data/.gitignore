@@ -1,0 +1,11 @@
+# User data - do not commit
+config.json
+
+# Bank files (optional - user may want to track these)
+# idea_bank.json
+# insight_bank.json
+
+# Output directories (always gitignored)
+ideas_output/
+insights_output/
+

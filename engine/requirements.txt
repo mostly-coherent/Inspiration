@@ -1,0 +1,8 @@
+# Inspiration Engine Dependencies
+
+# LLM Providers
+anthropic>=0.40.0
+openai>=1.0.0
+
+# No other dependencies - uses Python stdlib only
+
