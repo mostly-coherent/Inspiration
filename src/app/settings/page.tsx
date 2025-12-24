@@ -155,8 +155,8 @@ export default function SettingsPage() {
         {!config.setupComplete && (
           <div className="mb-8">
             <div className="flex items-center justify-center gap-4 mb-6" role="navigation" aria-label="Setup wizard steps">
-              {(["workspaces", "voice", "llm", "features"] as WizardStep[]).map((step, i) => {
-                const stepLabels = {
+              {(["workspaces", "voice", "llm", "features"] as const).map((step, i) => {
+                const stepLabels: Record<Exclude<WizardStep, "done">, string> = {
                   workspaces: "Configure Workspaces",
                   voice: "Your Voice & Style",
                   llm: "LLM Settings",
