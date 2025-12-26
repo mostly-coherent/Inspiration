@@ -10,6 +10,9 @@ export async function POST(request: NextRequest) {
   try {
     const body: GenerateRequest = await request.json();
     const { tool, mode, days, bestOf, temperature, fromDate, toDate, dryRun } = body;
+    
+    // Get abort signal from request
+    const signal = request.signal;
 
     // Get tool config
     const toolConfig = TOOL_CONFIG[tool];
@@ -59,8 +62,8 @@ export async function POST(request: NextRequest) {
     console.log(`[Inspiration] Running: python3 ${toolConfig.script} ${args.join(" ")}`);
     console.log(`[Inspiration] Working directory: ${toolPath}`);
 
-    // Execute Python script
-    const result = await runPythonScript(toolPath, toolConfig.script, args);
+    // Execute Python script with abort signal support
+    const result = await runPythonScript(toolPath, toolConfig.script, args, signal);
 
     // Check for script errors
     if (result.exitCode !== 0 && result.stderr) {
@@ -141,7 +144,8 @@ interface ScriptResult {
 async function runPythonScript(
   cwd: string,
   script: string,
-  args: string[]
+  args: string[],
+  signal?: AbortSignal
 ): Promise<ScriptResult> {
   return new Promise((resolve, reject) => {
     const proc = spawn("python3", [script, ...args], {
@@ -154,27 +158,60 @@ async function runPythonScript(
 
     let stdout = "";
     let stderr = "";
+    let isAborted = false;
+
+    // Handle abort signal
+    if (signal) {
+      signal.addEventListener("abort", () => {
+        isAborted = true;
+        console.log("[Inspiration] Request aborted, killing Python process...");
+        try {
+          proc.kill("SIGTERM");
+          // Force kill after 2 seconds if still running
+          setTimeout(() => {
+            if (!proc.killed) {
+              proc.kill("SIGKILL");
+            }
+          }, 2000);
+        } catch (err) {
+          console.error("[Inspiration] Error killing process:", err);
+        }
+        resolve({
+          stdout,
+          stderr,
+          exitCode: 130, // SIGTERM exit code
+        });
+      });
+    }
 
     proc.stdout.on("data", (data) => {
-      stdout += data.toString();
-      console.log(`[stdout] ${data.toString().trim()}`);
+      if (!isAborted) {
+        stdout += data.toString();
+        console.log(`[stdout] ${data.toString().trim()}`);
+      }
     });
 
     proc.stderr.on("data", (data) => {
-      stderr += data.toString();
-      console.error(`[stderr] ${data.toString().trim()}`);
+      if (!isAborted) {
+        stderr += data.toString();
+        console.error(`[stderr] ${data.toString().trim()}`);
+      }
     });
 
     proc.on("close", (code) => {
-      resolve({
-        stdout,
-        stderr,
-        exitCode: code ?? 0,
-      });
+      if (!isAborted) {
+        resolve({
+          stdout,
+          stderr,
+          exitCode: code ?? 0,
+        });
+      }
     });
 
     proc.on("error", (err) => {
-      reject(err);
+      if (!isAborted) {
+        reject(err);
+      }
     });
   });
 }

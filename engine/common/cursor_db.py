@@ -118,12 +118,87 @@ def extract_text_from_richtext(richtext_json: str) -> str:
         return ""
 
 
+def extract_messages_from_chat_data(
+    data: dict,
+    start_ts: int,
+    end_ts: int,
+) -> list[dict]:
+    """
+    Extract messages from chat data (supports both Composer and regular chat formats).
+    
+    Args:
+        data: Parsed JSON data from database
+        start_ts: Start timestamp (milliseconds)
+        end_ts: End timestamp (milliseconds)
+    
+    Returns:
+        List of message dicts with type, text, timestamp
+    """
+    messages = []
+    
+    # Try Composer format first: data.conversation.messages
+    conversation = data.get("conversation", {})
+    messages_raw = conversation.get("messages", [])
+    
+    # If no messages in composer format, try regular chat format: data.messages
+    if not messages_raw:
+        messages_raw = data.get("messages", [])
+    
+    # If still no messages, try nested format: data.chat.messages
+    if not messages_raw:
+        chat = data.get("chat", {})
+        messages_raw = chat.get("messages", [])
+    
+    for msg in messages_raw:
+        # Check timestamp
+        ts = msg.get("timestamp", 0)
+        if isinstance(ts, str):
+            try:
+                ts = int(ts)
+            except ValueError:
+                ts = 0
+        
+        # Extract text
+        text = ""
+        if "text" in msg:
+            text = msg["text"]
+        elif "richText" in msg:
+            text = extract_text_from_richtext(json.dumps(msg["richText"]))
+        elif "content" in msg:
+            # Some formats use "content" instead of "text"
+            content = msg["content"]
+            if isinstance(content, str):
+                text = content
+            elif isinstance(content, list):
+                # Content might be array of text parts
+                text = " ".join(str(c.get("text", c)) for c in content if isinstance(c, dict))
+        
+        if text.strip():
+            # Determine message type
+            # Composer: type 1 = user, type 2 = assistant
+            # Regular chat: role "user" or "assistant"
+            msg_type = "user"
+            if msg.get("type") == 2 or msg.get("role") == "assistant":
+                msg_type = "assistant"
+            elif msg.get("type") == 1 or msg.get("role") == "user":
+                msg_type = "user"
+            
+            messages.append({
+                "type": msg_type,
+                "text": text.strip(),
+                "timestamp": ts,
+            })
+    
+    return messages
+
+
 def get_conversations_for_date(
     target_date: datetime.date,
     workspace_paths: list[str] | None = None,
 ) -> list[dict]:
     """
     Extract all conversations from the target date.
+    Searches both Composer chats and regular chat conversations.
     
     Args:
         target_date: Date to extract conversations for
@@ -134,7 +209,8 @@ def get_conversations_for_date(
         List of conversation dicts:
         [
             {
-                "composer_id": "...",
+                "chat_id": "...",
+                "chat_type": "composer" | "chat",
                 "workspace": "/Users/me/Projects",
                 "messages": [
                     {"type": "user", "text": "...", "timestamp": "..."},
@@ -167,10 +243,11 @@ def get_conversations_for_date(
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         cursor = conn.cursor()
         
-        # Query all composer data
+        # Query BOTH Composer chats AND regular chat conversations
         cursor.execute("""
             SELECT key, value FROM ItemTable 
             WHERE key LIKE 'composer.composerData%'
+               OR key LIKE 'workbench.panel.aichat.view.aichat.chatdata%'
         """)
         
         for key, value in cursor.fetchall():
@@ -182,14 +259,25 @@ def get_conversations_for_date(
             except json.JSONDecodeError:
                 continue
             
-            # Extract workspace from key
-            # Format: composer.composerData.{workspace_hash}.{composer_id}
-            parts = key.split(".")
-            if len(parts) >= 3:
-                workspace_hash = parts[2]
-                workspace_path = workspace_mapping.get(workspace_hash, "Unknown")
+            # Determine chat type and extract workspace
+            chat_type = "composer" if key.startswith("composer.composerData") else "chat"
+            workspace_path = "Unknown"
+            chat_id = "unknown"
+            
+            if chat_type == "composer":
+                # Format: composer.composerData.{workspace_hash}.{composer_id}
+                parts = key.split(".")
+                if len(parts) >= 3:
+                    workspace_hash = parts[2]
+                    workspace_path = workspace_mapping.get(workspace_hash, "Unknown")
+                    chat_id = parts[-1] if len(parts) >= 4 else "unknown"
             else:
-                workspace_path = "Unknown"
+                # Format: workbench.panel.aichat.view.aichat.chatdata.{workspace_hash}.{chat_id}
+                parts = key.split(".")
+                if len(parts) >= 6:
+                    workspace_hash = parts[5]  # Usually the workspace hash
+                    workspace_path = workspace_mapping.get(workspace_hash, "Unknown")
+                    chat_id = parts[-1] if len(parts) >= 7 else "unknown"
             
             # Filter by workspace if specified
             if normalized_workspaces:
@@ -197,43 +285,19 @@ def get_conversations_for_date(
                 if norm_workspace not in normalized_workspaces:
                     continue
             
-            # Extract messages
-            conversation = data.get("conversation", {})
-            messages_raw = conversation.get("messages", [])
+            # Extract messages using unified function
+            messages = extract_messages_from_chat_data(data, start_ts, end_ts)
             
-            messages = []
-            has_messages_in_range = False
-            
-            for msg in messages_raw:
-                # Check timestamp
-                ts = msg.get("timestamp", 0)
-                if isinstance(ts, str):
-                    try:
-                        ts = int(ts)
-                    except ValueError:
-                        ts = 0
-                
-                if start_ts <= ts < end_ts:
-                    has_messages_in_range = True
-                
-                # Extract text
-                text = ""
-                if "text" in msg:
-                    text = msg["text"]
-                elif "richText" in msg:
-                    text = extract_text_from_richtext(json.dumps(msg["richText"]))
-                
-                if text.strip():
-                    msg_type = "user" if msg.get("type") == 1 else "assistant"
-                    messages.append({
-                        "type": msg_type,
-                        "text": text.strip(),
-                        "timestamp": ts,
-                    })
+            # Check if any messages are in the date range
+            has_messages_in_range = any(
+                start_ts <= msg["timestamp"] < end_ts 
+                for msg in messages
+            )
             
             if has_messages_in_range and messages:
                 conversations.append({
-                    "composer_id": parts[-1] if len(parts) >= 4 else "unknown",
+                    "chat_id": chat_id,
+                    "chat_type": chat_type,
                     "workspace": workspace_path,
                     "messages": messages,
                 })
@@ -283,7 +347,8 @@ def format_conversations_for_prompt(conversations: list[dict]) -> str:
     lines = []
     for i, convo in enumerate(conversations, 1):
         workspace = convo.get("workspace", "Unknown")
-        lines.append(f"=== Conversation {i} ({workspace}) ===")
+        chat_type = convo.get("chat_type", "unknown")
+        lines.append(f"=== Conversation {i} ({workspace}) [{chat_type}] ===")
         lines.append("")
         
         for msg in convo.get("messages", []):
