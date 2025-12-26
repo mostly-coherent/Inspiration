@@ -43,15 +43,18 @@ inspiration/
 │   └── api/
 │       ├── generate/route.ts   # POST: spawn Python engine
 │       ├── config/route.ts     # GET/POST: config CRUD
-│       └── banks/route.ts      # GET: read bank data
+│       ├── banks/route.ts      # GET: read bank data
+│       └── reverse-match/route.ts # POST: semantic search chat history
 ├── engine/                     # Python generation engine
 │   ├── ideas.py                # Idea generation CLI
 │   ├── insights.py             # Insight generation CLI
+│   ├── reverse_match.py        # Reverse matching CLI (semantic search)
 │   ├── common/
 │   │   ├── cursor_db.py        # Cross-platform DB extraction
 │   │   ├── llm.py              # Anthropic + OpenAI wrapper
 │   │   ├── config.py           # User config loader
-│   │   └── bank.py             # Bank harmonization logic
+│   │   ├── bank.py             # Bank harmonization logic
+│   │   └── semantic_search.py  # Embedding generation & vector similarity
 │   └── prompts/
 │       ├── ideas_synthesize.md
 │       ├── insights_synthesize.md
@@ -61,7 +64,8 @@ inspiration/
     ├── idea_bank.json          # Structured idea storage
     ├── insight_bank.json       # Structured insight storage
     ├── IDEA_BANK.md            # Human-readable view
-    └── INSIGHT_BANK.md         # Human-readable view
+    ├── INSIGHT_BANK.md         # Human-readable view
+    └── embedding_cache.json    # Cached embeddings for reverse match
 ```
 
 ---
@@ -234,6 +238,55 @@ After Harmonization     Engine           Workspace Projects    LLM
        │                   │                   │                │
 ```
 
+### Workflow 6: Reverse Match (User Query → Chat History)
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                      REVERSE MATCH WORKFLOW                           │
+└──────────────────────────────────────────────────────────────────────┘
+
+User        UI          API            Python Engine      Cursor DB    OpenAI
+  │          │            │                  │                 │         │
+  │─ Enter ─▶│           │                  │                 │         │
+  │  query   │           │                  │                 │         │
+  │           │           │                  │                 │         │
+  │─ Click ──▶│           │                  │                 │         │
+  │ Search    │           │                  │                 │         │
+  │           │── POST ──▶│                  │                 │         │
+  │           │/reverse-  │                  │                 │         │
+  │           │  match    │                  │                 │         │
+  │           │           │                  │                 │         │
+  │           │           │──── Spawn ──────▶│                 │         │
+  │           │           │   python reverse_ │                 │         │
+  │           │           │   match.py       │                 │         │
+  │           │           │                  │                 │         │
+  │           │           │                  │── Query chats ─▶│         │
+  │           │           │                  │◀── Chat JSON ───│         │
+  │           │           │                  │                 │         │
+  │◀ Progress │           │                  │                 │         │
+  │   (can    │           │                  │                 │         │
+  │   STOP)   │           │                  │                 │         │
+  │           │           │                  │                 │         │
+  │           │           │                  │─ Embed query ──────────────▶
+  │           │           │                  │◀─ Query vector ───────────│
+  │           │           │                  │                 │         │
+  │           │           │                  │─ Embed messages ───────────▶
+  │           │           │                  │◀─ Message vectors ─────────│
+  │           │           │                  │                 │         │
+  │           │           │                  │─ Cosine similarity ────────│
+  │           │           │                  │   (rank matches)           │
+  │           │           │                  │                 │         │
+  │           │           │                  │─ Add context ──────────────│
+  │           │           │                  │   (before/after msgs)      │
+  │           │           │                  │                 │         │
+  │           │           │◀──── stdout ─────│                 │         │
+  │           │           │   JSON matches   │                 │         │
+  │           │◀─ JSON ───│                  │                 │         │
+  │◀─ Render ─│  response │                  │                 │         │
+  │   matches │           │                  │                 │         │
+  │           │           │                  │                 │         │
+```
+
 ---
 
 ## Data Flow Summary
@@ -258,6 +311,21 @@ UI (React)  →  POST /api/generate  →  spawn(python ideas.py)
                                     Parse & return to UI
 ```
 
+### 2b. Reverse Match Flow
+```
+UI (React)  →  POST /api/reverse-match  →  spawn(python reverse_match.py)
+                                                      ↓
+                                            Cursor DB (SQLite)
+                                                      ↓
+                                            OpenAI Embeddings API
+                                                      ↓
+                                            Cosine Similarity (local)
+                                                      ↓
+                                            stdout JSON (matches + context)
+                                                      ↓
+                                            Parse & return to UI
+```
+
 ### 3. Bank Persistence Flow
 ```
 Generation Output  →  Harmonization  →  idea_bank.json
@@ -280,6 +348,8 @@ Generation Output  →  Harmonization  →  idea_bank.json
 | **Bank Format** | JSON + Markdown | Machine-readable + human-readable |
 | **LLM** | Claude Sonnet 4 | Best quality for synthesis tasks |
 | **Fallback LLM** | GPT-4o | Widely available alternative |
+| **Embeddings** | OpenAI text-embedding-3-small | Cost-effective, good quality |
+| **Abort Signals** | AbortController + SIGTERM | Proper process cleanup on cancel |
 
 ---
 
@@ -301,10 +371,16 @@ def get_cursor_db_path() -> Path:
 
 ### Database Query
 
+**Chat History Extraction:**
+- Searches both Composer chats and regular chat conversations
+- Composer: `composer.composerData%`
+- Regular Chat: `workbench.panel.aichat.view.aichat.chatdata%`
+
 ```sql
 SELECT key, value 
 FROM ItemTable 
-WHERE key LIKE 'workbench.panel.aichat.view.aichat.chatdata%'
+WHERE key LIKE 'composer.composerData%'
+   OR key LIKE 'workbench.panel.aichat.view.aichat.chatdata%'
 ```
 
 ---
@@ -330,6 +406,9 @@ WHERE key LIKE 'workbench.panel.aichat.view.aichat.chatdata%'
 | Full generation (5 candidates) | ~90 seconds | LLM API |
 | Bank harmonization | ~10-30 seconds | LLM API (delta mode) |
 | LinkedIn sync (24 insights) | ~20-40 seconds | LLM API (batched) |
+| Reverse match (90 days, 10 results) | ~3-5 seconds | Embedding API + similarity calc |
+| Embedding generation (cached) | < 0.1 seconds | Cache lookup |
+| Embedding generation (new) | ~0.5-1 second | OpenAI API |
 
 ---
 
@@ -343,5 +422,11 @@ WHERE key LIKE 'workbench.panel.aichat.view.aichat.chatdata%'
 
 ---
 
-**Last Updated:** 2025-12-21
+**Last Updated:** 2025-01-30
+
+**Recent Updates:**
+- Added Reverse Match workflow (Workflow 6) - semantic search across chat history
+- Expanded database queries to include both Composer and regular chat conversations
+- Added abort signal support for proper process cleanup on STOP button
+- Added embedding cache for performance optimization
 
