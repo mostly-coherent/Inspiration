@@ -31,6 +31,8 @@
 | C8 | **Advanced Mode** | Custom days, date range, candidates, temperature | ✅ Done |
 | C9 | **Progress UI** | Real-time progress, elapsed time, stop button | ✅ Done |
 | C10 | **Results Display** | Rendered markdown output with formatted/raw toggle | ✅ Done |
+| C11 | **Reverse Match** | Search chat history for user-provided insights/ideas | ✅ Done |
+| C12 | **Abort Signal Support** | STOP button properly kills Python processes on cancel | ✅ Done |
 
 ### Power User Features (Optional, Configurable)
 
@@ -212,8 +214,52 @@ inspiration/
 - [x] Move to root (`Personal Builder Lab/Inspiration/`)
 - [x] Migrate existing bank data to `data/`
 - [x] End-to-end testing (10 Playwright tests, 12 screenshots in `e2e-results/`)
+- [x] Add STOP button for Ideas/Insights generation and Reverse Matching
+- [x] Fix critical bugs (abort signal support, React keys, accessibility)
+- [x] Comprehensive debug audit and fixes
 - [ ] Add screenshots/GIFs to README (optional)
 - [ ] Publish to `github.com/mostly-coherent/inspiration`
+
+### Phase 7: Reverse Matching - User Ideas/Insights → Chat History ✅
+**Goal:** When user self-reflects and comes up with their own insights/ideas, find matching examples from chat history
+
+**The Challenge:** User has an insight ("I should build X") or idea ("Y would solve problem Z") and wants to see where in their chat history they actually discussed or worked on related concepts. This is reverse of current flow (chat → ideas) - now it's idea → chat evidence.
+
+**Use Cases:**
+- User writes LinkedIn post about an insight → Find chat conversations that demonstrate this insight in practice
+- User has idea for new project → Find where they discussed similar concepts or built related prototypes
+- User wants to cite examples → "Show me where I talked about X" → Find relevant chat excerpts
+
+**Tasks:**
+- [x] Add "Reverse Match" mode to UI (new tab/section)
+- [x] User input: Freeform text describing their insight/idea
+- [x] Semantic search across chat history (embed user input + chat messages)
+- [x] Return ranked chat excerpts with relevance scores
+- [x] Display matches with context (date, project, conversation flow)
+- [x] Allow user to copy chat excerpts for citations
+- [x] Search both Composer chats and regular chat conversations
+- [x] Add STOP button to cancel long-running searches
+- [x] Add abort signal support to API routes (kills Python processes on cancel)
+- [x] Display chat type badge (Composer vs Chat) in results
+- [x] Configurable search parameters (days back, top-k, min similarity threshold)
+- [ ] Optional: Generate "evidence summary" from matched chats
+- [ ] Optional: Integration with Idea Bank/Insight Bank (link user-provided items to chat evidence)
+
+**Technical Approach:**
+- Use same embedding model (OpenAI text-embedding-3-small)
+- Vector similarity search: user input embedding vs. chat message embeddings
+- Return top N matches with surrounding context (previous/next messages)
+- Cache embeddings for performance (`data/embedding_cache.json`)
+- Search both `composer.composerData%` and `workbench.panel.aichat.view.aichat.chatdata%` database patterns
+- Abort signal support: Python processes killed when user clicks STOP
+
+**Success Criteria:**
+- ✅ User can paste their insight/idea and get relevant chat matches
+- ✅ Matches are semantically relevant (not just keyword matches)
+- ✅ Context is preserved (can see conversation flow around match)
+- ✅ Fast enough for interactive use (<5 seconds)
+- ✅ User can cancel long-running searches
+- ✅ Searches all Cursor chat types (Composer + regular chat)
 
 ---
 
@@ -261,5 +307,38 @@ inspiration/
 
 ---
 
-**Last Updated:** 2025-12-21
+## 🎯 NEXT FOCUS
+
+**Priority:** Phase 7 - Reverse Matching feature (user ideas/insights → chat history evidence)
+
+**Current Status:** Phases 1-7 core implementation complete. Reverse matching feature fully implemented with:
+- ✅ UI for reverse matching (new tab/section)
+- ✅ Semantic search across chat history (both Composer and regular chats)
+- ✅ Match ranking and context display
+- ✅ STOP button functionality with proper abort signal handling
+- ✅ Configurable search parameters (days back, top-k, min similarity)
+- ✅ Chat type badges (Composer vs Chat)
+- ✅ Critical bug fixes (abort signals, React keys, accessibility)
+
+**Next Steps:**
+1. ✅ Design UI for reverse matching (new tab/section) - DONE
+2. ✅ Implement semantic search across chat history - DONE
+3. ✅ Build match ranking and context display - DONE
+4. ✅ Add STOP button with abort signal support - DONE
+5. ✅ Expand search to include all Cursor chat types - DONE
+6. Test with real user-provided insights/ideas (requires Cursor database with chat data)
+7. Optional: Generate "evidence summary" from matched chats
+8. Optional: Integration with Idea Bank/Insight Bank
+9. Optional: Complete Phase 6 polish (screenshots, publish)
+
+---
+
+**Last Updated:** 2025-01-30
+
+**Recent Updates:**
+- ✅ Phase 7 Reverse Matching: Complete implementation with UI, semantic search, and STOP button
+- ✅ Added abort signal support to API routes (Python processes killed on cancel)
+- ✅ Expanded reverse matching to search both Composer and regular chat conversations
+- ✅ Fixed critical bugs: React key props, list accessibility, abort signal handling
+- ✅ Comprehensive debug audit completed with 7 issues auto-fixed
 

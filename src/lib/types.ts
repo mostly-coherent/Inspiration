@@ -131,3 +131,40 @@ export function getToolPath(tool: ToolType): string {
   return config.getPath();
 }
 
+// Reverse Match Types
+export interface ReverseMatchRequest {
+  query: string;
+  daysBack?: number;
+  topK?: number;
+  minSimilarity?: number;
+  workspaces?: string[];
+}
+
+export interface ReverseMatchMessage {
+  type: "user" | "assistant";
+  text: string;
+  timestamp: number;
+  workspace?: string;
+  chat_id?: string;
+  chat_type?: "composer" | "chat";
+}
+
+export interface ReverseMatchResult {
+  success: boolean;
+  query: string;
+  matches: Array<{
+    message: ReverseMatchMessage;
+    similarity: number;
+    context: {
+      before: ReverseMatchMessage[];
+      after: ReverseMatchMessage[];
+    };
+  }>;
+  stats: {
+    totalMessages: number;
+    matchesFound: number;
+    daysSearched: number;
+  };
+  error?: string;
+}
+

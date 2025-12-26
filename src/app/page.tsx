@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   ToolType,
   PresetMode,
@@ -8,20 +8,27 @@ import {
   PRESET_MODES,
   TOOL_CONFIG,
   ModeConfig,
+  ReverseMatchRequest,
+  ReverseMatchResult,
 } from "@/lib/types";
 
 // Shared utility for clipboard operations
 async function copyToClipboard(content: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(content);
-  } catch {
+  } catch (error) {
     // Fallback for older browsers
-    const textArea = document.createElement("textarea");
-    textArea.value = content;
-    document.body.appendChild(textArea);
-    textArea.select();
-    document.execCommand("copy");
-    document.body.removeChild(textArea);
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = content;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+    } catch (fallbackError) {
+      console.error("Failed to copy to clipboard:", fallbackError);
+      throw new Error("Unable to copy to clipboard");
+    }
   }
 }
 
@@ -32,6 +39,16 @@ export default function Home() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<GenerateResult | null>(null);
+  
+  // Reverse Match state
+  const [showReverseMatch, setShowReverseMatch] = useState(false);
+  const [reverseQuery, setReverseQuery] = useState("");
+  const [isReverseMatching, setIsReverseMatching] = useState(false);
+  const [reverseResult, setReverseResult] = useState<ReverseMatchResult | null>(null);
+  const [reverseDaysBack, setReverseDaysBack] = useState(90);
+  const [reverseTopK, setReverseTopK] = useState(10);
+  const [reverseMinSimilarity, setReverseMinSimilarity] = useState(0.0);
+  const reverseAbortController = useRef<AbortController | null>(null);
 
   // Progress tracking
   const [progress, setProgress] = useState(0);
@@ -193,11 +210,20 @@ export default function Home() {
     setProgressPhase("Stopping...");
   };
 
-  // Cleanup interval on unmount
+  // Cleanup interval on unmount and when generation stops
   useEffect(() => {
     return () => {
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
+        progressInterval.current = null;
+      }
+      if (abortController.current) {
+        abortController.current.abort();
+        abortController.current = null;
+      }
+      if (reverseAbortController.current) {
+        reverseAbortController.current.abort();
+        reverseAbortController.current = null;
       }
     };
   }, []);
@@ -234,6 +260,37 @@ export default function Home() {
           </p>
         </header>
 
+        {/* Mode Toggle */}
+        <section className="glass-card p-4">
+          <div className="flex items-center justify-center gap-4">
+            <button
+              onClick={() => setShowReverseMatch(false)}
+              aria-pressed={!showReverseMatch}
+              className={`px-6 py-2 rounded-lg transition-all ${
+                !showReverseMatch
+                  ? "bg-inspiration-ideas text-white"
+                  : "bg-white/10 text-adobe-gray-400 hover:bg-white/20"
+              }`}
+            >
+              Generate Ideas/Insights
+            </button>
+            <button
+              onClick={() => setShowReverseMatch(true)}
+              aria-pressed={showReverseMatch}
+              aria-label="Reverse Match - Find chat history evidence for your insights"
+              className={`px-6 py-2 rounded-lg transition-all ${
+                showReverseMatch
+                  ? "bg-inspiration-insights text-white"
+                  : "bg-white/10 text-adobe-gray-400 hover:bg-white/20"
+              }`}
+            >
+              <span aria-hidden="true">🔍</span> Reverse Match
+            </button>
+          </div>
+        </section>
+
+        {showReverseMatch ? null : (
+          <>
         {/* Tool Selection */}
         <section className="glass-card p-6 space-y-4">
           <h2 className="text-lg font-medium text-adobe-gray-300">
@@ -340,6 +397,8 @@ export default function Home() {
               <button
                 onClick={handleGenerate}
                 className="btn-primary text-xl px-12 py-4"
+                aria-busy={isGenerating}
+                aria-live="polite"
               >
                 <span>
                   Generate {toolConfig.icon} {toolConfig.label}
@@ -354,6 +413,27 @@ export default function Home() {
 
         {/* Banks Overview */}
         <BanksOverview />
+          </>
+        )}
+
+        {/* Reverse Match Section */}
+        <ReverseMatchSection
+          showReverseMatch={showReverseMatch}
+          setShowReverseMatch={setShowReverseMatch}
+          query={reverseQuery}
+          setQuery={setReverseQuery}
+          daysBack={reverseDaysBack}
+          setDaysBack={setReverseDaysBack}
+          topK={reverseTopK}
+          setTopK={setReverseTopK}
+          minSimilarity={reverseMinSimilarity}
+          setMinSimilarity={setReverseMinSimilarity}
+          isMatching={isReverseMatching}
+          setIsMatching={setIsReverseMatching}
+          result={reverseResult}
+          setResult={setReverseResult}
+          abortController={reverseAbortController}
+        />
       </div>
     </main>
   );
@@ -548,6 +628,7 @@ function BanksOverview() {
   );
 }
 
+// Moved outside component to avoid recreation on every render
 function simpleMarkdownToHtml(md: string): string {
   return md
     .replace(/^### (.+)$/gm, '<h3 class="text-lg font-semibold mt-4 mb-2">$1</h3>')
@@ -1079,52 +1160,63 @@ function MarkdownContent({ content }: { content: string }) {
   // Simple markdown rendering - just for display
   const lines = content.split("\n");
   
+  // Generate stable keys based on content hash
+  const getLineKey = (line: string, index: number): string => {
+    const hash = line.slice(0, 20).replace(/\s/g, '');
+    return `line-${index}-${hash}`;
+  };
+  
   return (
     <div className="prose prose-invert prose-sm max-w-none">
       {lines.map((line, i) => {
+        const lineKey = getLineKey(line, i);
+        
         if (line.startsWith("# ")) {
           return (
-            <h1 key={i} className="text-2xl font-bold mt-6 mb-4 gradient-text">
+            <h1 key={lineKey} className="text-2xl font-bold mt-6 mb-4 gradient-text">
               {line.slice(2)}
             </h1>
           );
         }
         if (line.startsWith("## ")) {
           return (
-            <h2 key={i} className="text-xl font-semibold mt-5 mb-3 text-white">
+            <h2 key={lineKey} className="text-xl font-semibold mt-5 mb-3 text-white">
               {line.slice(3)}
             </h2>
           );
         }
         if (line.startsWith("### ")) {
           return (
-            <h3 key={i} className="text-lg font-medium mt-4 mb-2 text-adobe-gray-200">
+            <h3 key={lineKey} className="text-lg font-medium mt-4 mb-2 text-adobe-gray-200">
               {line.slice(4)}
             </h3>
           );
         }
         if (line.startsWith("- ")) {
+          // Wrap each list item in ul for semantic correctness
           return (
-            <li key={i} className="text-adobe-gray-300 ml-4">
-              {line.slice(2)}
-            </li>
+            <ul key={lineKey} className="list-disc list-inside my-1">
+              <li className="text-adobe-gray-300">
+                {line.slice(2)}
+              </li>
+            </ul>
           );
         }
         if (line.startsWith("**") && line.endsWith("**")) {
           return (
-            <p key={i} className="font-semibold text-white">
+            <p key={lineKey} className="font-semibold text-white">
               {line.slice(2, -2)}
             </p>
           );
         }
         if (line.trim() === "") {
-          return <br key={i} />;
+          return <br key={lineKey} />;
         }
         if (line.startsWith("---")) {
-          return <hr key={i} className="border-white/10 my-4" />;
+          return <hr key={lineKey} className="border-white/10 my-4" />;
         }
         return (
-          <p key={i} className="text-adobe-gray-300 leading-relaxed">
+          <p key={lineKey} className="text-adobe-gray-300 leading-relaxed">
             {line}
           </p>
         );
@@ -1188,6 +1280,374 @@ function LogoutButton() {
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
       </svg>
     </button>
+  );
+}
+
+function ReverseMatchSection({
+  showReverseMatch,
+  setShowReverseMatch,
+  query,
+  setQuery,
+  daysBack,
+  setDaysBack,
+  topK,
+  setTopK,
+  minSimilarity,
+  setMinSimilarity,
+  isMatching,
+  setIsMatching,
+  result,
+  setResult,
+  abortController,
+}: {
+  showReverseMatch: boolean;
+  setShowReverseMatch: (show: boolean) => void;
+  query: string;
+  setQuery: (q: string) => void;
+  daysBack: number;
+  setDaysBack: (d: number) => void;
+  topK: number;
+  setTopK: (k: number) => void;
+  minSimilarity: number;
+  setMinSimilarity: (s: number) => void;
+  isMatching: boolean;
+  setIsMatching: (m: boolean) => void;
+  result: ReverseMatchResult | null;
+  setResult: (r: ReverseMatchResult | null) => void;
+  abortController: React.MutableRefObject<AbortController | null>;
+}) {
+  const handleSearch = async () => {
+    if (!query.trim()) return;
+
+    setIsMatching(true);
+    setResult(null);
+
+    // Create new AbortController for this request
+    abortController.current = new AbortController();
+
+    try {
+      const response = await fetch("/api/reverse-match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: query.trim(),
+          daysBack,
+          topK,
+          minSimilarity,
+        }),
+        signal: abortController.current.signal,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(errorData.error || `Request failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      setResult(data);
+    } catch (error) {
+      // Check if this was an abort
+      if (error instanceof Error && error.name === "AbortError") {
+        setResult({
+          success: false,
+          query: query.trim(),
+          matches: [],
+          stats: {
+            totalMessages: 0,
+            matchesFound: 0,
+            daysSearched: daysBack,
+          },
+          error: "Search cancelled",
+        });
+      } else {
+        setResult({
+          success: false,
+          query: query.trim(),
+          matches: [],
+          stats: {
+            totalMessages: 0,
+            matchesFound: 0,
+            daysSearched: daysBack,
+          },
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    } finally {
+      abortController.current = null;
+      setIsMatching(false);
+    }
+  };
+
+  const handleStop = () => {
+    if (abortController.current) {
+      abortController.current.abort();
+    }
+  };
+
+  // Memoize formatTimestamp function to avoid recreation on every render
+  const formatTimestamp = useMemo(
+    () => (ts: number): string => {
+      try {
+        const date = new Date(ts);
+        return date.toLocaleString();
+      } catch {
+        return String(ts);
+      }
+    },
+    []
+  );
+
+  return (
+    <section className="glass-card p-6 space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
+          <span>🔍</span> Reverse Match
+        </h2>
+        <p className="text-adobe-gray-400">
+          Enter your insight or idea to find matching examples from your chat history
+        </p>
+      </div>
+
+      {/* Query Input */}
+      <div className="space-y-4">
+          <div>
+            <label htmlFor="reverse-query" className="block text-sm font-medium text-adobe-gray-300 mb-2">
+              Your Insight or Idea
+            </label>
+            <textarea
+              id="reverse-query"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="e.g., 'I should build a tool that helps with X' or 'Key insight about Y'"
+              className="input-field w-full min-h-[120px] resize-y"
+              disabled={isMatching}
+              aria-describedby="reverse-query-help"
+            />
+            <p id="reverse-query-help" className="text-xs text-adobe-gray-500 mt-1">
+              Describe your insight or idea. The system will search your chat history for related conversations.
+            </p>
+          </div>
+
+        {/* Settings */}
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label htmlFor="reverse-days-back" className="block text-sm text-adobe-gray-400 mb-1">
+              Days Back: {daysBack}
+            </label>
+            <input
+              id="reverse-days-back"
+              type="range"
+              min={7}
+              max={180}
+              value={daysBack}
+              onChange={(e) => setDaysBack(parseInt(e.target.value))}
+              className="slider-track w-full"
+              disabled={isMatching}
+              aria-label={`Days back to search: ${daysBack}`}
+              aria-valuemin={7}
+              aria-valuemax={180}
+              aria-valuenow={daysBack}
+            />
+          </div>
+          <div>
+            <label htmlFor="reverse-top-k" className="block text-sm text-adobe-gray-400 mb-1">
+              Top Results: {topK}
+            </label>
+            <input
+              id="reverse-top-k"
+              type="range"
+              min={5}
+              max={50}
+              value={topK}
+              onChange={(e) => setTopK(parseInt(e.target.value))}
+              className="slider-track w-full"
+              disabled={isMatching}
+              aria-label={`Maximum number of results: ${topK}`}
+              aria-valuemin={5}
+              aria-valuemax={50}
+              aria-valuenow={topK}
+            />
+          </div>
+          <div>
+            <label htmlFor="reverse-min-similarity" className="block text-sm text-adobe-gray-400 mb-1">
+              Min Similarity: {minSimilarity.toFixed(2)}
+            </label>
+            <input
+              id="reverse-min-similarity"
+              type="range"
+              min={0}
+              max={100}
+              value={minSimilarity * 100}
+              onChange={(e) => setMinSimilarity(parseInt(e.target.value) / 100)}
+              className="slider-track w-full"
+              disabled={isMatching}
+              aria-label={`Minimum similarity threshold: ${(minSimilarity * 100).toFixed(0)}%`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={minSimilarity * 100}
+            />
+          </div>
+        </div>
+
+        {/* Search Button / Stop Button */}
+        {isMatching ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-center gap-3 p-4 bg-white/5 rounded-xl border border-white/10">
+              <LoadingSpinner />
+              <span className="text-adobe-gray-300" aria-live="polite">
+                Searching chat history...
+              </span>
+            </div>
+            <button
+              onClick={handleStop}
+              className="w-full px-4 py-2 text-sm font-medium text-red-400 bg-red-400/10 hover:bg-red-400/20 border border-red-400/30 rounded-lg transition-colors flex items-center justify-center gap-2"
+              aria-label="Stop search"
+            >
+              <StopIcon />
+              Stop Search
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={handleSearch}
+            disabled={!query.trim()}
+            className="btn-primary w-full py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-busy={false}
+          >
+            <span aria-hidden="true">🔍</span> Search Chat History
+          </button>
+        )}
+      </div>
+
+      {/* Results */}
+      {result && (
+        <div className="space-y-4" aria-live="polite" aria-atomic="true">
+          {result.error ? (
+            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+              <p className="text-red-400">Error: {result.error}</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
+                <div>
+                  <h3 className="font-semibold text-white">
+                    Found {result.stats.matchesFound} matches
+                  </h3>
+                  <p className="text-sm text-adobe-gray-400">
+                    From {result.stats.totalMessages} messages across {result.stats.daysSearched} days
+                  </p>
+                </div>
+              </div>
+
+              {result.matches.length === 0 ? (
+                <div className="p-6 text-center text-adobe-gray-400">
+                  <p>No matches found. Try:</p>
+                  <ul className="mt-2 text-sm space-y-1">
+                    <li>• Lowering the minimum similarity threshold</li>
+                    <li>• Increasing the days back to search</li>
+                    <li>• Rewording your query</li>
+                  </ul>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {result.matches.map((match, idx) => (
+                    <div
+                      key={`match-${match.message.timestamp}-${idx}-${match.similarity}`}
+                      className="p-4 bg-black/30 rounded-lg border border-white/10"
+                    >
+                      {/* Match Header */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-mono text-inspiration-insights">
+                            Match #{idx + 1}
+                          </span>
+                          <span className="text-sm text-adobe-gray-400">
+                            Similarity: {(match.similarity * 100).toFixed(1)}%
+                          </span>
+                          {match.message.chat_type && (
+                            <span className="text-xs px-2 py-0.5 bg-white/10 rounded-full text-adobe-gray-400">
+                              {match.message.chat_type === "composer" ? "Composer" : "Chat"}
+                            </span>
+                          )}
+                        </div>
+                        {match.message.workspace && (
+                          <span className="text-xs text-adobe-gray-500">
+                            {match.message.workspace.split("/").pop()}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Context Before */}
+                      {match.context.before.length > 0 && (
+                        <div className="mb-3 p-2 bg-white/5 rounded text-sm">
+                          <p className="text-xs text-adobe-gray-500 mb-1">Previous messages:</p>
+                          {match.context.before.map((msg, i) => (
+                            <div key={`before-${msg.timestamp}-${i}`} className="text-adobe-gray-400 text-xs mb-1">
+                              <span className="font-mono">
+                                {msg.type === "user" ? "USER" : "ASSISTANT"}
+                              </span>
+                              : {msg.text.slice(0, 150)}
+                              {msg.text.length > 150 && "..."}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Matched Message */}
+                      <div className="p-3 bg-inspiration-insights/10 border border-inspiration-insights/30 rounded">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-mono text-inspiration-insights">
+                            {match.message.type === "user" ? "USER" : "ASSISTANT"}
+                          </span>
+                          <span className="text-xs text-adobe-gray-400">
+                            {formatTimestamp(match.message.timestamp)}
+                          </span>
+                        </div>
+                        <p className="text-white whitespace-pre-wrap">{match.message.text}</p>
+                      </div>
+
+                      {/* Context After */}
+                      {match.context.after.length > 0 && (
+                        <div className="mt-3 p-2 bg-white/5 rounded text-sm">
+                          <p className="text-xs text-adobe-gray-500 mb-1">Following messages:</p>
+                          {match.context.after.map((msg, i) => (
+                            <div key={`after-${msg.timestamp}-${i}`} className="text-adobe-gray-400 text-xs mb-1">
+                              <span className="font-mono">
+                                {msg.type === "user" ? "USER" : "ASSISTANT"}
+                              </span>
+                              : {msg.text.slice(0, 150)}
+                              {msg.text.length > 150 && "..."}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Copy Button */}
+                      <button
+                        onClick={() => {
+                          const text = [
+                            `Match #${idx + 1} (Similarity: ${(match.similarity * 100).toFixed(1)}%)`,
+                            `Timestamp: ${formatTimestamp(match.message.timestamp)}`,
+                            `Workspace: ${match.message.workspace || "Unknown"}`,
+                            "",
+                            match.message.text,
+                          ].join("\n");
+                          copyToClipboard(text);
+                        }}
+                        className="mt-2 text-xs px-2 py-1 bg-white/10 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-inspiration-insights/50 rounded transition-colors"
+                        aria-label={`Copy match ${idx + 1} message to clipboard`}
+                      >
+                        <span aria-hidden="true">📋</span> Copy Message
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
