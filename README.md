@@ -12,7 +12,7 @@
 
 ```bash
 # 1. Install
-git clone https://github.com/mostly-coherent/inspiration.git
+git clone https://github.com/yourusername/inspiration.git
 cd inspiration
 npm install
 pip install -r engine/requirements.txt

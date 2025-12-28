@@ -86,7 +86,7 @@ def get_workspace_mapping() -> dict[str, str]:
                 with open(workspace_json) as f:
                     data = json.load(f)
                     folder = data.get("folder", "")
-                    # Decode URL encoding: file:///Users/jmbeh/Project%20Understanding
+                    # Decode URL encoding if present
                     if folder.startswith("file://"):
                         folder = unquote(folder[7:])
                     mapping[workspace_dir.name] = folder
