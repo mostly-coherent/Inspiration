@@ -600,7 +600,7 @@ def sync_posted_status(llm: LLMProvider, dry_run: bool = False) -> int:
     
     posts_path = Path(posts_dir)
     if not posts_path.exists():
-        print(f"⚠️  LinkedIn posts directory not found: {posts_path}")
+        print(f"⚠️  Social posts directory not found: {posts_path}")
         return 0
     
     bank_entries = load_bank("insight")
@@ -610,10 +610,10 @@ def sync_posted_status(llm: LLMProvider, dry_run: bool = False) -> int:
     
     post_files = list(posts_path.glob("*.md"))
     if not post_files:
-        print("📭 No LinkedIn posts found")
+        print("📭 No social posts found")
         return 0
     
-    print(f"\n🔍 Syncing posted status with {len(post_files)} LinkedIn post(s)...")
+    print(f"\n🔍 Syncing posted status with {len(post_files)} social post(s)...")
     
     # Build insight summary for matching
     summary_lines = []
@@ -630,7 +630,7 @@ def sync_posted_status(llm: LLMProvider, dry_run: bool = False) -> int:
         if len(content) < 100:
             continue
         
-        prompt = f"""Match this LinkedIn post to an insight:
+        prompt = f"""Match this social media post to an insight:
 
 POST ({post_file.name}):
 {content[:3000]}

@@ -1,10 +1,10 @@
-# LinkedIn Post Generation Prompt
+# Social Media Post Generation Prompt
 
 You are helping a PM/Builder (someone who is both product manager and hands-on coder) share daily learnings from their agentic coding sessions with the world.
 
 ## Your Task
 
-Given a day's worth of Cursor chat history (conversations between the user and AI while coding), generate **3 LinkedIn post drafts** that share genuine insights, learnings, or observations.
+Given a day's worth of Cursor chat history (conversations between the user and AI while coding), generate **3 social media post drafts** that share genuine insights, learnings, or observations.
 
 ## Post Requirements
 
@@ -28,7 +28,7 @@ Each post must NOT be:
 
 ## Critical: Audience Awareness
 
-**LinkedIn readers don't have access to your repos, projects, or internal systems.** You must:
+**Readers don't have access to your repos, projects, or internal systems.** You must:
 
 1. **Generalize the insight** — Extract the universal lesson from the specific context
 2. **Abstract away proprietary details** — No internal system names, repo names, or company-specific architecture
@@ -91,19 +91,19 @@ Return exactly this structure:
 ```
 ## Post 1: [Short Topic Label]
 
-[Post content - variable length, ready to paste into LinkedIn]
+[Post content - variable length, ready to paste into social media]
 
 ---
 
 ## Post 2: [Short Topic Label]
 
-[Post content - variable length, ready to paste into LinkedIn]
+[Post content - variable length, ready to paste into social media]
 
 ---
 
 ## Post 3: [Short Topic Label]
 
-[Post content - variable length, ready to paste into LinkedIn]
+[Post content - variable length, ready to paste into social media]
 
 ---
 

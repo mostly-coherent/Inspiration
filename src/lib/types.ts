@@ -118,7 +118,7 @@ export const TOOL_CONFIG = {
   },
   insights: {
     label: "Insights",
-    description: "LinkedIn posts to share learnings",
+    description: "Social media posts to share learnings",
     icon: "✨",
     color: "inspiration-insights",
     script: "insights.py",

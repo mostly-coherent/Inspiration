@@ -36,6 +36,10 @@ export default function Home() {
   const [reverseMinSimilarity, setReverseMinSimilarity] = useState(0.0);
   const reverseAbortController = useRef<AbortController | null>(null);
 
+  // Sync state
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+
   // Progress tracking
   const [progress, setProgress] = useState(0);
   const [estimatedSeconds, setEstimatedSeconds] = useState(0);
@@ -89,6 +93,46 @@ export default function Home() {
     // Clamp to maximum 90 days
     return Math.min(days, MAX_DAYS);
   }, []);
+
+  // Sync brain with local Cursor history
+  const handleSync = useCallback(async () => {
+    if (isSyncing) return;
+    
+    setIsSyncing(true);
+    setSyncStatus("Syncing...");
+    try {
+      const res = await fetch("/api/sync", { method: "POST" });
+      const data = await res.json();
+      
+      if (data.success) {
+        if (data.stats && data.stats.indexed > 0) {
+          setSyncStatus(`✓ Synced ${data.stats.indexed} new items`);
+        } else {
+          setSyncStatus("✓ Brain up to date");
+        }
+      } else {
+        // Handle cloud environment limitation gracefully
+        if (data.error && data.error.includes("Cannot sync from cloud")) {
+          setSyncStatus("☁️ Cloud Mode (Read-only)");
+        } else {
+          setSyncStatus("⚠️ Sync failed");
+          console.error("Sync failed:", data.error);
+        }
+      }
+    } catch (e) {
+      console.error("Sync error:", e);
+      setSyncStatus("⚠️ Connection error");
+    } finally {
+      setIsSyncing(false);
+      // Clear status after 5 seconds
+      setTimeout(() => setSyncStatus(null), 5000);
+    }
+  }, [isSyncing]);
+
+  // Auto-sync on mount
+  useEffect(() => {
+    handleSync();
+  }, []); // Run once on mount
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -238,6 +282,25 @@ export default function Home() {
         {/* Header */}
         <header className="text-center space-y-4 pt-8 relative">
           <div className="absolute right-0 top-8 flex items-center gap-2">
+            {/* Sync Status / Refresh Button */}
+            <button
+              onClick={handleSync}
+              disabled={isSyncing}
+              className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                isSyncing 
+                  ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait" 
+                  : syncStatus === "☁️ Cloud Mode (Read-only)"
+                    ? "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
+                    : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white"
+              }`}
+              title={syncStatus === "☁️ Cloud Mode (Read-only)" ? "Running in cloud. Cannot sync from local disk." : "Refresh Brain with latest Cursor history"}
+            >
+              <span className={`text-base ${isSyncing ? "animate-spin" : ""}`}>
+                {syncStatus === "☁️ Cloud Mode (Read-only)" ? "☁️" : "🔄"}
+              </span>
+              {syncStatus || "Refresh Brain"}
+            </button>
+
             <a 
               href="/settings" 
               className="p-2 text-slate-400 hover:text-amber-400 transition-colors"
