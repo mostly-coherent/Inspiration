@@ -4,6 +4,7 @@ Bank Management — Harmonize and manage idea/insight banks.
 
 import json
 import re
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -13,6 +14,41 @@ from .llm import LLMProvider
 
 
 BankType = Literal["idea", "insight"]
+
+
+def get_harmonization_cache_path(bank_type: BankType) -> Path:
+    """Get path to harmonization cache file."""
+    return get_data_dir() / f"{bank_type}_harmonization_cache.json"
+
+
+def get_item_hash(item: dict[str, Any]) -> str:
+    """Generate hash for an item to track if it's been harmonized."""
+    # Create a stable hash from item content
+    content_str = json.dumps(item, sort_keys=True)
+    return hashlib.sha256(content_str.encode()).hexdigest()
+
+
+def load_harmonization_cache(bank_type: BankType) -> dict[str, Any]:
+    """Load harmonization cache."""
+    cache_path = get_harmonization_cache_path(bank_type)
+    if cache_path.exists():
+        try:
+            with open(cache_path) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return {}
+    return {}
+
+
+def save_harmonization_cache(bank_type: BankType, cache: dict[str, Any]) -> None:
+    """Save harmonization cache."""
+    cache_path = get_harmonization_cache_path(bank_type)
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(cache_path, "w") as f:
+            json.dump(cache, f, indent=2)
+    except IOError:
+        pass  # Cache write failed, but harmonization can continue
 
 
 def get_bank_paths(bank_type: BankType) -> tuple[Path, Path]:
@@ -272,25 +308,90 @@ def harmonize_into_bank(
     bank_type: BankType,
     new_items: list[dict[str, Any]],
     llm: LLMProvider,
-) -> list[dict[str, Any]]:
+    use_cache: bool = True,
+    force_full: bool = False,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """
     Harmonize new items into an existing bank using LLM.
     
     Uses delta-based approach: LLM returns only changes to apply.
+    Supports incremental harmonization with caching for cost optimization.
     
     Args:
         bank_type: "idea" or "insight"
         new_items: New items to harmonize
         llm: LLM provider for semantic matching
+        use_cache: Whether to use cached harmonization results (default: True)
+        force_full: Force full re-harmonization even if items are cached (default: False)
     
     Returns:
-        Updated bank entries
+        Tuple of (updated bank entries, stats dict)
     """
     current_entries = load_bank(bank_type)
     
     if not new_items:
-        return current_entries
+        return current_entries, {"items_processed": 0, "items_added": 0, "items_updated": 0, "items_deduplicated": 0}
     
+    # Incremental harmonization: only process items not yet harmonized
+    cached_count = 0
+    if use_cache and not force_full:
+        cache = load_harmonization_cache(bank_type)
+        processed_hashes = set(cache.get("processed_hashes", []))
+        
+        # Filter out already-processed items
+        items_to_process = []
+        for item in new_items:
+            item_hash = get_item_hash(item)
+            if item_hash not in processed_hashes:
+                items_to_process.append(item)
+            else:
+                cached_count += 1
+                print(f"⏭️  Skipping already-harmonized item (hash: {item_hash[:8]}...)")
+        
+        if not items_to_process:
+            print("✅ All items already harmonized (using cache)")
+            return current_entries, {"items_processed": len(new_items), "items_added": 0, "items_updated": 0, "items_deduplicated": len(new_items)}
+        
+        print(f"📊 Processing {len(items_to_process)} new items (skipped {cached_count} cached)")
+        new_items = items_to_process
+    
+    # Batch processing: handle large batches by chunking if needed
+    # Estimate prompt size (rough heuristic: ~100 tokens per item)
+    MAX_ITEMS_PER_BATCH = 20  # Conservative limit to avoid token limits
+    updated_entries = current_entries
+    total_stats = {"items_processed": len(new_items) + cached_count, "items_added": 0, "items_updated": 0, "items_deduplicated": cached_count}
+    
+    if len(new_items) > MAX_ITEMS_PER_BATCH:
+        print(f"📦 Large batch detected ({len(new_items)} items), processing in chunks of {MAX_ITEMS_PER_BATCH}")
+        # Process in chunks
+        for i in range(0, len(new_items), MAX_ITEMS_PER_BATCH):
+            chunk = new_items[i:i + MAX_ITEMS_PER_BATCH]
+            print(f"   Processing chunk {i//MAX_ITEMS_PER_BATCH + 1}/{(len(new_items) + MAX_ITEMS_PER_BATCH - 1)//MAX_ITEMS_PER_BATCH} ({len(chunk)} items)")
+            updated_entries, stats = _harmonize_batch(bank_type, updated_entries, chunk, llm, use_cache)
+            total_stats["items_added"] += stats["items_added"]
+            total_stats["items_updated"] += stats["items_updated"]
+            total_stats["items_deduplicated"] += stats["items_deduplicated"]
+    else:
+        # Single batch (optimized path)
+        updated_entries, stats = _harmonize_batch(bank_type, current_entries, new_items, llm, use_cache)
+        total_stats["items_added"] += stats["items_added"]
+        total_stats["items_updated"] += stats["items_updated"]
+        total_stats["items_deduplicated"] += stats["items_deduplicated"]
+    
+    return updated_entries, total_stats
+
+
+def _harmonize_batch(
+    bank_type: BankType,
+    current_entries: list[dict[str, Any]],
+    new_items: list[dict[str, Any]],
+    llm: LLMProvider,
+    use_cache: bool,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """
+    Internal function to harmonize a batch of items.
+    Handles a single LLM call for the batch.
+    """
     # Build prompt for delta-based harmonization
     if bank_type == "idea":
         prompt = _build_idea_harmonization_prompt(current_entries, new_items)
@@ -304,6 +405,7 @@ RULES:
 2. If a new item is genuinely new, output a NEW entry
 3. Preserve nuances and unique details from both items when merging
 4. Return ONLY a JSON object with "changes" array
+5. Process ALL new items in this batch
 
 OUTPUT FORMAT (strict JSON):
 {
@@ -326,15 +428,45 @@ If no changes needed, return: {"changes": []}"""
         
         changes = json.loads(json_match.group())
         
-        # Apply changes
-        return _apply_changes(current_entries, changes.get("changes", []))
+        # Apply changes and collect stats
+        changes_list = changes.get("changes", [])
+        updated_entries = _apply_changes(current_entries, changes_list)
+        
+        # Count stats
+        new_count = sum(1 for c in changes_list if c.get("action") == "new")
+        update_count = sum(1 for c in changes_list if c.get("action") == "update")
+        total_processed = len(new_items)
+        
+        # Update cache with processed items
+        if use_cache:
+            cache = load_harmonization_cache(bank_type)
+            processed_hashes = set(cache.get("processed_hashes", []))
+            
+            # Add hashes of processed items
+            for item in new_items:
+                item_hash = get_item_hash(item)
+                processed_hashes.add(item_hash)
+            
+            cache["processed_hashes"] = list(processed_hashes)
+            cache["last_harmonization"] = datetime.now().isoformat()
+            cache["total_processed"] = len(processed_hashes)
+            save_harmonization_cache(bank_type, cache)
+        
+        # Return entries and stats
+        stats = {
+            "items_processed": total_processed,
+            "items_added": new_count,
+            "items_updated": update_count,
+            "items_deduplicated": total_processed - new_count - update_count,
+        }
+        return updated_entries, stats
     
     except json.JSONDecodeError as e:
         print(f"⚠️  Failed to parse harmonization result: {e}")
-        return current_entries
+        return current_entries, {"items_processed": len(new_items), "items_added": 0, "items_updated": 0, "items_deduplicated": 0}
     except Exception as e:
         print(f"⚠️  Harmonization error: {e}")
-        return current_entries
+        return current_entries, {"items_processed": len(new_items), "items_added": 0, "items_updated": 0, "items_deduplicated": 0}
 
 
 def _build_idea_harmonization_prompt(existing: list[dict], new_items: list[dict]) -> str:

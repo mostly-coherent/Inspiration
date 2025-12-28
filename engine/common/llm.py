@@ -7,6 +7,7 @@ Supports:
 """
 
 import os
+import time
 from typing import Literal
 
 # Try importing providers
@@ -43,17 +44,51 @@ class LLMProvider:
         model: str | None = None,
         fallback_provider: Literal["anthropic", "openai", None] = "openai",
         fallback_model: str | None = None,
+        judge_provider: Literal["anthropic", "openai", None] = None,
+        judge_model: str | None = None,
+        use_cheaper_judge: bool = True,
     ):
         self.provider = provider
         self.model = model or (DEFAULT_ANTHROPIC_MODEL if provider == "anthropic" else DEFAULT_OPENAI_MODEL)
         self.fallback_provider = fallback_provider
         self.fallback_model = fallback_model or (DEFAULT_OPENAI_MODEL if fallback_provider == "openai" else DEFAULT_ANTHROPIC_MODEL)
         
+        # Judge model configuration (for cheaper judging)
+        self.use_cheaper_judge = use_cheaper_judge
+        self.judge_provider = judge_provider or ("openai" if use_cheaper_judge else None)
+        self.judge_model = judge_model or ("gpt-3.5-turbo" if self.judge_provider == "openai" else None)
+        
         # Initialize clients
         self._anthropic_client = None
         self._openai_client = None
         
         self._init_clients()
+    
+    def get_judge_llm(self) -> "LLMProvider":
+        """
+        Get an LLM instance optimized for judging tasks.
+        Returns a cheaper model if configured, otherwise returns self.
+        """
+        if not self.use_cheaper_judge or not self.judge_provider or not self.judge_model:
+            return self
+        
+        # Check if judge provider is available
+        if self.judge_provider == "openai" and not self.is_available("openai"):
+            print("⚠️  Judge model (OpenAI) not available, falling back to primary model")
+            return self
+        
+        if self.judge_provider == "anthropic" and not self.is_available("anthropic"):
+            print("⚠️  Judge model (Anthropic) not available, falling back to primary model")
+            return self
+        
+        # Return a new instance with judge configuration
+        return LLMProvider(
+            provider=self.judge_provider,
+            model=self.judge_model,
+            fallback_provider=self.provider,  # Fallback to primary if judge fails
+            fallback_model=self.model,
+            use_cheaper_judge=False,  # Prevent recursion
+        )
     
     def _init_clients(self):
         """Initialize available LLM clients."""
@@ -93,48 +128,63 @@ class LLMProvider:
         system_prompt: str | None = None,
         max_tokens: int = MAX_TOKENS_DEFAULT,
         temperature: float = 0.4,
-    ) -> str:
+        max_retries: int = 3,
+        base_delay: float = 1.0,
+        stream: bool = False,
+    ) -> str | None:
         """
-        Generate a response from the LLM.
+        Generate a response from the LLM with retry logic.
         
         Args:
             prompt: User prompt
             system_prompt: Optional system prompt
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature
+            max_retries: Maximum number of retry attempts
+            base_delay: Base delay in seconds for exponential backoff
+            stream: If True, returns a generator that yields tokens (not implemented for all providers)
         
         Returns:
-            Generated text
+            Generated text (or None if stream=True, use generate_stream() instead)
             
         Raises:
-            RuntimeError: If no LLM provider is available
+            RuntimeError: If no LLM provider is available or all retries exhausted
         """
-        # Try primary provider
+        if stream:
+            # Streaming not supported in synchronous mode
+            # Use generate_stream() method instead
+            raise ValueError("Use generate_stream() for streaming. Set stream=False for non-streaming.")
+        
+        # Try primary provider with retry
         if self.is_available(self.provider):
             try:
-                return self._call_provider(
-                    self.provider, 
-                    self.model, 
-                    prompt, 
-                    system_prompt, 
-                    max_tokens, 
-                    temperature
+                return self._generate_with_retry(
+                    self.provider,
+                    self.model,
+                    prompt,
+                    system_prompt,
+                    max_tokens,
+                    temperature,
+                    max_retries,
+                    base_delay,
                 )
             except Exception as e:
-                print(f"⚠️  {self.provider} failed: {e}")
+                print(f"⚠️  {self.provider} failed after retries: {e}")
                 if self.fallback_provider:
                     print(f"   Trying fallback: {self.fallback_provider}")
         
-        # Try fallback provider
+        # Try fallback provider with retry
         if self.fallback_provider and self.is_available(self.fallback_provider):
             try:
-                return self._call_provider(
+                return self._generate_with_retry(
                     self.fallback_provider,
                     self.fallback_model,
                     prompt,
                     system_prompt,
                     max_tokens,
-                    temperature
+                    temperature,
+                    max_retries,
+                    base_delay,
                 )
             except Exception as e:
                 raise RuntimeError(f"Both primary and fallback LLM failed: {e}")
@@ -148,6 +198,196 @@ class LLMProvider:
             )
         
         raise RuntimeError(f"Requested provider '{self.provider}' not available. Available: {available}")
+    
+    def generate_stream(
+        self,
+        prompt: str,
+        *,
+        system_prompt: str | None = None,
+        max_tokens: int = MAX_TOKENS_DEFAULT,
+        temperature: float = 0.4,
+    ):
+        """
+        Generate a streaming response from the LLM.
+        
+        Args:
+            prompt: User prompt
+            system_prompt: Optional system prompt
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+        
+        Yields:
+            Token strings as they're generated
+        """
+        # Try primary provider
+        if self.is_available(self.provider):
+            try:
+                yield from self._call_provider_stream(
+                    self.provider,
+                    self.model,
+                    prompt,
+                    system_prompt,
+                    max_tokens,
+                    temperature,
+                )
+                return
+            except Exception as e:
+                print(f"⚠️  {self.provider} streaming failed: {e}")
+                if self.fallback_provider:
+                    print(f"   Trying fallback: {self.fallback_provider}")
+        
+        # Try fallback provider
+        if self.fallback_provider and self.is_available(self.fallback_provider):
+            try:
+                yield from self._call_provider_stream(
+                    self.fallback_provider,
+                    self.fallback_model,
+                    prompt,
+                    system_prompt,
+                    max_tokens,
+                    temperature,
+                )
+                return
+            except Exception as e:
+                raise RuntimeError(f"Both primary and fallback LLM streaming failed: {e}")
+        
+        raise RuntimeError("No LLM provider available for streaming")
+    
+    def _call_provider_stream(
+        self,
+        provider: str,
+        model: str,
+        prompt: str,
+        system_prompt: str | None,
+        max_tokens: int,
+        temperature: float,
+    ):
+        """Call a specific provider with streaming."""
+        if provider == "anthropic":
+            yield from self._call_anthropic_stream(model, prompt, system_prompt, max_tokens, temperature)
+        elif provider == "openai":
+            yield from self._call_openai_stream(model, prompt, system_prompt, max_tokens, temperature)
+        else:
+            raise ValueError(f"Unknown provider: {provider}")
+    
+    def _call_anthropic_stream(
+        self,
+        model: str,
+        prompt: str,
+        system_prompt: str | None,
+        max_tokens: int,
+        temperature: float,
+    ):
+        """Stream tokens from Anthropic Claude."""
+        if not self._anthropic_client:
+            raise RuntimeError("Anthropic client not initialized")
+        
+        kwargs = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": True,
+        }
+        
+        if system_prompt:
+            kwargs["system"] = system_prompt
+        
+        with self._anthropic_client.messages.stream(**kwargs) as stream:
+            for text_event in stream.text_stream:
+                yield text_event
+    
+    def _call_openai_stream(
+        self,
+        model: str,
+        prompt: str,
+        system_prompt: str | None,
+        max_tokens: int,
+        temperature: float,
+    ):
+        """Stream tokens from OpenAI GPT."""
+        if not self._openai_client:
+            raise RuntimeError("OpenAI client not initialized")
+        
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        
+        stream = self._openai_client.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            stream=True,
+        )
+        
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+    
+    def _generate_with_retry(
+        self,
+        provider: str,
+        model: str,
+        prompt: str,
+        system_prompt: str | None,
+        max_tokens: int,
+        temperature: float,
+        max_retries: int,
+        base_delay: float,
+    ) -> str:
+        """Generate with exponential backoff retry logic."""
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                return self._call_provider(
+                    provider, model, prompt, system_prompt, max_tokens, temperature
+                )
+            except Exception as e:
+                last_error = e
+                
+                # Check if error is retryable
+                if not self._is_retryable_error(e):
+                    raise  # Don't retry non-retryable errors
+                
+                # Don't retry on last attempt
+                if attempt == max_retries - 1:
+                    break
+                
+                # Calculate delay with exponential backoff
+                delay = base_delay * (2 ** attempt)
+                print(f"⚠️  Retryable error (attempt {attempt + 1}/{max_retries}): {e}")
+                print(f"   Retrying in {delay:.1f}s...")
+                time.sleep(delay)
+        
+        # All retries exhausted
+        raise RuntimeError(f"Failed after {max_retries} attempts: {last_error}")
+    
+    def _is_retryable_error(self, error: Exception) -> bool:
+        """Check if an error is retryable."""
+        error_str = str(error).lower()
+        error_type = type(error).__name__
+        
+        # Rate limit errors
+        if "rate limit" in error_str or "rate_limit" in error_str or "429" in error_str:
+            return True
+        
+        # Network/timeout errors
+        if any(keyword in error_str for keyword in ["timeout", "connection", "network", "unavailable", "503", "502", "500"]):
+            return True
+        
+        # Anthropic-specific retryable errors
+        if error_type in ["RateLimitError", "APIConnectionError", "APITimeoutError", "InternalServerError"]:
+            return True
+        
+        # OpenAI-specific retryable errors
+        if error_type in ["RateLimitError", "APIConnectionError", "APITimeoutError", "InternalServerError"]:
+            return True
+        
+        # Don't retry authentication, validation, or other permanent errors
+        return False
     
     def _call_provider(
         self,
@@ -242,5 +482,8 @@ def create_llm(config: dict | None = None) -> LLMProvider:
         model=config.get("model"),
         fallback_provider=config.get("fallbackProvider", "openai"),
         fallback_model=config.get("fallbackModel"),
+        judge_provider=config.get("judgeProvider"),
+        judge_model=config.get("judgeModel"),
+        use_cheaper_judge=config.get("useCheaperJudge", True),
     )
 
