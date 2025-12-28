@@ -33,6 +33,7 @@
 | C10 | **Results Display** | Rendered markdown output with formatted/raw toggle | ✅ Done |
 | C11 | **Reverse Match** | Search chat history for user-provided insights/ideas | ✅ Done |
 | C12 | **Abort Signal Support** | STOP button properly kills Python processes on cancel | ✅ Done |
+| C13 | **Vector DB Search** | Supabase pgvector backend for massive (>2GB) chat histories | ✅ Done |
 
 ### Power User Features (Optional, Configurable)
 
@@ -75,19 +76,20 @@ The engine combines these into a comprehensive system prompt that helps Claude m
 
 ---
 
+## MVP: Chat History Search Across All Workspaces
+
+**Requirement:** All three features (Generate Insights, Generate Ideas, Reverse Match) must search through chat history **regardless of workspace and LLM** (both Composer and regular chats). This is a **NON-NEGOTIABLE MVP**.
+
+**Status:** ✅ IMPLEMENTED
+
+**Implementation Details:**
+1.  **Unified Search:** `insights.py`, `ideas.py`, and `reverse_match.py` now explicitly pass `workspace_paths=None` to query the entire database.
+2.  **Bubble Extraction:** Core logic in `cursor_db.py` updated to handle Cursor's "Bubble" architecture, extracting messages from fragmented `bubbleId` entries in `cursorDiskKV`.
+3.  **Vector Acceleration:** For large datasets (>100MB), the system now seamlessly offloads search to Supabase pgvector.
+
+---
+
 ## Architecture
-
-### Current (Personal Setup)
-
-```
-Personal Builder Lab/
-├── MyPrivateTools/
-│   ├── Inspiration/          ← Web UI only
-│   ├── MyIdeas/              ← Separate Python project
-│   └── MyInsights/           ← Separate Python project
-├── MyPrivatePrompts/         ← Personal voice files
-└── MyPrivateProfileBuilding/ ← LinkedIn posts
-```
 
 ### Target (Self-Contained)
 
@@ -96,40 +98,32 @@ inspiration/
 ├── src/
 │   ├── app/
 │   │   ├── page.tsx              ← Main UI
-│   │   ├── settings/page.tsx     ← Settings/wizard UI (NEW)
+│   │   ├── settings/page.tsx     ← Settings/wizard UI
 │   │   └── api/
 │   │       ├── generate/route.ts ← Calls engine
-│   │       ├── config/route.ts   ← Read/write config (NEW)
-│   │       └── banks/route.ts    ← Read banks (NEW)
+│   │       ├── config/route.ts   ← Read/write config
+│   │       └── banks/route.ts    ← Read banks
 │   └── lib/
 │       ├── types.ts
-│       └── config.ts             ← Config utilities (NEW)
-├── engine/                       ← Python engine (NEW)
+│       └── config.ts             ← Config utilities
+├── engine/                       ← Python engine
 │   ├── ideas.py
 │   ├── insights.py
 │   ├── common/
-│   │   ├── cursor_db.py          ← Cross-platform DB extraction
+│   │   ├── cursor_db.py          ← Cross-platform DB extraction (SQLite)
+│   │   ├── vector_db.py          ← Supabase pgvector integration (NEW)
 │   │   ├── llm.py                ← Anthropic + OpenAI wrapper
 │   │   ├── config.py             ← User config loader
 │   │   └── bank.py               ← Bank harmonization
-│   └── prompts/
-│       ├── ideas_synthesize.md
-│       ├── ideas_judge.md
-│       ├── insights_synthesize.md
-│       ├── insights_judge.md
-│       └── voice_default.md
+│   └── scripts/                  ← Vector DB management (NEW)
+│       ├── index_all_messages.py
+│       ├── sync_messages.py
+│       └── init_vector_db.sql
 ├── data/                         ← User data (gitignored)
 │   ├── config.json               ← User configuration
 │   ├── idea_bank.json
-│   ├── idea_bank.md
 │   ├── insight_bank.json
-│   └── insight_bank.md
-├── .env.example
-├── .gitignore
-├── package.json
-├── requirements.txt
-├── CLAUDE.md
-└── README.md
+│   └── vector_db_sync_state.json
 ```
 
 ---
@@ -153,7 +147,7 @@ inspiration/
   "features": {
     "linkedInSync": {
       "enabled": true,
-      "postsDirectory": "/Users/jmbeh/Personal Builder Lab/MyPrivateProfileBuilding/LinkedIn_Postings"
+      "postsDirectory": "/path/to/posts"
     },
     "solvedStatusSync": {
       "enabled": true
@@ -172,173 +166,20 @@ inspiration/
 
 ---
 
-## Refactoring Phases
-
-### Phase 1: Engine Foundation ✅
-- [x] Create `engine/` directory structure
-- [x] Create `engine/common/cursor_db.py` with cross-platform detection
-- [x] Create `engine/common/llm.py` with Anthropic + OpenAI support
-- [x] Create `engine/common/config.py` for user config management
-- [x] Create `engine/common/bank.py` for shared bank logic
-
-### Phase 2: Migrate Python Logic ✅
-- [x] Migrate idea generation logic to `engine/ideas.py`
-- [x] Migrate insight generation logic to `engine/insights.py`
-- [x] Migrate prompts to `engine/prompts/`
-- [x] Create generic judge prompt
-- [x] Ensure all paths are configurable (no hardcoding)
-
-### Phase 3: Update API Routes ✅
-- [x] Update `api/generate/route.ts` to call `engine/` scripts
-- [x] Create `api/config/route.ts` for config CRUD
-- [x] Create `api/banks/route.ts` for reading banks
-
-### Phase 4: Settings UI ✅
-- [x] Create `/settings` page with wizard flow
-- [x] Workspace configuration (add/remove folders)
-- [x] Voice profile configuration (name, context, golden examples, voice guide)
-- [x] LLM provider selection
-- [x] Feature toggles (LinkedIn sync, solved status)
-- [x] API key management (via .env, with placeholder in settings)
-- [ ] First-run detection and redirect (optional polish)
-
-### Phase 5: Bank Viewer ✅
-- [x] Add "View Banks" section to main UI
-- [x] Display Idea Bank with solved status
-- [x] Display Insight Bank with shared status
-- [x] Filter by status (unsolved/unshared first)
-
-### Phase 6: Polish & Publish 🔄
-- [x] Update README with beautiful quick-start
-- [x] Update CLAUDE.md with architecture details
-- [x] Move to root (`Personal Builder Lab/Inspiration/`)
-- [x] Migrate existing bank data to `data/`
-- [x] End-to-end testing (10 Playwright tests, 12 screenshots in `e2e-results/`)
-- [x] Add STOP button for Ideas/Insights generation and Reverse Matching
-- [x] Fix critical bugs (abort signal support, React keys, accessibility)
-- [x] Comprehensive debug audit and fixes
-- [ ] Add screenshots/GIFs to README (optional)
-- [ ] Publish to `github.com/mostly-coherent/inspiration`
-
-### Phase 7: Reverse Matching - User Ideas/Insights → Chat History ✅
-**Goal:** When user self-reflects and comes up with their own insights/ideas, find matching examples from chat history
-
-**The Challenge:** User has an insight ("I should build X") or idea ("Y would solve problem Z") and wants to see where in their chat history they actually discussed or worked on related concepts. This is reverse of current flow (chat → ideas) - now it's idea → chat evidence.
-
-**Use Cases:**
-- User writes LinkedIn post about an insight → Find chat conversations that demonstrate this insight in practice
-- User has idea for new project → Find where they discussed similar concepts or built related prototypes
-- User wants to cite examples → "Show me where I talked about X" → Find relevant chat excerpts
-
-**Tasks:**
-- [x] Add "Reverse Match" mode to UI (new tab/section)
-- [x] User input: Freeform text describing their insight/idea
-- [x] Semantic search across chat history (embed user input + chat messages)
-- [x] Return ranked chat excerpts with relevance scores
-- [x] Display matches with context (date, project, conversation flow)
-- [x] Allow user to copy chat excerpts for citations
-- [x] Search both Composer chats and regular chat conversations
-- [x] Add STOP button to cancel long-running searches
-- [x] Add abort signal support to API routes (kills Python processes on cancel)
-- [x] Display chat type badge (Composer vs Chat) in results
-- [x] Configurable search parameters (days back, top-k, min similarity threshold)
-- [ ] Optional: Generate "evidence summary" from matched chats
-- [ ] Optional: Integration with Idea Bank/Insight Bank (link user-provided items to chat evidence)
-
-**Technical Approach:**
-- Use same embedding model (OpenAI text-embedding-3-small)
-- Vector similarity search: user input embedding vs. chat message embeddings
-- Return top N matches with surrounding context (previous/next messages)
-- Cache embeddings for performance (`data/embedding_cache.json`)
-- Search both `composer.composerData%` and `workbench.panel.aichat.view.aichat.chatdata%` database patterns
-- Abort signal support: Python processes killed when user clicks STOP
-
-**Success Criteria:**
-- ✅ User can paste their insight/idea and get relevant chat matches
-- ✅ Matches are semantically relevant (not just keyword matches)
-- ✅ Context is preserved (can see conversation flow around match)
-- ✅ Fast enough for interactive use (<5 seconds)
-- ✅ User can cancel long-running searches
-- ✅ Searches all Cursor chat types (Composer + regular chat)
-
----
-
-## Migration Notes
-
-### Files to Migrate
-
-| Source | Destination | Notes |
-|--------|-------------|-------|
-| `MyIdeas/my_ideas.py` | `engine/ideas.py` | Remove personal paths |
-| `MyInsights/my_insights.py` | `engine/insights.py` | Remove personal paths |
-| `MyIdeas/prompts/*.md` | `engine/prompts/ideas_*.md` | Generalize |
-| `MyInsights/prompts/*.md` | `engine/prompts/insights_*.md` | Generalize |
-| `MyIdeas/idea_bank.json` | `data/idea_bank.json` | User data |
-| `MyInsights/insight_bank.json` | `data/insight_bank.json` | User data |
-
-### Paths to Make Configurable
-
-| Hardcoded Path | Configuration Key |
-|----------------|-------------------|
-| `TARGET_WORKSPACES` | `config.workspaces` |
-| `LINKEDIN_POSTS_DIR` | `config.features.linkedInSync.postsDirectory` |
-| `CURSOR_DB_PATH` | Auto-detected by OS |
-| Script paths in `types.ts` | Relative to project root |
-
----
-
-## Success Criteria
-
-1. **New user can start in < 5 minutes:** Clone → install → add API key → run
-2. **No hardcoded personal paths:** All paths from config or auto-detected
-3. **Cross-platform:** Works on macOS, Windows, Linux
-4. **Existing features preserved:** All current functionality works
-5. **Power features accessible:** LinkedIn sync, solved status available in settings
-
----
-
-## Open Questions
-
-1. ~~Keep LinkedIn sync?~~ → Yes, as power feature
-2. ~~Keep solved status sync?~~ → Yes, as power feature
-3. ~~Support OpenAI?~~ → Yes, as fallback
-4. ~~First-run wizard?~~ → Yes, and accessible anytime via Settings
-5. Should we support local LLMs (Ollama)? → Future consideration
-
----
-
 ## 🎯 NEXT FOCUS
 
-**Priority:** Phase 7 - Reverse Matching feature (user ideas/insights → chat history evidence)
+**Priority:** Maintain stability & monitor Vector DB syncing.
 
-**Current Status:** Phases 1-7 core implementation complete. Reverse matching feature fully implemented with:
-- ✅ UI for reverse matching (new tab/section)
-- ✅ Semantic search across chat history (both Composer and regular chats)
-- ✅ Match ranking and context display
-- ✅ STOP button functionality with proper abort signal handling
-- ✅ Configurable search parameters (days back, top-k, min similarity)
-- ✅ Chat type badges (Composer vs Chat)
-- ✅ Critical bug fixes (abort signals, React keys, accessibility)
+**Current Status:**
+- Phase 1-7 complete.
+- Vector DB architecture implemented and indexing.
+- Critical NFRs (caching, parallel processing) active.
 
 **Next Steps:**
-1. ✅ Design UI for reverse matching (new tab/section) - DONE
-2. ✅ Implement semantic search across chat history - DONE
-3. ✅ Build match ranking and context display - DONE
-4. ✅ Add STOP button with abort signal support - DONE
-5. ✅ Expand search to include all Cursor chat types - DONE
-6. Test with real user-provided insights/ideas (requires Cursor database with chat data)
-7. Optional: Generate "evidence summary" from matched chats
-8. Optional: Integration with Idea Bank/Insight Bank
-9. Optional: Complete Phase 6 polish (screenshots, publish)
+1. ✅ Monitor the initial indexing of the 2.1GB dataset.
+2. ✅ Verify incremental sync works for daily updates.
+3. Optional: Add a "Last Sync" indicator in the UI.
 
 ---
 
-**Last Updated:** 2025-01-30
-
-**Recent Updates:**
-- ✅ Phase 7 Reverse Matching: Complete implementation with UI, semantic search, and STOP button
-- ✅ Added abort signal support to API routes (Python processes killed on cancel)
-- ✅ Expanded reverse matching to search both Composer and regular chat conversations
-- ✅ Fixed critical bugs: React key props, list accessibility, abort signal handling
-- ✅ Comprehensive debug audit completed with 7 issues auto-fixed
-
+**Last Updated:** 2025-12-28
