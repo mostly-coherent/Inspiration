@@ -30,6 +30,17 @@ npm run dev
 ---
 
 <details>
+<summary><strong>☁️ Deploy to Vercel (Optional)</strong></summary>
+
+Deploying unlocks a powerful hybrid workflow:
+1.  **Laptop (Writer):** Run locally to sync new chats to your cloud brain.
+2.  **Phone/Cloud (Reader):** Use the Vercel app to search history or generate ideas on the go.
+
+*Note: The Vercel app is read-only (can't sync) because it can't access your laptop's disk.*
+
+</details>
+
+<details>
 <summary><strong>✨ Features</strong></summary>
 
 - **💡 Ideas Generation:** Extract prototype and tool ideas worth building from chat history.
