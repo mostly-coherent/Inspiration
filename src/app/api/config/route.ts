@@ -2,8 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
+import { createClient } from "@supabase/supabase-js";
 
 const CONFIG_PATH = path.join(process.cwd(), "data", "config.json");
+
+// Initialize Supabase if configured
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabase = supabaseUrl && supabaseKey 
+  ? createClient(supabaseUrl, supabaseKey) 
+  : null;
 
 export interface AppConfig {
   version: number;
@@ -71,6 +79,19 @@ const DEFAULT_CONFIG: AppConfig = {
 
 async function loadConfig(): Promise<AppConfig> {
   try {
+    // Try Supabase first (Persistent storage for Vercel)
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('app_config')
+        .select('value')
+        .eq('key', 'user_config')
+        .single();
+      
+      if (!error && data?.value) {
+        return { ...DEFAULT_CONFIG, ...data.value };
+      }
+    }
+
     if (existsSync(CONFIG_PATH)) {
       const content = await readFile(CONFIG_PATH, "utf-8");
       const userConfig = JSON.parse(content);
@@ -85,13 +106,43 @@ async function loadConfig(): Promise<AppConfig> {
 
 async function saveConfig(config: AppConfig): Promise<boolean> {
   try {
-    // Ensure data directory exists
-    const dataDir = path.dirname(CONFIG_PATH);
-    if (!existsSync(dataDir)) {
-      await mkdir(dataDir, { recursive: true });
+    let success = false;
+
+    // Save to Supabase (Persistent storage for Vercel)
+    if (supabase) {
+      const { error } = await supabase
+        .from('app_config')
+        .upsert({ 
+          key: 'user_config', 
+          value: config,
+          updated_at: new Date().toISOString()
+        });
+      
+      if (error) {
+        console.error("[Config] Failed to save to Supabase:", error);
+      } else {
+        success = true;
+      }
     }
-    await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
-    return true;
+
+    // Save to local file (Localhost development)
+    try {
+      // Ensure data directory exists
+      const dataDir = path.dirname(CONFIG_PATH);
+      if (!existsSync(dataDir)) {
+        await mkdir(dataDir, { recursive: true });
+      }
+      await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
+      success = true;
+    } catch (fsError) {
+      // Ignore FS errors if Supabase succeeded (likely Vercel environment)
+      if (!supabase) {
+        console.error("[Config] Failed to save to local file:", fsError);
+        return false;
+      }
+    }
+
+    return success;
   } catch (error) {
     console.error("[Config] Failed to save:", error);
     return false;

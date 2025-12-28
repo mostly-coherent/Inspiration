@@ -5,7 +5,13 @@ Configuration Management — Load and save user configuration.
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
+
+try:
+    from supabase import create_client, Client
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
 
 
 # Default configuration
@@ -60,6 +66,23 @@ def get_config_path() -> Path:
     return get_data_dir() / "config.json"
 
 
+def get_supabase_client() -> Optional[Any]:
+    """Get Supabase client if configured."""
+    if not SUPABASE_AVAILABLE:
+        return None
+    
+    load_env_file()
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_ANON_KEY")
+    
+    if url and key:
+        try:
+            return create_client(url, key)
+        except Exception:
+            pass
+    return None
+
+
 def load_config() -> dict[str, Any]:
     """
     Load user configuration.
@@ -67,6 +90,17 @@ def load_config() -> dict[str, Any]:
     Returns:
         Configuration dict (merged with defaults for missing keys)
     """
+    # Try Supabase first
+    supabase = get_supabase_client()
+    if supabase:
+        try:
+            response = supabase.table("app_config").select("value").eq("key", "user_config").execute()
+            if response.data and len(response.data) > 0:
+                user_config = response.data[0]["value"]
+                return _deep_merge(DEFAULT_CONFIG.copy(), user_config)
+        except Exception as e:
+            print(f"⚠️  Failed to load config from Supabase: {e}")
+
     config_path = get_config_path()
     
     if not config_path.exists():
@@ -94,6 +128,23 @@ def save_config(config: dict[str, Any]) -> bool:
     Returns:
         True if successful, False otherwise
     """
+    success = False
+    
+    # Save to Supabase
+    supabase = get_supabase_client()
+    if supabase:
+        try:
+            from datetime import datetime
+            data = {
+                "key": "user_config",
+                "value": config,
+                "updated_at": datetime.now().isoformat()
+            }
+            supabase.table("app_config").upsert(data).execute()
+            success = True
+        except Exception as e:
+            print(f"⚠️  Failed to save config to Supabase: {e}")
+
     config_path = get_config_path()
     
     try:
@@ -106,8 +157,9 @@ def save_config(config: dict[str, Any]) -> bool:
         return True
     
     except IOError as e:
-        print(f"⚠️  Failed to save config: {e}")
-        return False
+        if not success:
+            print(f"⚠️  Failed to save config: {e}")
+        return success
 
 
 def get_workspaces() -> list[str]:
