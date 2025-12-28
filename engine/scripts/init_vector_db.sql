@@ -74,11 +74,7 @@ BEGIN
 END;
 $$;
 
--- Grant permissions (adjust based on your Supabase setup)
--- GRANT SELECT, INSERT, UPDATE ON cursor_messages TO authenticated;
--- GRANT EXECUTE ON FUNCTION search_cursor_messages TO authenticated;
-
--- Add updated_at trigger
+-- Add updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -87,8 +83,21 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Trigger for cursor_messages
 CREATE TRIGGER update_cursor_messages_updated_at
     BEFORE UPDATE ON cursor_messages
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+-- Create app_config table for persisting user settings (Vercel support)
+CREATE TABLE IF NOT EXISTS app_config (
+    key TEXT PRIMARY KEY,
+    value JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Trigger for app_config
+CREATE TRIGGER update_app_config_updated_at
+    BEFORE UPDATE ON app_config
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
