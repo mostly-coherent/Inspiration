@@ -116,9 +116,9 @@ def reverse_match(
     load_env_file()
     config = load_config()
     
-    # Use provided workspaces or config workspaces
-    if workspace_paths is None:
-        workspace_paths = get_workspaces()
+    # MVP: Search ALL workspaces regardless of config (non-negotiable)
+    # Always pass None to search all workspaces
+    workspace_paths = None
     
     # Date range
     end_date = datetime.now().date()
@@ -126,11 +126,18 @@ def reverse_match(
     
     # Get conversations
     print(f"📚 Loading conversations from {start_date} to {end_date}...", file=sys.stderr)
+    print(f"📅 Today is: {datetime.now().date()}", file=sys.stderr)
+    print(f"📅 Searching {days_back} days back: {start_date} to {end_date}", file=sys.stderr)
+    print(f"🔍 Searching ALL workspaces (MVP requirement)", file=sys.stderr)
+    
+    # MVP: Always search ALL workspaces (non-negotiable)
     conversations = get_conversations_for_range(
         start_date,
         end_date,
-        workspace_paths=workspace_paths if workspace_paths else None,
+        workspace_paths=None,  # Always None to search all workspaces
     )
+    
+    print(f"📊 Found {len(conversations)} conversations in date range", file=sys.stderr)
     
     # Flatten all messages with conversation context
     all_messages = []
@@ -138,7 +145,9 @@ def reverse_match(
         workspace = convo.get("workspace", "Unknown")
         chat_id = convo.get("chat_id", "unknown")
         chat_type = convo.get("chat_type", "unknown")
-        for msg in convo.get("messages", []):
+        messages = convo.get("messages", [])
+        print(f"  • {workspace} [{chat_type}] - {len(messages)} messages", file=sys.stderr)
+        for msg in messages:
             # Add conversation context to message
             msg_with_context = msg.copy()
             msg_with_context["workspace"] = workspace
@@ -146,7 +155,7 @@ def reverse_match(
             msg_with_context["chat_type"] = chat_type
             all_messages.append(msg_with_context)
     
-    print(f"📝 Found {len(all_messages)} messages to search...", file=sys.stderr)
+    print(f"📝 Found {len(all_messages)} total messages to search...", file=sys.stderr)
     
     if not all_messages:
         return {
@@ -156,6 +165,9 @@ def reverse_match(
                 "totalMessages": 0,
                 "matchesFound": 0,
                 "daysSearched": days_back,
+                "startDate": start_date.isoformat(),
+                "endDate": end_date.isoformat(),
+                "conversationsExamined": len(conversations),
             },
         }
     
@@ -178,6 +190,9 @@ def reverse_match(
             "totalMessages": len(all_messages),
             "matchesFound": len(matches),
             "daysSearched": days_back,
+            "startDate": start_date.isoformat(),
+            "endDate": end_date.isoformat(),
+            "conversationsExamined": len(conversations),
         },
     }
 

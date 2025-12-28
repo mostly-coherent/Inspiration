@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "child_process";
 import path from "path";
+import { logger } from "@/lib/logger";
 
 export const maxDuration = 120; // 2 minutes for semantic search
 
@@ -42,6 +43,9 @@ export interface ReverseMatchResult {
     totalMessages: number;
     matchesFound: number;
     daysSearched: number;
+    startDate?: string;
+    endDate?: string;
+    conversationsExamined?: number;
   };
   error?: string;
 }
@@ -50,6 +54,9 @@ export async function POST(request: NextRequest) {
   try {
     const body: ReverseMatchRequest = await request.json();
     const { query, daysBack = 90, topK = 10, minSimilarity = 0.0, workspaces } = body;
+    
+    // Maximum days allowed (90 days retention policy)
+    const MAX_DAYS = 90;
     
     // Get abort signal from request
     const signal = request.signal;
@@ -60,11 +67,33 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    
+    // Validate: enforce 90-day maximum
+    if (daysBack > MAX_DAYS) {
+      return NextResponse.json(
+        {
+          success: false,
+          query,
+          matches: [],
+          stats: {
+            totalMessages: 0,
+            matchesFound: 0,
+            daysSearched: daysBack,
+            conversationsExamined: 0,
+          },
+          error: `Days back (${daysBack}) exceeds maximum of ${MAX_DAYS} days. Please select ${MAX_DAYS} days or fewer.`,
+        },
+        { status: 400 }
+      );
+    }
+    
+    // Clamp daysBack to maximum if somehow it exceeds
+    const effectiveDaysBack = Math.min(daysBack, MAX_DAYS);
 
     // Build command arguments
     const args: string[] = [
       "--query", query,
-      "--days", daysBack.toString(),
+      "--days", effectiveDaysBack.toString(),
       "--top-k", topK.toString(),
       "--min-similarity", minSimilarity.toString(),
       "--json",
@@ -80,15 +109,15 @@ export async function POST(request: NextRequest) {
     const enginePath = path.resolve(process.cwd(), "engine");
     const scriptPath = path.join(enginePath, "reverse_match.py");
 
-    console.log(`[Inspiration] Running: python3 reverse_match.py ${args.join(" ")}`);
-    console.log(`[Inspiration] Working directory: ${enginePath}`);
+    logger.log(`[Inspiration] Running: python3 reverse_match.py ${args.join(" ")}`);
+    logger.log(`[Inspiration] Working directory: ${enginePath}`);
 
     // Execute Python script with abort signal support
     const result = await runPythonScript(enginePath, scriptPath, args, signal);
 
     // Check for script errors
     if (result.exitCode !== 0) {
-      console.error(`[Inspiration] Script error (exit ${result.exitCode}):`, result.stderr);
+      logger.error(`[Inspiration] Script error (exit ${result.exitCode}):`, result.stderr);
       return NextResponse.json(
         {
           success: false,
@@ -97,7 +126,8 @@ export async function POST(request: NextRequest) {
           stats: {
             totalMessages: 0,
             matchesFound: 0,
-            daysSearched: daysBack,
+            daysSearched: effectiveDaysBack,
+            conversationsExamined: 0,
           },
           error: `Script failed: ${result.stderr.slice(0, 500)}`,
         },
@@ -116,7 +146,7 @@ export async function POST(request: NextRequest) {
       output.success = true;
       return NextResponse.json(output);
     } catch (parseError) {
-      console.error("[Inspiration] Failed to parse JSON output:", result.stdout);
+      logger.error("[Inspiration] Failed to parse JSON output:", result.stdout);
       return NextResponse.json(
         {
           success: false,
@@ -125,7 +155,8 @@ export async function POST(request: NextRequest) {
           stats: {
             totalMessages: 0,
             matchesFound: 0,
-            daysSearched: daysBack,
+            daysSearched: effectiveDaysBack,
+            conversationsExamined: 0,
           },
           error: `Failed to parse script output: ${parseError instanceof Error ? parseError.message : "Unknown error"}`,
         },
@@ -133,7 +164,7 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (error) {
-    console.error("[Inspiration] Error:", error);
+    logger.error("[Inspiration] Error:", error);
     return NextResponse.json(
       {
         success: false,
@@ -180,7 +211,7 @@ async function runPythonScript(
     if (signal) {
       signal.addEventListener("abort", () => {
         isAborted = true;
-        console.log("[Inspiration] Request aborted, killing Python process...");
+        logger.log("[Inspiration] Request aborted, killing Python process...");
         try {
           proc.kill("SIGTERM");
           // Force kill after 2 seconds if still running
@@ -190,7 +221,7 @@ async function runPythonScript(
             }
           }, 2000);
         } catch (err) {
-          console.error("[Inspiration] Error killing process:", err);
+          logger.error("[Inspiration] Error killing process:", err);
         }
         resolve({
           stdout,
@@ -203,14 +234,14 @@ async function runPythonScript(
     proc.stdout.on("data", (data) => {
       if (!isAborted) {
         stdout += data.toString();
-        console.log(`[stdout] ${data.toString().trim()}`);
+        logger.log(`[stdout] ${data.toString().trim()}`);
       }
     });
 
     proc.stderr.on("data", (data) => {
       if (!isAborted) {
         stderr += data.toString();
-        console.error(`[stderr] ${data.toString().trim()}`);
+        logger.error(`[stderr] ${data.toString().trim()}`);
       }
     });
 

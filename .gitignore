@@ -35,3 +35,9 @@ next-env.d.ts
 *.swp
 *.swo
 
+# AI Documentation (Mode A - not published to GitHub)
+PLAN.md
+BUILD_LOG.md
+PIVOTS.md
+CLAUDE.md
+
