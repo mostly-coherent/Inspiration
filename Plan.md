@@ -10,7 +10,7 @@
 
 **Target Users:**
 - Builders using Cursor who want to reflect on patterns in their AI-assisted work
-- PMs/developers who want to generate content (LinkedIn posts, idea briefs) from their coding sessions
+- PMs/developers who want to generate content (social media posts, idea briefs) from their coding sessions
 - Anyone exploring agentic workflows who wants to capture learnings
 
 ---
@@ -22,7 +22,7 @@
 | ID | Feature | Description | Status |
 |----|---------|-------------|--------|
 | C1 | **Idea Generation** | Extract prototype/tool ideas from Cursor chat history | ✅ Done |
-| C2 | **Insight Generation** | Extract LinkedIn-worthy insights from Cursor chat history | ✅ Done |
+| C2 | **Insight Generation** | Extract social media-worthy insights from Cursor chat history | ✅ Done |
 | C3 | **Cross-Platform Cursor DB** | Auto-detect Cursor database on macOS, Windows, Linux | ✅ Done |
 | C4 | **Idea Bank** | Harmonize ideas into a deduplicated bank with occurrence tracking | ✅ Done |
 | C5 | **Insight Bank** | Harmonize insights into a deduplicated bank with occurrence tracking | ✅ Done |
@@ -39,7 +39,7 @@
 
 | ID | Feature | Description | Status |
 |----|---------|-------------|--------|
-| P1 | **LinkedIn Sync** | Check if insights have been shared in LinkedIn posts folder | ✅ Done |
+| P1 | **Social Media Sync** | Check if insights have been shared in posts folder | ✅ Done |
 | P2 | **Solved Status Sync** | Check if ideas are tackled by projects in workspace | ✅ Done |
 | P3 | **Voice Profile** | Multi-file voice/style configuration for authentic generation | ✅ Done |
 
@@ -51,7 +51,7 @@ The voice profile captures the user's authentic writing style through:
 |-----------|---------|-----------|
 | **Author Name** | Name used in prompts | Config value |
 | **Author Context** | Brief role/background (e.g., "PM who codes agentically") | Config value |
-| **Golden Examples** | Folder of actual LinkedIn posts to study | Directory of .md files |
+| **Golden Examples** | Folder of actual social posts to study | Directory of .md files |
 | **Voice Guide** | Explicit rules: words to use/avoid, style preferences | Single .md file |
 
 The engine combines these into a comprehensive system prompt that helps Claude match the user's authentic voice.
@@ -135,8 +135,8 @@ inspiration/
   "version": 1,
   "setupComplete": true,
   "workspaces": [
-    "/Users/jmbeh/Personal Builder Lab",
-    "/Users/jmbeh/Project Understanding"
+    "/path/to/workspace-a",
+    "/path/to/workspace-b"
   ],
   "llm": {
     "provider": "anthropic",
