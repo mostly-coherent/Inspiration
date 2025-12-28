@@ -3,7 +3,7 @@ import { spawn } from "child_process";
 import path from "path";
 import { logger } from "@/lib/logger";
 
-export const maxDuration = 120; // 2 minutes for semantic search
+export const maxDuration = 300; // 5 minutes for semantic search (embedding generation can take time)
 
 export interface ReverseMatchRequest {
   query: string;
@@ -118,6 +118,21 @@ export async function POST(request: NextRequest) {
     // Check for script errors
     if (result.exitCode !== 0) {
       logger.error(`[Inspiration] Script error (exit ${result.exitCode}):`, result.stderr);
+      
+      // Try to extract error message from JSON output if available
+      let errorMessage = result.stderr.slice(0, 500);
+      try {
+        const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const output = JSON.parse(jsonMatch[0]) as ReverseMatchResult;
+          if (output.error) {
+            errorMessage = output.error;
+          }
+        }
+      } catch {
+        // Use stderr if JSON parsing fails
+      }
+      
       return NextResponse.json(
         {
           success: false,
@@ -129,7 +144,7 @@ export async function POST(request: NextRequest) {
             daysSearched: effectiveDaysBack,
             conversationsExamined: 0,
           },
-          error: `Script failed: ${result.stderr.slice(0, 500)}`,
+          error: `Script failed: ${errorMessage}`,
         },
         { status: 500 }
       );

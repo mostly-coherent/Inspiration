@@ -171,15 +171,41 @@ def reverse_match(
             },
         }
     
-    # Search for matches
-    print(f"🔍 Searching for matches (min similarity: {min_similarity})...", file=sys.stderr)
-    matches = search_messages(
-        query,
-        all_messages,
-        top_k=top_k,
-        min_similarity=min_similarity,
-        context_messages=2,
-    )
+        # Search for matches
+        print(f"🔍 Searching for matches (min similarity: {min_similarity})...", file=sys.stderr)
+        try:
+            # Calculate timestamp range for vector DB
+            start_ts = int(start_date.timestamp() * 1000) if start_date else None
+            end_ts = int((end_date + timedelta(days=1)).timestamp() * 1000) if end_date else None
+            
+            matches = search_messages(
+                query,
+                all_messages,
+                top_k=top_k,
+                min_similarity=min_similarity,
+                context_messages=2,
+                use_vector_db=True,  # Try vector DB first
+                start_timestamp=start_ts,
+                end_timestamp=end_ts,
+                workspace_paths=workspace_paths,  # None = all workspaces
+            )
+    except RuntimeError as e:
+        # Handle API authentication errors gracefully
+        error_msg = str(e)
+        print(f"❌ Error: {error_msg}", file=sys.stderr)
+        return {
+            "query": query,
+            "matches": [],
+            "stats": {
+                "totalMessages": len(all_messages),
+                "matchesFound": 0,
+                "daysSearched": days_back,
+                "startDate": start_date.isoformat(),
+                "endDate": end_date.isoformat(),
+                "conversationsExamined": len(conversations),
+            },
+            "error": error_msg,
+        }
     
     print(f"✅ Found {len(matches)} matches", file=sys.stderr)
     

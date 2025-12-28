@@ -1,4 +1,4 @@
-# Inspiration - Build Log
+# Inspiration — Build Log
 
 > **Purpose:** Chronological progress diary
 > - Track what was done, when, and evidence of completion
@@ -80,8 +80,6 @@
 
 ---
 
----
-
 ## Progress - 2025-01-30 (Evening)
 
 **Done:**
@@ -134,7 +132,7 @@
   - ✅ Prompt compression (`engine/common/prompt_compression.py`, `engine/ideas.py` line 636, `engine/insights.py` line 717)
     - Uses GPT-3.5 to summarize long conversations before sending to Claude
     - Impact: 50-70% cost reduction for very long histories (10,000+ tokens)
-    - Status: Opt-in (disabled by default, only for long prompts)
+    - Status: Opt-in (disabled by default, only for 10,000+ tokens)
 
 - ✅ Created optimization documentation
   - `OPTIMIZATION_OPPORTUNITIES.md` - Comprehensive list of 34 optimization ideas
@@ -177,5 +175,37 @@
 
 ---
 
-**Last Updated:** 2025-01-30
+## Progress - 2025-12-28 (The "2.1 GB" Pivot)
 
+**Context:**
+We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB** (93,000+ messages), which is orders of magnitude larger than typical setups. This rendered the SQLite + In-Memory approach inefficient (3-5s searches) and fragile.
+
+**Decisions (from PIVOTS.md):**
+- **Pivot to Vector DB:** Adopted Supabase pgvector as the primary backend for chat history search.
+    - *Rationale:* Scale (2.1GB), Speed (O(1) search), and Ownership (independent data vault).
+- **Bubble Extraction:** Updated `cursor_db.py` to handle Cursor's "Bubble" architecture (messages fragmented into thousands of `bubbleId` entries).
+    - *Rationale:* `composerData` often lacks message text; we must resolve bubbles to get content.
+
+**Done:**
+- ✅ **Vector DB Infrastructure:**
+    - Created `engine/common/vector_db.py` (Supabase client, indexing logic).
+    - Created `engine/scripts/init_vector_db.sql` (Schema setup).
+    - Created `engine/scripts/index_all_messages.py` (Bulk indexer).
+    - Created `engine/scripts/sync_messages.py` (Incremental daily sync).
+
+- ✅ **Search Engine Upgrade:**
+    - Updated `engine/common/semantic_search.py` to auto-detect and use Vector DB when available.
+    - Updated `engine/reverse_match.py` to pass timestamp filters to the vector backend.
+
+- ✅ **Data Extraction Fixes:**
+    - Rewrote `extract_messages_from_chat_data` in `cursor_db.py`.
+    - Implemented logic to traverse `fullConversationHeadersOnly` → `bubbleId` → `cursorDiskKV`.
+    - Added timestamp estimation for bubbles that lack metadata (distributing evenly across session duration).
+
+- ✅ **Documentation:**
+    - Created `VECTOR_DB_SETUP.md` and `VECTOR_DB_SUMMARY.md`.
+    - Drafted LinkedIn post about the "Swiss Cheese" context gap discovery.
+
+**Evidence:**
+- Indexed 484 conversations with 12,334 messages in the first 90-day scan.
+- Search times expected to drop from ~5s to <1s.

@@ -124,6 +124,8 @@ def extract_messages_from_chat_data(
     data: dict,
     start_ts: int,
     end_ts: int,
+    composer_id: str | None = None,
+    db_path: Path | None = None,
 ) -> list[dict]:
     """
     Extract messages from chat data (supports both Composer and regular chat formats).
@@ -132,110 +134,200 @@ def extract_messages_from_chat_data(
         data: Parsed JSON data from database
         start_ts: Start timestamp (milliseconds)
         end_ts: End timestamp (milliseconds)
+        composer_id: Optional composer ID for bubble-based extraction
+        db_path: Optional database path for bubble lookups
     
     Returns:
         List of message dicts with type, text, timestamp
     """
     messages = []
-    
-    # Try top-level text/richText first (current Cursor format)
-    # These might contain the current message being composed
     messages_raw = []
-    if "text" in data and data.get("text", "").strip():
-        # Top-level text field might be a single message
-        text = data.get("text", "").strip()
-        if text:
-            # Try to get timestamp from context or use current time as fallback
-            ts = data.get("context", {}).get("timestamp", 0) if isinstance(data.get("context"), dict) else 0
-            if not ts:
-                ts = int(datetime.now().timestamp() * 1000)  # Fallback to current time
-            messages_raw.append({
-                "text": text,
-                "timestamp": ts,
-                "type": 1,  # Assume user message
-            })
     
-    if "richText" in data and data.get("richText"):
-        # Top-level richText might contain formatted message
-        rich_text = data.get("richText")
-        if rich_text:
-            try:
-                # extract_text_from_richtext expects a JSON string
-                if isinstance(rich_text, (dict, list)):
-                    text = extract_text_from_richtext(json.dumps(rich_text))
-                else:
-                    # If it's already a string, try parsing it first
-                    text = extract_text_from_richtext(rich_text)
-                if text.strip():
-                    ts = data.get("context", {}).get("timestamp", 0) if isinstance(data.get("context"), dict) else 0
-                    if not ts:
-                        ts = int(datetime.now().timestamp() * 1000)
-                    messages_raw.append({
-                        "text": text,
-                        "timestamp": ts,
-                        "type": 1,
-                    })
-            except (json.JSONDecodeError, AttributeError, TypeError):
-                # Skip if richText can't be parsed
-                pass
+    # PRIORITY 1: Check conversationMap first (contains full conversation history)
+    # This is where the actual messages with timestamps are stored
+    conversation_map = data.get("conversationMap", {})
+    if isinstance(conversation_map, dict) and len(conversation_map) > 0:
+        # Flatten all messages from all conversations in the map
+        for conv_id, conv_data in conversation_map.items():
+            if isinstance(conv_data, dict):
+                conv_messages = conv_data.get("messages", [])
+                if conv_messages:
+                    messages_raw.extend(conv_messages)
     
-    # Try Composer format: data.conversation.messages
+    # PRIORITY 2: Check conversation.messages (Composer format)
     if not messages_raw:
         conversation = data.get("conversation", {})
-        messages_raw = conversation.get("messages", [])
+        conv_messages = conversation.get("messages", [])
+        if conv_messages:
+            messages_raw.extend(conv_messages)
     
-    # If no messages in composer format, try conversationMap (new Cursor format)
-    if not messages_raw:
-        conversation_map = data.get("conversationMap", {})
-        if isinstance(conversation_map, dict):
-            # Flatten all messages from all conversations in the map
-            for conv_id, conv_data in conversation_map.items():
-                if isinstance(conv_data, dict):
-                    conv_messages = conv_data.get("messages", [])
-                    if conv_messages:
-                        messages_raw.extend(conv_messages)
-    
-    # If no messages, try fullConversationHeadersOnly (metadata that sometimes contains richText)
+    # PRIORITY 3: Check fullConversationHeadersOnly with bubble-based extraction
+    # New Cursor format: headers contain bubbleId references, need to look up bubbles
     if not messages_raw:
         full_headers = data.get("fullConversationHeadersOnly", [])
-        if isinstance(full_headers, list):
-            for header in full_headers:
-                if isinstance(header, dict):
-                    # Headers might have richText or text directly
-                    if "richText" in header:
-                        text = extract_text_from_richtext(json.dumps(header["richText"]))
-                        if text.strip():
-                            ts = header.get("timestamp", 0)
-                            if isinstance(ts, str):
-                                try:
-                                    ts = int(ts)
-                                except ValueError:
-                                    ts = 0
-                            messages_raw.append({
-                                "text": text,
-                                "timestamp": ts,
-                                "type": 2 if header.get("role") == "assistant" else 1,  # Assume assistant if role not specified
-                            })
-                    elif "text" in header:
-                        text = header["text"]
-                        if text.strip():
-                            ts = header.get("timestamp", 0)
-                            if isinstance(ts, str):
-                                try:
-                                    ts = int(ts)
-                                except ValueError:
-                                    ts = 0
-                            messages_raw.append({
-                                "text": text,
-                                "timestamp": ts,
-                                "type": 2 if header.get("role") == "assistant" else 1,
-                            })
+        if isinstance(full_headers, list) and len(full_headers) > 0:
+            # Get composer metadata for timestamp estimation
+            composer_created_at = data.get("createdAt", 0)
+            composer_last_updated = data.get("lastUpdatedAt", composer_created_at)
+            
+            # Try bubble-based extraction if we have composer_id and db_path
+            if composer_id and db_path and db_path.exists():
+                try:
+                    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+                    cursor = conn.cursor()
+                    
+                    # Extract messages from bubbles
+                    for i, header in enumerate(full_headers):
+                        if not isinstance(header, dict):
+                            continue
+                        
+                        bubble_id = header.get("bubbleId")
+                        if not bubble_id:
+                            continue
+                        
+                        # Determine message type from header
+                        msg_type_num = header.get("type", 1)  # 1=user, 2=assistant
+                        msg_type = "user" if msg_type_num == 1 else "assistant"
+                        
+                        # Look up bubble
+                        bubble_key = f"bubbleId:{composer_id}:{bubble_id}"
+                        cursor.execute("SELECT value FROM cursorDiskKV WHERE key = ?", (bubble_key,))
+                        bubble_row = cursor.fetchone()
+                        
+                        if bubble_row:
+                            try:
+                                bubble_value = bubble_row[0]
+                                if isinstance(bubble_value, bytes):
+                                    bubble_value_str = bubble_value.decode('utf-8')
+                                else:
+                                    bubble_value_str = bubble_value
+                                bubble_data = json.loads(bubble_value_str)
+                                
+                                # Extract text from bubble
+                                text = ""
+                                if "text" in bubble_data:
+                                    text = bubble_data["text"]
+                                elif "richText" in bubble_data:
+                                    text = extract_text_from_richtext(json.dumps(bubble_data["richText"]))
+                                
+                                if text and text.strip():
+                                    # Estimate timestamp: distribute messages evenly between created and last updated
+                                    # Or use bubble's own timestamp if available
+                                    ts = bubble_data.get("timestamp", 0)
+                                    if not ts or ts == 0:
+                                        # Estimate based on message order
+                                        if len(full_headers) > 1:
+                                            # Distribute timestamps evenly across the time span
+                                            time_span = composer_last_updated - composer_created_at
+                                            if time_span > 0:
+                                                ts = composer_created_at + int((time_span * i) / (len(full_headers) - 1))
+                                            else:
+                                                ts = composer_created_at
+                                        else:
+                                            ts = composer_created_at
+                                    
+                                    # Convert to int if string
+                                    if isinstance(ts, str):
+                                        try:
+                                            ts = int(ts)
+                                        except ValueError:
+                                            ts = 0
+                                    
+                                    if ts > 0:
+                                        messages_raw.append({
+                                            "text": text.strip(),
+                                            "timestamp": ts,
+                                            "type": msg_type_num,
+                                        })
+                            except (json.JSONDecodeError, UnicodeDecodeError, KeyError):
+                                continue
+                    
+                    conn.close()
+                except sqlite3.Error:
+                    pass
+            
+            # Fallback: Check if headers have richText/text directly (old format)
+            if not messages_raw:
+                for header in full_headers:
+                    if isinstance(header, dict):
+                        # Headers might have richText or text directly
+                        if "richText" in header:
+                            text = extract_text_from_richtext(json.dumps(header["richText"]))
+                            if text.strip():
+                                ts = header.get("timestamp", 0)
+                                if isinstance(ts, str):
+                                    try:
+                                        ts = int(ts)
+                                    except ValueError:
+                                        ts = 0
+                                if ts > 0:  # Only add if we have a valid timestamp
+                                    messages_raw.append({
+                                        "text": text,
+                                        "timestamp": ts,
+                                        "type": 2 if header.get("role") == "assistant" else 1,
+                                    })
+                        elif "text" in header:
+                            text = header["text"]
+                            if text.strip():
+                                ts = header.get("timestamp", 0)
+                                if isinstance(ts, str):
+                                    try:
+                                        ts = int(ts)
+                                    except ValueError:
+                                        ts = 0
+                                if ts > 0:  # Only add if we have a valid timestamp
+                                    messages_raw.append({
+                                        "text": text,
+                                        "timestamp": ts,
+                                        "type": 2 if header.get("role") == "assistant" else 1,
+                                    })
     
-    # If no messages in composer format, try regular chat format: data.messages
+    # PRIORITY 4: Check top-level text/richText (current draft - only if no other messages found)
+    # These are usually just the current message being composed, not full history
+    if not messages_raw:
+        if "text" in data and data.get("text", "").strip():
+            # Top-level text field might be a single message
+            text = data.get("text", "").strip()
+            if text:
+                # Try to get timestamp from context or use current time as fallback
+                ts = data.get("context", {}).get("timestamp", 0) if isinstance(data.get("context"), dict) else 0
+                if not ts:
+                    ts = int(datetime.now().timestamp() * 1000)  # Fallback to current time
+                messages_raw.append({
+                    "text": text,
+                    "timestamp": ts,
+                    "type": 1,  # Assume user message
+                })
+        
+        if "richText" in data and data.get("richText"):
+            # Top-level richText might contain formatted message
+            rich_text = data.get("richText")
+            if rich_text:
+                try:
+                    # extract_text_from_richtext expects a JSON string
+                    if isinstance(rich_text, (dict, list)):
+                        text = extract_text_from_richtext(json.dumps(rich_text))
+                    else:
+                        # If it's already a string, try parsing it first
+                        text = extract_text_from_richtext(rich_text)
+                    if text.strip():
+                        ts = data.get("context", {}).get("timestamp", 0) if isinstance(data.get("context"), dict) else 0
+                        if not ts:
+                            ts = int(datetime.now().timestamp() * 1000)
+                        messages_raw.append({
+                            "text": text,
+                            "timestamp": ts,
+                            "type": 1,
+                        })
+                except (json.JSONDecodeError, AttributeError, TypeError):
+                    # Skip if richText can't be parsed
+                    pass
+    
+    # PRIORITY 5: Check regular chat format: data.messages
     if not messages_raw:
         messages_raw = data.get("messages", [])
     
-    # If still no messages, try nested format: data.chat.messages
+    # PRIORITY 6: Check nested format: data.chat.messages
     if not messages_raw:
         chat = data.get("chat", {})
         messages_raw = chat.get("messages", [])
@@ -249,13 +341,12 @@ def extract_messages_from_chat_data(
             except ValueError:
                 ts = 0
         
-        # Filter by timestamp if provided (for date-specific queries)
-        # Note: For reverse_match range queries, we want all messages, so start_ts/end_ts may be None
-        # or represent the full range, so we don't filter here - filtering happens at conversation level
+        # Filter by timestamp if provided
+        # For single-day queries (get_conversations_for_date), filter here
+        # For range queries (get_conversations_for_range), we filter at the range level after merging
+        # But we still need to respect the day's range when extracting to avoid processing too many messages
         if start_ts and end_ts and ts > 0:
-            # Only filter if timestamps are provided AND message has a valid timestamp
-            # But note: for range queries, we want messages from the entire range, not just one day
-            # So this filtering is only used for single-day queries
+            # Filter messages to the specified timestamp range
             if not (start_ts <= ts < end_ts):
                 continue
         
@@ -383,9 +474,10 @@ def get_conversations_for_date(
     
     conversations = []
     
-    # Chat data is stored in globalStorage cursorDiskKV (current Cursor format)
-    # Keys: composerData:{uuid} (Composer chats) and chatData:{uuid} (regular chats)
-    # Also check ItemTable for backwards compatibility
+    # Chat data can be stored in multiple places:
+    # 1. globalStorage cursorDiskKV (current format): composerData:{uuid}, chatData:{uuid}
+    # 2. globalStorage ItemTable (legacy format): composer.composerData.{workspace_hash}.{id}
+    # 3. workspaceStorage ItemTable (per-workspace): composer.composerData (metadata)
     
     db_path = get_cursor_db_path()
     
@@ -393,28 +485,46 @@ def get_conversations_for_date(
         print(f"⚠️  [DEBUG] Database not found at {db_path}", file=sys.stderr)
         return conversations
     
-    print(f"🔍 [DEBUG] Searching globalStorage cursorDiskKV for BOTH Composer and regular chats", file=sys.stderr)
+    print(f"🔍 [DEBUG] Searching globalStorage cursorDiskKV AND ItemTable for BOTH Composer and regular chats", file=sys.stderr)
     
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         cursor = conn.cursor()
         
-        # Query cursorDiskKV for composer and chat data (current format)
+        all_rows = []
+        
+        # Try cursorDiskKV first (current format)
         cursor.execute("""
             SELECT key, value FROM cursorDiskKV 
             WHERE key LIKE 'composerData:%'
                OR key LIKE 'chatData:%'
         """)
+        diskkv_rows = cursor.fetchall()
+        print(f"📊 [DEBUG] Found {len(diskkv_rows)} entries in globalStorage cursorDiskKV", file=sys.stderr)
+        all_rows.extend(diskkv_rows)
         
-        all_rows = cursor.fetchall()
-        print(f"📊 [DEBUG] Found {len(all_rows)} conversation entries in globalStorage cursorDiskKV", file=sys.stderr)
+        # Also try ItemTable (legacy format - in case Cursor still uses it)
+        try:
+            cursor.execute("""
+                SELECT key, value FROM ItemTable 
+                WHERE key LIKE 'composer.composerData%'
+                   OR key LIKE 'workbench.panel.aichat.view.aichat.chatdata%'
+            """)
+            itemtable_rows = cursor.fetchall()
+            print(f"📊 [DEBUG] Found {len(itemtable_rows)} entries in globalStorage ItemTable", file=sys.stderr)
+            all_rows.extend(itemtable_rows)
+        except sqlite3.OperationalError:
+            # ItemTable might not exist or have different schema
+            pass
+        
+        print(f"📊 [DEBUG] Total entries to process: {len(all_rows)}", file=sys.stderr)
         
         for key, value in all_rows:
             if not value:
                 continue
             
             try:
-                # cursorDiskKV stores values as BLOB, need to decode
+                # Handle both cursorDiskKV (BLOB) and ItemTable (text) formats
                 if isinstance(value, bytes):
                     value_str = value.decode('utf-8')
                 else:
@@ -423,54 +533,86 @@ def get_conversations_for_date(
             except (json.JSONDecodeError, UnicodeDecodeError):
                 continue
             
-            # Determine chat type and extract ID
-            # Keys are: composerData:{uuid} or chatData:{uuid}
-            chat_type = "composer" if key.startswith("composerData:") else "chat"
-            chat_id = key.split(":", 1)[1] if ":" in key else "unknown"
-            
-            # Extract workspace from conversation data if available
+            # Determine chat type and extract ID based on key format
+            chat_type = "composer"
+            chat_id = "unknown"
             workspace_path = "Unknown"
             workspace_hash: str | None = None
-            if isinstance(data, dict):
-                workspace_hash = (
-                    data.get("workspaceHash") or 
-                    data.get("workspace") or 
-                    data.get("workspaceId")
-                )
-                # Also check context field
-                if not workspace_hash and "context" in data:
-                    context = data["context"]
-                    if isinstance(context, dict):
-                        workspace_hash = context.get("workspaceHash") or context.get("workspace")
+            
+            # Handle different key formats
+            if key.startswith("composerData:") or key.startswith("chatData:"):
+                # cursorDiskKV format: composerData:{uuid} or chatData:{uuid}
+                chat_type = "composer" if key.startswith("composerData:") else "chat"
+                chat_id = key.split(":", 1)[1] if ":" in key else "unknown"
                 
-                if workspace_hash and workspace_hash in workspace_mapping:
-                    workspace_path = workspace_mapping[workspace_hash]
+                # Extract workspace from conversation data
+                if isinstance(data, dict):
+                    workspace_hash = (
+                        data.get("workspaceHash") or 
+                        data.get("workspace") or 
+                        data.get("workspaceId")
+                    )
+                    if not workspace_hash and "context" in data:
+                        context = data["context"]
+                        if isinstance(context, dict):
+                            workspace_hash = context.get("workspaceHash") or context.get("workspace")
+                    if workspace_hash and workspace_hash in workspace_mapping:
+                        workspace_path = workspace_mapping[workspace_hash]
+            elif key.startswith("composer.composerData") or key.startswith("workbench.panel.aichat.view.aichat.chatdata"):
+                # ItemTable format: composer.composerData.{workspace_hash}.{id} or workbench.panel.aichat.view.aichat.chatdata.{workspace_hash}.{id}
+                chat_type = "composer" if key.startswith("composer.composerData") else "chat"
+                parts = key.split(".")
+                if chat_type == "composer" and len(parts) >= 3:
+                    workspace_hash = parts[2]
+                    workspace_path = workspace_mapping.get(workspace_hash, "Unknown")
+                    chat_id = parts[-1] if len(parts) >= 4 else "unknown"
+                elif chat_type == "chat" and len(parts) >= 6:
+                    workspace_hash = parts[5]
+                    workspace_path = workspace_mapping.get(workspace_hash, "Unknown")
+                    chat_id = parts[-1] if len(parts) >= 7 else "unknown"
             
             # MVP: Search ALL workspaces regardless of filter (non-negotiable)
             # Only filter if workspace_paths is explicitly provided AND we have a valid workspace_hash
-            # If workspace_hash is missing (common in composerData), include the conversation anyway
             if normalized_workspaces and workspace_hash:
                 norm_workspace = os.path.normpath(workspace_path)
                 if norm_workspace not in normalized_workspaces:
                     continue
-            # If normalized_workspaces is None (search all) OR workspace_hash is missing, include the conversation
             
             # Extract messages using unified function
-            messages = extract_messages_from_chat_data(data, start_ts, end_ts)
+            # Pass composer_id and db_path for bubble-based extraction
+            composer_id_for_extraction = None
+            if key.startswith("composerData:"):
+                composer_id_for_extraction = key.split(":", 1)[1] if ":" in key else None
             
-            # Check if any messages are in the date range
+            messages = extract_messages_from_chat_data(
+                data, 
+                start_ts, 
+                end_ts,
+                composer_id=composer_id_for_extraction,
+                db_path=db_path
+            )
+            
+            # Check if any messages are in the date range (with valid timestamps)
             has_messages_in_range = any(
-                start_ts <= msg["timestamp"] < end_ts 
+                msg.get("timestamp", 0) > 0  # Must have valid timestamp
+                and start_ts <= msg["timestamp"] < end_ts  # Must be within date range
                 for msg in messages
             )
             
             if has_messages_in_range and messages:
-                conversations.append({
-                    "chat_id": chat_id,
-                    "chat_type": chat_type,
-                    "workspace": workspace_path,
-                    "messages": messages,
-                })
+                # Filter messages to ONLY those within the date range
+                filtered_messages = [
+                    msg for msg in messages
+                    if msg.get("timestamp", 0) > 0  # Valid timestamp
+                    and start_ts <= msg["timestamp"] < end_ts  # Within range
+                ]
+                if filtered_messages:
+                    conversations.append({
+                        "chat_id": chat_id,
+                        "chat_type": chat_type,
+                        "workspace": workspace_path,
+                        "messages": filtered_messages,  # Only include filtered messages
+                    })
         
         conn.close()
     
@@ -590,17 +732,18 @@ def get_conversations_for_range(
     # Convert map to list and filter messages to the full date range
     all_conversations = []
     for convo in conversation_map.values():
-        # Filter messages to the full date range (in case some were outside)
+        # STRICT filtering: Only include messages with valid timestamps within the date range
         filtered_messages = [
             msg for msg in convo["messages"]
-            if start_ts <= msg["timestamp"] < end_ts
+            if msg.get("timestamp", 0) > 0  # Must have valid timestamp
+            and start_ts <= msg["timestamp"] < end_ts  # Must be within date range
         ]
         if filtered_messages:
             convo["messages"] = filtered_messages
             all_conversations.append(convo)
-            print(f"  [DEBUG] Conversation {convo['chat_id']} ({convo['chat_type']}) in {convo['workspace']}: {len(filtered_messages)} messages", file=sys.stderr)
+            print(f"  [DEBUG] Conversation {convo['chat_id']} ({convo['chat_type']}) in {convo['workspace']}: {len(filtered_messages)} messages in range", file=sys.stderr)
     
-    print(f"✅ [DEBUG] Returning {len(all_conversations)} conversations with {sum(len(c['messages']) for c in all_conversations)} total messages", file=sys.stderr)
+    print(f"✅ [DEBUG] Returning {len(all_conversations)} conversations with {sum(len(c['messages']) for c in all_conversations)} total messages (strictly filtered to date range)", file=sys.stderr)
     
     return all_conversations
 
