@@ -35,9 +35,31 @@ next-env.d.ts
 *.swp
 *.swo
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Data & Cache
+data/embedding_cache.json
+data/conversation_cache.json
+data/vector_db_sync_state.json
+data/idea_bank.json
+data/insight_bank.json
+# Keep config.json example if needed, but user config is private usually. 
+# For now, ignoring banks and caches.
+
 # AI Documentation (Mode A - not published to GitHub)
+# Note: If these are already tracked, git will continue to track them.
+# Use 'git rm --cached <file>' to stop tracking them if desired.
 PLAN.md
 BUILD_LOG.md
 PIVOTS.md
 CLAUDE.md
-

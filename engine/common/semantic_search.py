@@ -68,6 +68,10 @@ def get_embedding(text: str, use_cache: bool = True) -> list[float]:
     
     Returns:
         Embedding vector (list of floats)
+    
+    Raises:
+        RuntimeError: If OpenAI API key is missing or invalid
+        Exception: For other API errors
     """
     if not text.strip():
         return [0.0] * EMBEDDING_DIM
@@ -86,12 +90,21 @@ def get_embedding(text: str, use_cache: bool = True) -> list[float]:
             pass
     
     # Generate embedding
-    client = get_openai_client()
-    response = client.embeddings.create(
-        model=EMBEDDING_MODEL,
-        input=text.strip(),
-    )
-    embedding = response.data[0].embedding
+    try:
+        client = get_openai_client()
+        response = client.embeddings.create(
+            model=EMBEDDING_MODEL,
+            input=text.strip(),
+        )
+        embedding = response.data[0].embedding
+    except Exception as e:
+        error_msg = str(e)
+        if "401" in error_msg or "invalid_api_key" in error_msg.lower() or "authentication" in error_msg.lower():
+            raise RuntimeError(
+                "OpenAI API authentication failed. Please check your OPENAI_API_KEY in .env file. "
+                "Get your API key at https://platform.openai.com/account/api-keys"
+            ) from e
+        raise
     
     # Save to cache
     if use_cache:
@@ -151,16 +164,26 @@ def search_messages(
     top_k: int = 10,
     min_similarity: float = 0.0,
     context_messages: int = 2,
+    use_vector_db: bool = True,
+    start_timestamp: int | None = None,
+    end_timestamp: int | None = None,
+    workspace_paths: list[str] | None = None,
 ) -> list[dict]:
     """
     Search messages for semantic matches to query.
     
+    Uses vector database if available, otherwise falls back to on-the-fly embedding.
+    
     Args:
         query: Search query (user's insight/idea)
-        messages: List of message dicts with "text" and "timestamp" keys
+        messages: List of message dicts with "text" and "timestamp" keys (used for fallback)
         top_k: Maximum number of results to return
         min_similarity: Minimum similarity score threshold (0-1)
         context_messages: Number of messages before/after to include as context
+        use_vector_db: Whether to try using vector database first
+        start_timestamp: Start timestamp filter (milliseconds) - for vector DB
+        end_timestamp: End timestamp filter (milliseconds) - for vector DB
+        workspace_paths: Workspace filter - for vector DB
     
     Returns:
         List of match dicts:
@@ -176,6 +199,47 @@ def search_messages(
             ...
         ]
     """
+    # Try vector database first if enabled
+    if use_vector_db:
+        try:
+            from .vector_db import search_messages_vector_db
+            
+            vector_matches = search_messages_vector_db(
+                query=query,
+                start_timestamp=start_timestamp,
+                end_timestamp=end_timestamp,
+                workspace_paths=workspace_paths,
+                top_k=top_k,
+                min_similarity=min_similarity,
+            )
+            
+            if vector_matches:
+                # Add context from original messages list if available
+                for match in vector_matches:
+                    msg = match["message"]
+                    msg_idx = None
+                    for i, orig_msg in enumerate(messages):
+                        if (orig_msg.get("text") == msg.get("text") and 
+                            orig_msg.get("timestamp") == msg.get("timestamp")):
+                            msg_idx = i
+                            break
+                    
+                    if msg_idx is not None:
+                        context_before = messages[max(0, msg_idx - context_messages):msg_idx]
+                        context_after = messages[msg_idx + 1:msg_idx + 1 + context_messages]
+                        match["context"] = {
+                            "before": context_before,
+                            "after": context_after,
+                        }
+                    else:
+                        match["context"] = {"before": [], "after": []}
+                
+                return vector_matches
+        except Exception:
+            # Fall back to on-the-fly method if vector DB fails
+            pass
+    
+    # Fallback: On-the-fly embedding (original method)
     if not messages:
         return []
     
