@@ -9,7 +9,7 @@
 A web UI for extracting ideas and insights from Cursor chat history using Claude Sonnet 4. Now powered by **Supabase Vector DB** for massive scale support (>2GB chat history).
 
 - **Ideas** — Prototype and tool ideas worth building
-- **Insights** — LinkedIn post drafts sharing learnings
+- **Insights** — Social media post drafts sharing learnings
 - **Banks** — Deduplicated storage with harmonization
 - **Reverse Match** — Semantic search to find chat history evidence for user-provided insights/ideas
 

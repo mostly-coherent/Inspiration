@@ -33,7 +33,7 @@ npm run dev
 <summary><strong>✨ Features</strong></summary>
 
 - **💡 Ideas Generation:** Extract prototype and tool ideas worth building from chat history.
-- **✨ Insight Generation:** Generate LinkedIn post drafts sharing your learnings.
+- **✨ Insight Generation:** Generate social media post drafts sharing your learnings.
 - **🏦 Knowledge Banks:** Deduplicated, harmonized storage for ideas and insights.
 - **⚙️ Preset Modes:** Daily, Sprint (14d), Month (30d), Quarter (90d) scans.
 - **⚡ Best-of-N:** Generate multiple candidates and pick the best one.

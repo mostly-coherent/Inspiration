@@ -315,7 +315,7 @@ export default function SettingsPage() {
                   <div className="flex-1">
                     <h4 className="text-slate-200 font-medium mb-1">Golden Examples Folder</h4>
                     <p className="text-xs text-slate-500 mb-3">
-                      Point to a folder with your actual LinkedIn posts or writing samples. 
+                      Point to a folder with your actual social media posts or writing samples. 
                       The AI will study these to match your voice, style, and depth.
                     </p>
                     <input
@@ -333,11 +333,11 @@ export default function SettingsPage() {
                           },
                         })
                       }
-                      placeholder="/path/to/your/linkedin-posts"
+                      placeholder="/path/to/your/social-posts"
                       className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
                     />
                     <p className="text-xs text-slate-600 mt-2">
-                      Tip: Save your best 5-10 LinkedIn posts as .md files in this folder
+                      Tip: Save your best 5-10 posts as .md files in this folder
                     </p>
                   </div>
                 </div>
@@ -501,11 +501,11 @@ export default function SettingsPage() {
             description="Optional features for advanced users"
           >
             <div className="space-y-6">
-              {/* LinkedIn Sync */}
+              {/* Social Media Sync */}
               <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
                 <label className="flex items-center gap-3 text-slate-200 cursor-pointer">
                   <input
-                    id="linkedin-sync-toggle"
+                    id="social-sync-toggle"
                     type="checkbox"
                     checked={config.features.linkedInSync.enabled}
                     onChange={(e) =>
@@ -521,10 +521,10 @@ export default function SettingsPage() {
                     }
                     className="w-4 h-4 rounded bg-slate-800 border-slate-700"
                   />
-                  LinkedIn Sync
+                  Social Media Sync
                 </label>
                 <p className="text-xs text-slate-500 mt-1 ml-7">
-                  Mark insights as "shared" when they match your LinkedIn posts
+                  Mark insights as "shared" when they match your social media posts
                 </p>
                 {config.features.linkedInSync.enabled && (
                   <div className="mt-3 ml-7">
@@ -542,7 +542,7 @@ export default function SettingsPage() {
                           },
                         })
                       }
-                      placeholder="/path/to/linkedin/posts"
+                      placeholder="/path/to/social/posts"
                       className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
                     />
                   </div>
