@@ -4,10 +4,12 @@ Cursor Database Extraction — Cross-platform support for extracting chat histor
 Supports: macOS, Windows, Linux
 """
 
+import hashlib
 import json
-import platform
 import os
+import platform
 import sqlite3
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import unquote
@@ -136,9 +138,98 @@ def extract_messages_from_chat_data(
     """
     messages = []
     
-    # Try Composer format first: data.conversation.messages
-    conversation = data.get("conversation", {})
-    messages_raw = conversation.get("messages", [])
+    # Try top-level text/richText first (current Cursor format)
+    # These might contain the current message being composed
+    messages_raw = []
+    if "text" in data and data.get("text", "").strip():
+        # Top-level text field might be a single message
+        text = data.get("text", "").strip()
+        if text:
+            # Try to get timestamp from context or use current time as fallback
+            ts = data.get("context", {}).get("timestamp", 0) if isinstance(data.get("context"), dict) else 0
+            if not ts:
+                ts = int(datetime.now().timestamp() * 1000)  # Fallback to current time
+            messages_raw.append({
+                "text": text,
+                "timestamp": ts,
+                "type": 1,  # Assume user message
+            })
+    
+    if "richText" in data and data.get("richText"):
+        # Top-level richText might contain formatted message
+        rich_text = data.get("richText")
+        if rich_text:
+            try:
+                # extract_text_from_richtext expects a JSON string
+                if isinstance(rich_text, (dict, list)):
+                    text = extract_text_from_richtext(json.dumps(rich_text))
+                else:
+                    # If it's already a string, try parsing it first
+                    text = extract_text_from_richtext(rich_text)
+                if text.strip():
+                    ts = data.get("context", {}).get("timestamp", 0) if isinstance(data.get("context"), dict) else 0
+                    if not ts:
+                        ts = int(datetime.now().timestamp() * 1000)
+                    messages_raw.append({
+                        "text": text,
+                        "timestamp": ts,
+                        "type": 1,
+                    })
+            except (json.JSONDecodeError, AttributeError, TypeError):
+                # Skip if richText can't be parsed
+                pass
+    
+    # Try Composer format: data.conversation.messages
+    if not messages_raw:
+        conversation = data.get("conversation", {})
+        messages_raw = conversation.get("messages", [])
+    
+    # If no messages in composer format, try conversationMap (new Cursor format)
+    if not messages_raw:
+        conversation_map = data.get("conversationMap", {})
+        if isinstance(conversation_map, dict):
+            # Flatten all messages from all conversations in the map
+            for conv_id, conv_data in conversation_map.items():
+                if isinstance(conv_data, dict):
+                    conv_messages = conv_data.get("messages", [])
+                    if conv_messages:
+                        messages_raw.extend(conv_messages)
+    
+    # If no messages, try fullConversationHeadersOnly (metadata that sometimes contains richText)
+    if not messages_raw:
+        full_headers = data.get("fullConversationHeadersOnly", [])
+        if isinstance(full_headers, list):
+            for header in full_headers:
+                if isinstance(header, dict):
+                    # Headers might have richText or text directly
+                    if "richText" in header:
+                        text = extract_text_from_richtext(json.dumps(header["richText"]))
+                        if text.strip():
+                            ts = header.get("timestamp", 0)
+                            if isinstance(ts, str):
+                                try:
+                                    ts = int(ts)
+                                except ValueError:
+                                    ts = 0
+                            messages_raw.append({
+                                "text": text,
+                                "timestamp": ts,
+                                "type": 2 if header.get("role") == "assistant" else 1,  # Assume assistant if role not specified
+                            })
+                    elif "text" in header:
+                        text = header["text"]
+                        if text.strip():
+                            ts = header.get("timestamp", 0)
+                            if isinstance(ts, str):
+                                try:
+                                    ts = int(ts)
+                                except ValueError:
+                                    ts = 0
+                            messages_raw.append({
+                                "text": text,
+                                "timestamp": ts,
+                                "type": 2 if header.get("role") == "assistant" else 1,
+                            })
     
     # If no messages in composer format, try regular chat format: data.messages
     if not messages_raw:
@@ -157,6 +248,16 @@ def extract_messages_from_chat_data(
                 ts = int(ts)
             except ValueError:
                 ts = 0
+        
+        # Filter by timestamp if provided (for date-specific queries)
+        # Note: For reverse_match range queries, we want all messages, so start_ts/end_ts may be None
+        # or represent the full range, so we don't filter here - filtering happens at conversation level
+        if start_ts and end_ts and ts > 0:
+            # Only filter if timestamps are provided AND message has a valid timestamp
+            # But note: for range queries, we want messages from the entire range, not just one day
+            # So this filtering is only used for single-day queries
+            if not (start_ts <= ts < end_ts):
+                continue
         
         # Extract text
         text = ""
@@ -192,9 +293,27 @@ def extract_messages_from_chat_data(
     return messages
 
 
+def get_conversation_cache_path() -> Path:
+    """Get path to conversation cache file."""
+    from .config import get_data_dir
+    return get_data_dir() / "conversation_cache.json"
+
+
+def get_conversation_cache_key(
+    target_date: datetime.date,
+    workspace_paths: list[str] | None = None,
+) -> str:
+    """Generate cache key for conversation query."""
+    date_str = target_date.isoformat()
+    workspaces_str = ",".join(sorted(workspace_paths or []))
+    key_str = f"{date_str}:{workspaces_str}"
+    return hashlib.sha256(key_str.encode()).hexdigest()
+
+
 def get_conversations_for_date(
     target_date: datetime.date,
     workspace_paths: list[str] | None = None,
+    use_cache: bool = True,
 ) -> list[dict]:
     """
     Extract all conversations from the target date.
@@ -204,6 +323,7 @@ def get_conversations_for_date(
         target_date: Date to extract conversations for
         workspace_paths: Optional list of workspace paths to filter by.
                         If None, returns all workspaces.
+        use_cache: Whether to use cached results if available
     
     Returns:
         List of conversation dicts:
@@ -220,14 +340,38 @@ def get_conversations_for_date(
             ...
         ]
     """
-    db_path = get_cursor_db_path()
+    # Check cache first
+    if use_cache:
+        cache_key = get_conversation_cache_key(target_date, workspace_paths)
+        cache_path = get_conversation_cache_path()
+        
+        if cache_path.exists():
+            try:
+                with open(cache_path) as f:
+                    cache = json.load(f)
+                    if cache_key in cache:
+                        cached_data = cache[cache_key]
+                        # Verify cache entry is for correct date
+                        if cached_data.get("date") == target_date.isoformat():
+                            return cached_data.get("conversations", [])
+            except (json.JSONDecodeError, IOError, KeyError):
+                # Cache corrupted or missing key, continue to fetch
+                pass
+    
     workspace_mapping = get_workspace_mapping()
+    
+    print(f"🗺️  [DEBUG] Workspace mapping has {len(workspace_mapping)} entries:", file=sys.stderr)
+    for hash_val, path in list(workspace_mapping.items())[:5]:  # Show first 5
+        print(f"    {hash_val[:20]}... -> {path}", file=sys.stderr)
     
     # Normalize workspace paths for comparison
     if workspace_paths:
         normalized_workspaces = {os.path.normpath(p) for p in workspace_paths}
+        print(f"🔍 [DEBUG] Filtering by workspaces: {normalized_workspaces}", file=sys.stderr)
+        print(f"🔍 [DEBUG] Available workspace paths in mapping: {set(workspace_mapping.values())}", file=sys.stderr)
     else:
         normalized_workspaces = None
+        print(f"🔍 [DEBUG] No workspace filter - searching all workspaces", file=sys.stderr)
     
     # Date range for filtering (full day in local time)
     start_of_day = datetime.combine(target_date, datetime.min.time())
@@ -239,51 +383,77 @@ def get_conversations_for_date(
     
     conversations = []
     
+    # Chat data is stored in globalStorage cursorDiskKV (current Cursor format)
+    # Keys: composerData:{uuid} (Composer chats) and chatData:{uuid} (regular chats)
+    # Also check ItemTable for backwards compatibility
+    
+    db_path = get_cursor_db_path()
+    
+    if not db_path.exists():
+        print(f"⚠️  [DEBUG] Database not found at {db_path}", file=sys.stderr)
+        return conversations
+    
+    print(f"🔍 [DEBUG] Searching globalStorage cursorDiskKV for BOTH Composer and regular chats", file=sys.stderr)
+    
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         cursor = conn.cursor()
         
-        # Query BOTH Composer chats AND regular chat conversations
+        # Query cursorDiskKV for composer and chat data (current format)
         cursor.execute("""
-            SELECT key, value FROM ItemTable 
-            WHERE key LIKE 'composer.composerData%'
-               OR key LIKE 'workbench.panel.aichat.view.aichat.chatdata%'
+            SELECT key, value FROM cursorDiskKV 
+            WHERE key LIKE 'composerData:%'
+               OR key LIKE 'chatData:%'
         """)
         
-        for key, value in cursor.fetchall():
+        all_rows = cursor.fetchall()
+        print(f"📊 [DEBUG] Found {len(all_rows)} conversation entries in globalStorage cursorDiskKV", file=sys.stderr)
+        
+        for key, value in all_rows:
             if not value:
                 continue
             
             try:
-                data = json.loads(value)
-            except json.JSONDecodeError:
+                # cursorDiskKV stores values as BLOB, need to decode
+                if isinstance(value, bytes):
+                    value_str = value.decode('utf-8')
+                else:
+                    value_str = value
+                data = json.loads(value_str)
+            except (json.JSONDecodeError, UnicodeDecodeError):
                 continue
             
-            # Determine chat type and extract workspace
-            chat_type = "composer" if key.startswith("composer.composerData") else "chat"
+            # Determine chat type and extract ID
+            # Keys are: composerData:{uuid} or chatData:{uuid}
+            chat_type = "composer" if key.startswith("composerData:") else "chat"
+            chat_id = key.split(":", 1)[1] if ":" in key else "unknown"
+            
+            # Extract workspace from conversation data if available
             workspace_path = "Unknown"
-            chat_id = "unknown"
+            workspace_hash: str | None = None
+            if isinstance(data, dict):
+                workspace_hash = (
+                    data.get("workspaceHash") or 
+                    data.get("workspace") or 
+                    data.get("workspaceId")
+                )
+                # Also check context field
+                if not workspace_hash and "context" in data:
+                    context = data["context"]
+                    if isinstance(context, dict):
+                        workspace_hash = context.get("workspaceHash") or context.get("workspace")
+                
+                if workspace_hash and workspace_hash in workspace_mapping:
+                    workspace_path = workspace_mapping[workspace_hash]
             
-            if chat_type == "composer":
-                # Format: composer.composerData.{workspace_hash}.{composer_id}
-                parts = key.split(".")
-                if len(parts) >= 3:
-                    workspace_hash = parts[2]
-                    workspace_path = workspace_mapping.get(workspace_hash, "Unknown")
-                    chat_id = parts[-1] if len(parts) >= 4 else "unknown"
-            else:
-                # Format: workbench.panel.aichat.view.aichat.chatdata.{workspace_hash}.{chat_id}
-                parts = key.split(".")
-                if len(parts) >= 6:
-                    workspace_hash = parts[5]  # Usually the workspace hash
-                    workspace_path = workspace_mapping.get(workspace_hash, "Unknown")
-                    chat_id = parts[-1] if len(parts) >= 7 else "unknown"
-            
-            # Filter by workspace if specified
-            if normalized_workspaces:
+            # MVP: Search ALL workspaces regardless of filter (non-negotiable)
+            # Only filter if workspace_paths is explicitly provided AND we have a valid workspace_hash
+            # If workspace_hash is missing (common in composerData), include the conversation anyway
+            if normalized_workspaces and workspace_hash:
                 norm_workspace = os.path.normpath(workspace_path)
                 if norm_workspace not in normalized_workspaces:
                     continue
+            # If normalized_workspaces is None (search all) OR workspace_hash is missing, include the conversation
             
             # Extract messages using unified function
             messages = extract_messages_from_chat_data(data, start_ts, end_ts)
@@ -303,9 +473,37 @@ def get_conversations_for_date(
                 })
         
         conn.close()
-        
+    
     except sqlite3.Error as e:
-        raise RuntimeError(f"Failed to read Cursor database: {e}")
+        print(f"⚠️  [DEBUG] Error reading database: {e}", file=sys.stderr)
+    
+    # Save to cache
+    if use_cache:
+        try:
+            cache_key = get_conversation_cache_key(target_date, workspace_paths)
+            cache_path = get_conversation_cache_path()
+            
+            cache = {}
+            if cache_path.exists():
+                try:
+                    with open(cache_path) as f:
+                        cache = json.load(f)
+                except (json.JSONDecodeError, IOError):
+                    cache = {}
+            
+            cache[cache_key] = {
+                "date": target_date.isoformat(),
+                "workspace_paths": workspace_paths,
+                "conversations": conversations,
+                "cached_at": datetime.now().isoformat(),
+            }
+            
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(cache_path, "w") as f:
+                json.dump(cache, f, indent=2)
+        except (IOError, OSError):
+            # Cache write failed, but conversations are still valid
+            pass
     
     return conversations
 
@@ -324,15 +522,85 @@ def get_conversations_for_range(
         workspace_paths: Optional list of workspace paths to filter by
     
     Returns:
-        Combined list of conversations from all dates
+        Combined list of conversations from all dates.
+        Note: Conversations are deduplicated by chat_id+workspace, and messages
+        from all days in the range are included (not filtered to specific days).
     """
-    all_conversations = []
+    print(f"📅 [DEBUG] get_conversations_for_range: {start_date} to {end_date}", file=sys.stderr)
+    if workspace_paths:
+        print(f"🔍 [DEBUG] Workspace filter: {workspace_paths}", file=sys.stderr)
+    
+    # Calculate timestamp range for the entire period
+    start_of_range = datetime.combine(start_date, datetime.min.time())
+    end_of_range = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+    start_ts = int(start_of_range.timestamp() * 1000)
+    end_ts = int(end_of_range.timestamp() * 1000)
+    
+    print(f"⏰ [DEBUG] Timestamp range: {start_ts} to {end_ts} ({start_of_range} to {end_of_range})", file=sys.stderr)
+    
+    # Get all conversations that have activity in ANY day of the range
+    # We'll collect unique conversations and include ALL their messages (not filtered by day)
+    conversation_map: dict[str, dict] = {}  # key: f"{workspace}:{chat_id}:{chat_type}"
+    
     current = start_date
+    total_days = (end_date - start_date).days + 1
+    days_processed = 0
     
     while current <= end_date:
-        convos = get_conversations_for_date(current, workspace_paths)
-        all_conversations.extend(convos)
+        days_processed += 1
+        if days_processed % 10 == 0 or days_processed == total_days:
+            print(f"  [DEBUG] Processing day {days_processed}/{total_days}: {current}", file=sys.stderr)
+        
+        # Get conversations for this day (but we'll merge messages across days)
+        # Temporarily disable cache to see what's actually being found
+        convos = get_conversations_for_date(current, workspace_paths, use_cache=False)
+        
+        if convos:
+            print(f"  [DEBUG] Day {current}: Found {len(convos)} conversations", file=sys.stderr)
+        
+        for convo in convos:
+            workspace = convo.get("workspace", "Unknown")
+            chat_id = convo.get("chat_id", "unknown")
+            chat_type = convo.get("chat_type", "unknown")
+            key = f"{workspace}:{chat_id}:{chat_type}"
+            
+            if key not in conversation_map:
+                # New conversation - add it
+                conversation_map[key] = {
+                    "chat_id": chat_id,
+                    "chat_type": chat_type,
+                    "workspace": workspace,
+                    "messages": [],
+                }
+            
+            # Add messages from this day (they're already filtered to this day by get_conversations_for_date)
+            existing_messages = conversation_map[key]["messages"]
+            new_messages = convo.get("messages", [])
+            
+            # Merge messages, avoiding duplicates by timestamp
+            existing_timestamps = {msg["timestamp"] for msg in existing_messages}
+            for msg in new_messages:
+                if msg["timestamp"] not in existing_timestamps:
+                    existing_messages.append(msg)
+        
         current += timedelta(days=1)
+    
+    print(f"📊 [DEBUG] Collected {len(conversation_map)} unique conversations", file=sys.stderr)
+    
+    # Convert map to list and filter messages to the full date range
+    all_conversations = []
+    for convo in conversation_map.values():
+        # Filter messages to the full date range (in case some were outside)
+        filtered_messages = [
+            msg for msg in convo["messages"]
+            if start_ts <= msg["timestamp"] < end_ts
+        ]
+        if filtered_messages:
+            convo["messages"] = filtered_messages
+            all_conversations.append(convo)
+            print(f"  [DEBUG] Conversation {convo['chat_id']} ({convo['chat_type']}) in {convo['workspace']}: {len(filtered_messages)} messages", file=sys.stderr)
+    
+    print(f"✅ [DEBUG] Returning {len(all_conversations)} conversations with {sum(len(c['messages']) for c in all_conversations)} total messages", file=sys.stderr)
     
     return all_conversations
 

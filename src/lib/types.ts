@@ -36,6 +36,13 @@ export interface GenerateResult {
     daysWithActivity: number;
     daysWithOutput: number;
     candidatesGenerated: number;
+    conversationsAnalyzed?: number;
+    harmonization?: {
+      itemsProcessed: number;
+      itemsAdded: number;
+      itemsUpdated: number;
+      itemsDeduplicated: number;
+    };
   };
   error?: string;
   timestamp: string;
@@ -164,6 +171,9 @@ export interface ReverseMatchResult {
     totalMessages: number;
     matchesFound: number;
     daysSearched: number;
+    startDate?: string;
+    endDate?: string;
+    conversationsExamined?: number;
   };
   error?: string;
 }

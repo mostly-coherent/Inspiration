@@ -18,6 +18,14 @@ DEFAULT_CONFIG = {
         "model": "claude-sonnet-4-20250514",
         "fallbackProvider": "openai",
         "fallbackModel": "gpt-4o",
+        "judgeProvider": "openai",  # Cheaper model for judging
+        "judgeModel": "gpt-3.5-turbo",  # ~80% cost reduction vs Claude Sonnet 4
+        "useCheaperJudge": True,  # Enable cheaper model for judging (can be disabled for quality comparison)
+        "promptCompression": {
+            "enabled": False,  # Enable prompt compression for cost savings (requires quality validation)
+            "threshold": 10000,  # Compress if prompt exceeds this many tokens (estimated)
+            "compressionModel": "gpt-3.5-turbo",  # Model to use for compression
+        },
     },
     "features": {
         "linkedInSync": {
