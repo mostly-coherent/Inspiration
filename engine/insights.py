@@ -8,6 +8,7 @@ Extract learnings from Cursor chat history and generate LinkedIn post drafts.
 import argparse
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any

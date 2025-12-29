@@ -6,7 +6,9 @@
 ![Status](https://img.shields.io/badge/Status-Active-green)
 ![Stack](https://img.shields.io/badge/Stack-Next.js%2015%20%7C%20Python%20%7C%20Claude%20%7C%20Supabase-orange)
 
-![Inspiration Homepage](e2e-results/01-homepage.png)
+![Inspiration - Generate Ideas and Insights](screenshot.png)
+
+*Main interface for generating ideas and insights from Cursor conversations*
 
 ## 🚀 Quick Start
 
