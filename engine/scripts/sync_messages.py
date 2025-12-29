@@ -114,19 +114,24 @@ def sync_new_messages(
     for i in range(0, len(new_messages), batch_size):
         batch = new_messages[i:i + batch_size]
         batch_texts = [msg["text"] for msg in batch]
+        batch_num = i // batch_size + 1
+        total_batches = (len(new_messages) + batch_size - 1) // batch_size
         
-        print(f"  Processing batch {i // batch_size + 1}/{(len(new_messages) + batch_size - 1) // batch_size}...")
+        print(f"  Processing batch {batch_num}/{total_batches} ({len(batch)} messages)...", flush=True)
         
         # Get embeddings in batch
         try:
+            print(f"    → Fetching embeddings from OpenAI...", flush=True)
             embeddings = batch_get_embeddings(batch_texts, use_cache=True)
+            print(f"    ✓ Got {len(embeddings)} embeddings", flush=True)
         except Exception as e:
-            print(f"  ⚠️  Failed to get embeddings: {e}")
+            print(f"  ⚠️  Failed to get embeddings: {e}", flush=True)
             failed_count += len(batch)
             continue
         
         # Index each message
-        for msg, embedding in zip(batch, embeddings):
+        print(f"    → Indexing messages to Supabase...", flush=True)
+        for j, (msg, embedding) in enumerate(zip(batch, embeddings)):
             try:
                 success = index_message(
                     client,
@@ -146,8 +151,10 @@ def sync_new_messages(
                 else:
                     failed_count += 1
             except Exception as e:
-                print(f"  ⚠️  Failed to index message: {e}")
+                print(f"  ⚠️  Failed to index message {j+1}/{len(batch)}: {e}", flush=True)
                 failed_count += 1
+        
+        print(f"  ✓ Batch {batch_num}/{total_batches} complete ({indexed_count} indexed, {failed_count} failed)", flush=True)
     
     # Save sync state
     save_sync_state(max_timestamp, indexed_count)

@@ -171,31 +171,75 @@ def search_messages_vector_db(
     except Exception:
         return []
     
-    # Build query
-    query_builder = client.table("cursor_messages").select("*")
-    
-    # Apply timestamp filters
-    if start_timestamp:
-        query_builder = query_builder.gte("timestamp", start_timestamp)
-    if end_timestamp:
-        query_builder = query_builder.lt("timestamp", end_timestamp)
-    
-    # Apply workspace filter
-    if workspace_paths:
-        query_builder = query_builder.in_("workspace", workspace_paths)
-    
-    # Vector similarity search using pgvector
-    # Note: This requires a custom RPC function in Supabase
-    # For now, we'll fetch all matching messages and compute similarity client-side
-    # TODO: Implement pgvector cosine similarity search via Supabase RPC
-    
+    # Use pgvector RPC function for optimized similarity search
+    # This uses the HNSW index and runs on the database server (much faster)
     try:
-        # Fetch messages (with limit to avoid memory issues)
-        # In production, this should use pgvector's built-in similarity search
+        # Prepare parameters for RPC call
+        rpc_params = {
+            "query_embedding": query_embedding,
+            "match_threshold": min_similarity,
+            "match_count": top_k,
+        }
+        
+        # Add optional filters
+        if start_timestamp is not None:
+            rpc_params["start_ts"] = start_timestamp
+        if end_timestamp is not None:
+            rpc_params["end_ts"] = end_timestamp
+        if workspace_paths:
+            rpc_params["workspace_filter"] = workspace_paths
+        
+        # Call RPC function
+        result = client.rpc("search_cursor_messages", rpc_params).execute()
+        
+        # Transform results to match expected format
+        matches = []
+        for row in result.data:
+            matches.append({
+                "message": {
+                    "text": row.get("text", ""),
+                    "timestamp": row.get("timestamp", 0),
+                    "type": row.get("message_type", "user"),
+                },
+                "similarity": float(row.get("similarity", 0.0)),
+                "workspace": row.get("workspace", "Unknown"),
+                "chat_id": row.get("chat_id", "unknown"),
+                "chat_type": row.get("chat_type", "unknown"),
+            })
+        
+        return matches
+        
+    except Exception as e:
+        # Fallback to client-side search if RPC fails (for debugging)
+        import sys
+        error_msg = str(e)
+        print(f"⚠️  RPC search failed, falling back to client-side search", file=sys.stderr)
+        print(f"   Error: {error_msg}", file=sys.stderr)
+        
+        # Check if it's a missing function error
+        if "function" in error_msg.lower() and ("does not exist" in error_msg.lower() or "PGRST202" in error_msg):
+            print(f"\n💡 RPC function 'search_cursor_messages' doesn't exist!", file=sys.stderr)
+            print(f"   To fix: Run the SQL from engine/scripts/init_vector_db.sql in Supabase SQL Editor", file=sys.stderr)
+            print(f"   This will enable fast vector search (100x faster)", file=sys.stderr)
+        
+        # Build query for fallback
+        query_builder = client.table("cursor_messages").select("*")
+        
+        # Apply timestamp filters
+        if start_timestamp:
+            query_builder = query_builder.gte("timestamp", start_timestamp)
+        if end_timestamp:
+            query_builder = query_builder.lt("timestamp", end_timestamp)
+        
+        # Apply workspace filter
+        if workspace_paths:
+            query_builder = query_builder.in_("workspace", workspace_paths)
+        
+        # Fetch messages (limited for fallback)
         result = query_builder.limit(1000).execute()
         messages = result.data if result.data else []
         
-        # Compute similarity client-side (temporary until RPC is set up)
+        # Compute similarity client-side (fallback only)
         matches = []
         for msg in messages:
             msg_embedding = msg.get("embedding", [])
@@ -222,9 +266,6 @@ def search_messages_vector_db(
         # Sort by similarity and return top_k
         matches.sort(key=lambda x: x["similarity"], reverse=True)
         return matches[:top_k]
-        
-    except Exception:
-        return []
 
 
 def get_message_count(client: Optional[Client] = None) -> int:

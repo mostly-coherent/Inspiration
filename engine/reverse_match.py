@@ -121,43 +121,12 @@ def reverse_match(
     workspace_paths = None
     
     # Date range
-    end_date = datetime.now().date()
-    start_date = end_date - timedelta(days=days_back)
-    
-    # Get conversations
-    print(f"📚 Loading conversations from {start_date} to {end_date}...", file=sys.stderr)
-    print(f"📅 Today is: {datetime.now().date()}", file=sys.stderr)
-    print(f"📅 Searching {days_back} days back: {start_date} to {end_date}", file=sys.stderr)
-    print(f"🔍 Searching ALL workspaces (MVP requirement)", file=sys.stderr)
-    
-    # MVP: Always search ALL workspaces (non-negotiable)
-    conversations = get_conversations_for_range(
-        start_date,
-        end_date,
-        workspace_paths=None,  # Always None to search all workspaces
-    )
-    
-    print(f"📊 Found {len(conversations)} conversations in date range", file=sys.stderr)
-    
-    # Flatten all messages with conversation context
-    all_messages = []
-    for convo in conversations:
-        workspace = convo.get("workspace", "Unknown")
-        chat_id = convo.get("chat_id", "unknown")
-        chat_type = convo.get("chat_type", "unknown")
-        messages = convo.get("messages", [])
-        print(f"  • {workspace} [{chat_type}] - {len(messages)} messages", file=sys.stderr)
-        for msg in messages:
-            # Add conversation context to message
-            msg_with_context = msg.copy()
-            msg_with_context["workspace"] = workspace
-            msg_with_context["chat_id"] = chat_id
-            msg_with_context["chat_type"] = chat_type
-            all_messages.append(msg_with_context)
-    
-    print(f"📝 Found {len(all_messages)} total messages to search...", file=sys.stderr)
-    
-    if not all_messages:
+    try:
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=days_back)
+    except Exception as e:
+        error_msg = f"Failed to calculate date range: {e}"
+        print(f"❌ Error: {error_msg}", file=sys.stderr)
         return {
             "query": query,
             "matches": [],
@@ -165,47 +134,151 @@ def reverse_match(
                 "totalMessages": 0,
                 "matchesFound": 0,
                 "daysSearched": days_back,
-                "startDate": start_date.isoformat(),
-                "endDate": end_date.isoformat(),
-                "conversationsExamined": len(conversations),
+                "startDate": "",
+                "endDate": "",
+                "conversationsExamined": 0,
             },
+            "error": error_msg,
         }
     
+    # Calculate timestamp range for vector DB
+    # Convert date objects to datetime for timestamp calculation
+    start_datetime = datetime.combine(start_date, datetime.min.time()) if start_date else None
+    end_datetime = datetime.combine(end_date + timedelta(days=1), datetime.min.time()) if end_date else None
+    start_ts = int(start_datetime.timestamp() * 1000) if start_datetime else None
+    end_ts = int(end_datetime.timestamp() * 1000) if end_datetime else None
+    
+    # Check if we should use vector DB (fast path)
+    from common.vector_db import get_supabase_client
+    use_vector_db_fast = get_supabase_client() is not None
+    matches = []  # Initialize matches
+    conversations = []  # Initialize conversations (only loaded if needed)
+    
+    if use_vector_db_fast:
+        # Fast path: Skip SQLite entirely, use vector DB directly
+        print(f"🚀 Using fast vector DB search (skipping SQLite load)...", file=sys.stderr)
+        print(f"📅 Searching {days_back} days back: {start_date} to {end_date}", file=sys.stderr)
+        print(f"🔍 Searching for matches (min similarity: {min_similarity})...", file=sys.stderr)
+        # Fast path: Use vector DB directly without loading all messages
+        print(f"🚀 Using fast vector DB search (skipping SQLite load)...", file=sys.stderr)
+        print(f"🔍 Searching for matches (min similarity: {min_similarity})...", file=sys.stderr)
+        
+        try:
+            from common.vector_db import search_messages_vector_db
+            
+            matches = search_messages_vector_db(
+                query=query,
+                start_timestamp=start_ts,
+                end_timestamp=end_ts,
+                workspace_paths=workspace_paths,
+                top_k=top_k,
+                min_similarity=min_similarity,
+            )
+            
+            # Vector DB results already have workspace/chat info, just add empty context
+            for match in matches:
+                match["context"] = {"before": [], "after": []}
+            
+            print(f"✅ Found {len(matches)} matches via vector DB", file=sys.stderr)
+            use_vector_db_fast = True  # Success
+            
+        except Exception as e:
+            print(f"⚠️  Vector DB search failed: {e}", file=sys.stderr)
+            print(f"   Falling back to SQLite search...", file=sys.stderr)
+            use_vector_db_fast = False
+            matches = []  # Reset matches
+    
+    if not use_vector_db_fast:
+        # Slow path: Load all messages from SQLite (fallback)
+        print(f"📚 Loading conversations from {start_date} to {end_date}...", file=sys.stderr)
+        print(f"📅 Today is: {datetime.now().date()}", file=sys.stderr)
+        print(f"📅 Searching {days_back} days back: {start_date} to {end_date}", file=sys.stderr)
+        print(f"🔍 Searching ALL workspaces (MVP requirement)", file=sys.stderr)
+        
+        # MVP: Always search ALL workspaces (non-negotiable)
+        conversations = get_conversations_for_range(
+            start_date,
+            end_date,
+            workspace_paths=None,  # Always None to search all workspaces
+        )
+        
+        print(f"📊 Found {len(conversations)} conversations in date range", file=sys.stderr)
+        print(f"📝 Loading messages from SQLite...", file=sys.stderr)
+        
+        # Flatten all messages with conversation context
+        all_messages = []
+        for convo in conversations:
+            workspace = convo.get("workspace", "Unknown")
+            chat_id = convo.get("chat_id", "unknown")
+            chat_type = convo.get("chat_type", "unknown")
+            messages = convo.get("messages", [])
+            print(f"  • {workspace} [{chat_type}] - {len(messages)} messages", file=sys.stderr)
+            for msg in messages:
+                # Add conversation context to message
+                msg_with_context = msg.copy()
+                msg_with_context["workspace"] = workspace
+                msg_with_context["chat_id"] = chat_id
+                msg_with_context["chat_type"] = chat_type
+                all_messages.append(msg_with_context)
+        
+        print(f"📝 Found {len(all_messages)} total messages to search...", file=sys.stderr)
+        
+        if not all_messages:
+            return {
+                "query": query,
+                "matches": [],
+                "stats": {
+                    "totalMessages": 0,
+                    "matchesFound": 0,
+                    "daysSearched": days_back,
+                    "startDate": start_date.isoformat(),
+                    "endDate": end_date.isoformat(),
+                    "conversationsExamined": len(conversations),
+                },
+            }
+        
         # Search for matches
         print(f"🔍 Searching for matches (min similarity: {min_similarity})...", file=sys.stderr)
         try:
-            # Calculate timestamp range for vector DB
-            start_ts = int(start_date.timestamp() * 1000) if start_date else None
-            end_ts = int((end_date + timedelta(days=1)).timestamp() * 1000) if end_date else None
-            
             matches = search_messages(
                 query,
                 all_messages,
                 top_k=top_k,
                 min_similarity=min_similarity,
                 context_messages=2,
-                use_vector_db=True,  # Try vector DB first
+                use_vector_db=False,  # Already tried vector DB, use fallback
                 start_timestamp=start_ts,
                 end_timestamp=end_ts,
-                workspace_paths=workspace_paths,  # None = all workspaces
+                workspace_paths=workspace_paths,
             )
-    except RuntimeError as e:
-        # Handle API authentication errors gracefully
-        error_msg = str(e)
-        print(f"❌ Error: {error_msg}", file=sys.stderr)
-        return {
-            "query": query,
-            "matches": [],
-            "stats": {
-                "totalMessages": len(all_messages),
-                "matchesFound": 0,
-                "daysSearched": days_back,
-                "startDate": start_date.isoformat(),
-                "endDate": end_date.isoformat(),
-                "conversationsExamined": len(conversations),
-            },
-            "error": error_msg,
-        }
+        except Exception as e:
+            # Handle errors
+            error_msg = str(e)
+            import traceback
+            print(f"❌ Error: {error_msg}", file=sys.stderr)
+            print(f"   Traceback: {traceback.format_exc()}", file=sys.stderr)
+            return {
+                "query": query,
+                "matches": [],
+                "stats": {
+                    "totalMessages": len(all_messages) if 'all_messages' in locals() else 0,
+                    "matchesFound": 0,
+                    "daysSearched": days_back,
+                    "startDate": start_date.isoformat(),
+                    "endDate": end_date.isoformat(),
+                    "conversationsExamined": len(conversations),
+                },
+                "error": error_msg,
+            }
+    
+    # Calculate total messages count for stats
+    if use_vector_db_fast:
+        # For vector DB, we don't have exact count without querying
+        # Use a placeholder or query count from vector DB if needed
+        # For now, use 0 or estimate - the important thing is matchesFound
+        total_messages = 0  # Vector DB doesn't require loading all messages for count
+    else:
+        total_messages = len(all_messages) if 'all_messages' in locals() else 0
     
     print(f"✅ Found {len(matches)} matches", file=sys.stderr)
     
@@ -213,12 +286,12 @@ def reverse_match(
         "query": query,
         "matches": matches,
         "stats": {
-            "totalMessages": len(all_messages),
+            "totalMessages": total_messages,
             "matchesFound": len(matches),
             "daysSearched": days_back,
             "startDate": start_date.isoformat(),
             "endDate": end_date.isoformat(),
-            "conversationsExamined": len(conversations),
+            "conversationsExamined": len(conversations) if conversations else 0,
         },
     }
 

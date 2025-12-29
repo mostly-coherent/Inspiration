@@ -50,7 +50,8 @@ def get_openai_client():
             "OPENAI_API_KEY not found. Please set it in your .env file."
         )
     
-    return openai.OpenAI(api_key=api_key)
+    # Configure client with timeout to prevent hanging
+    return openai.OpenAI(api_key=api_key, timeout=30.0)
 
 
 def get_text_hash(text: str) -> str:
@@ -235,8 +236,10 @@ def search_messages(
                         match["context"] = {"before": [], "after": []}
                 
                 return vector_matches
-        except Exception:
+        except Exception as e:
             # Fall back to on-the-fly method if vector DB fails
+            import sys
+            print(f"⚠️  Vector DB search failed, falling back to client-side: {e}", file=sys.stderr)
             pass
     
     # Fallback: On-the-fly embedding (original method)
@@ -339,33 +342,64 @@ def batch_get_embeddings(texts: list[str], use_cache: bool = True) -> list[list[
             indices_to_fetch.append(i)
             texts_to_fetch.append(text)
     
-    # Fetch missing embeddings in batch
+    # Fetch missing embeddings in batch with retry logic
     if texts_to_fetch:
         client = get_openai_client()
-        response = client.embeddings.create(
-            model=EMBEDDING_MODEL,
-            input=texts_to_fetch,
-        )
+        max_retries = 3
         
-        # Update cache and results
-        for idx, embedding_data in zip(indices_to_fetch, response.data):
-            embedding = embedding_data.embedding
-            embeddings_result[idx] = embedding
-            
-            # Update cache
-            if use_cache:
-                text = texts_to_fetch[indices_to_fetch.index(idx)]
-                cache_key = get_text_hash(text)
-                cache[cache_key] = embedding
-        
-        # Save updated cache
-        if use_cache:
+        for attempt in range(max_retries):
             try:
-                cache_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(cache_path, "w") as f:
-                    json.dump(cache, f)
-            except (IOError, json.JSONEncodeError):
-                pass
+                response = client.embeddings.create(
+                    model=EMBEDDING_MODEL,
+                    input=texts_to_fetch,
+                )
+                
+                # Update cache and results
+                for idx, embedding_data in zip(indices_to_fetch, response.data):
+                    embedding = embedding_data.embedding
+                    embeddings_result[idx] = embedding
+                    
+                    # Update cache
+                    if use_cache:
+                        text = texts_to_fetch[indices_to_fetch.index(idx)]
+                        cache_key = get_text_hash(text)
+                        cache[cache_key] = embedding
+                
+                # Save updated cache
+                if use_cache:
+                    try:
+                        cache_path.parent.mkdir(parents=True, exist_ok=True)
+                        with open(cache_path, "w") as f:
+                            json.dump(cache, f)
+                    except (IOError, json.JSONEncodeError):
+                        pass
+                
+                # Success - break out of retry loop
+                break
+                
+            except Exception as e:
+                error_str = str(e).lower()
+                is_retryable = (
+                    "rate limit" in error_str or 
+                    "429" in error_str or
+                    "timeout" in error_str or
+                    "connection" in error_str or
+                    "503" in error_str or
+                    "502" in error_str
+                )
+                
+                if not is_retryable or attempt == max_retries - 1:
+                    # Non-retryable error or last attempt - raise
+                    raise RuntimeError(
+                        f"Failed to get embeddings after {attempt + 1} attempts: {e}"
+                    ) from e
+                
+                # Retry with exponential backoff
+                delay = 2 ** attempt  # 1s, 2s, 4s
+                print(f"  ⚠️  Embedding API error (attempt {attempt + 1}/{max_retries}): {e}")
+                print(f"     Retrying in {delay}s...")
+                import time
+                time.sleep(delay)
     
     # Fill in empty texts with zero vectors
     for i, text in enumerate(texts):
