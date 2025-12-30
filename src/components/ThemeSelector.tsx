@@ -35,20 +35,20 @@ export function ThemeSelector({ selectedTheme, onThemeChange }: ThemeSelectorPro
           <span className="text-sm">Loading themes...</span>
         </div>
       ) : (
-        <div className="flex gap-3">
+        <div className="flex gap-3 justify-center">
           {themes.themes.map((theme) => (
           <button
             key={theme.id}
             onClick={() => onThemeChange(theme.id)}
             aria-pressed={selectedTheme === theme.id}
-            className={`px-4 py-2 rounded-lg border-2 transition-colors ${
-              selectedTheme === theme.id
-                ? "border-inspiration-ideas bg-inspiration-ideas/20 text-white"
-                : "border-adobe-gray-600 bg-black/20 text-adobe-gray-300 hover:border-adobe-gray-500"
+            className={`mode-card transition-all ${
+              selectedTheme === theme.id ? "selected" : ""
             }`}
           >
-            <div className="text-sm font-medium">{theme.label}</div>
-            <div className="text-xs text-adobe-gray-400 mt-1">{theme.description}</div>
+            <div className="text-center">
+              <div className="font-semibold text-lg">{theme.label}</div>
+              <div className="text-adobe-gray-400 text-sm mt-1">{theme.description}</div>
+            </div>
           </button>
         ))}
         </div>
