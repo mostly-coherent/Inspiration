@@ -366,11 +366,8 @@ export default function Home() {
           </p>
         </header>
 
-        {showReverseMatch ? null : (
-          <>
-        {/* Unified Configuration Section */}
+        {/* Theme/Mode Selection - Always Visible */}
         <section className="glass-card p-6 space-y-6">
-          {/* Theme/Mode Selection */}
           <div className="space-y-4">
             <h2 className="text-lg font-medium text-adobe-gray-300">
               What do you want to do?
@@ -381,12 +378,21 @@ export default function Home() {
               onThemeChange={(themeId) => setSelectedTheme(themeId as ThemeType)}
             />
             
-            <ModeSelector
-              theme={selectedTheme}
-              selectedMode={selectedModeId}
-              onModeChange={setSelectedModeId}
-            />
+            {!showReverseMatch && (
+              <ModeSelector
+                theme={selectedTheme}
+                selectedMode={selectedModeId}
+                onModeChange={setSelectedModeId}
+                onThemeChange={setSelectedTheme}
+              />
+            )}
           </div>
+        </section>
+
+        {showReverseMatch ? null : (
+          <>
+        {/* Time Period & Settings Section */}
+        <section className="glass-card p-6 space-y-6">
 
           {/* Time Period & Settings */}
           <div className="space-y-4 pt-4 border-t border-white/10">
@@ -480,8 +486,9 @@ export default function Home() {
           </>
         )}
 
-        {/* Reverse Match Section */}
-        <ReverseMatchSection
+        {/* Reverse Match Section - Only shown when Seek theme is selected */}
+        {showReverseMatch && (
+          <ReverseMatchSection
           showReverseMatch={showReverseMatch}
           setShowReverseMatch={setShowReverseMatch}
           query={reverseQuery}
@@ -497,7 +504,8 @@ export default function Home() {
           result={reverseResult}
           setResult={setReverseResult}
           abortController={reverseAbortController}
-        />
+          />
+        )}
       </div>
     </main>
   );
