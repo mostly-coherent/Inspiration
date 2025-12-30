@@ -21,6 +21,7 @@ import { ExpectedOutput } from "@/components/ExpectedOutput";
 import { LogoutButton } from "@/components/LogoutButton";
 import { SimpleModeSelector } from "@/components/SimpleModeSelector";
 import { RunHistory } from "@/components/RunHistory";
+import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { getModeAsync, loadThemesAsync } from "@/lib/themes";
 import { saveRunToHistory } from "@/lib/runHistory";
 
@@ -542,19 +543,28 @@ export default function Home() {
         </div>
 
         {/* Results */}
-        {result && <ResultsPanel result={result} />}
+        {result && (
+          <SectionErrorBoundary sectionName="Results">
+            <ResultsPanel result={result} />
+          </SectionErrorBoundary>
+        )}
 
         {/* Banks Overview */}
-        <BanksOverview />
+        <SectionErrorBoundary sectionName="Banks Overview">
+          <BanksOverview />
+        </SectionErrorBoundary>
 
         {/* Run History */}
-        <RunHistory />
+        <SectionErrorBoundary sectionName="Run History">
+          <RunHistory />
+        </SectionErrorBoundary>
           </>
         )}
 
         {/* Seek Section - Only shown when Use Case mode is selected */}
         {showSeek && (
-          <SeekSection
+          <SectionErrorBoundary sectionName="Seek Section">
+            <SeekSection
             showSeek={showSeek}
             setShowSeek={setShowSeek}
             query={reverseQuery}
@@ -571,6 +581,7 @@ export default function Home() {
             setResult={setSeekResult}
             abortController={seekAbortController}
           />
+          </SectionErrorBoundary>
         )}
       </div>
     </main>

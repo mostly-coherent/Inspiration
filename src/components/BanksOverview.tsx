@@ -6,6 +6,7 @@ import { copyToClipboard, downloadFile } from "@/lib/utils";
 import { Item, Category, ThemeType, ModeType } from "@/lib/types";
 import { loadThemesAsync } from "@/lib/themes";
 import { LoadingSpinner } from "./LoadingSpinner";
+import { SectionErrorBoundary } from "./SectionErrorBoundary";
 
 type ViewMode = "items" | "categories";
 
@@ -211,11 +212,21 @@ export const BanksOverview = memo(function BanksOverview() {
     });
   }, [filterTheme]);
 
-  if (loading && !stats) return null;
+  if (loading && !stats) {
+    return (
+      <section className="glass-card p-6 space-y-4 mt-8">
+        <div className="flex items-center gap-2 text-adobe-gray-400">
+          <LoadingSpinner />
+          <span className="text-sm">Loading bank...</span>
+        </div>
+      </section>
+    );
+  }
   if (!stats && !error) return null;
 
   return (
-    <section className="glass-card p-6 space-y-4 mt-8">
+    <SectionErrorBoundary sectionName="Banks Overview">
+      <section className="glass-card p-6 space-y-4 mt-8">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-medium text-adobe-gray-300 flex items-center gap-2">
           <span>🏦</span> Your Bank
@@ -468,5 +479,6 @@ export const BanksOverview = memo(function BanksOverview() {
         </>
       )}
     </section>
+    </SectionErrorBoundary>
   );
 });
