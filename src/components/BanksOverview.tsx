@@ -31,6 +31,24 @@ export const BanksOverview = memo(function BanksOverview() {
     loadItems();
   }, [viewMode, filterTheme, filterMode, showImplemented]);
 
+  // Filter items and categories based on current filters
+  const filteredItems = useMemo(() => {
+    return items.filter((item) => {
+      if (filterTheme !== "all" && item.theme !== filterTheme) return false;
+      if (filterMode !== "all" && item.mode !== filterMode) return false;
+      if (!showImplemented && item.implemented) return false;
+      return true;
+    });
+  }, [items, filterTheme, filterMode, showImplemented]);
+
+  const filteredCategories = useMemo(() => {
+    return categories.filter((category) => {
+      if (filterTheme !== "all" && category.theme !== filterTheme) return false;
+      if (filterMode !== "all" && category.mode !== filterMode) return false;
+      return true;
+    });
+  }, [categories, filterTheme, filterMode]);
+
   const loadItems = async () => {
     setError(null);
     setLoading(true);

@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Override with custom values if provided, or use mode defaults
-    const effectiveBestOf = bestOf ?? modeSettings?.defaultBestOf ?? modeConfig?.bestOf ?? 5;
+    const effectiveBestOf = bestOf ?? modeConfig?.bestOf ?? 5;
     const effectiveTemperature = temperature ?? modeSettings?.temperature ?? modeConfig?.temperature ?? 0.2;
     
     args.push("--best-of", effectiveBestOf.toString());
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get tool path dynamically
-    const toolPath = getToolPath(tool);
+    const toolPath = getToolPath(resolvedTool);
     
     logger.log(`[Inspiration] Running: python3 ${toolConfig.script} ${args.join(" ")}`);
     logger.log(`[Inspiration] Working directory: ${toolPath}`);

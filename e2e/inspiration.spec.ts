@@ -11,7 +11,7 @@ test.describe('Inspiration E2E Tests', () => {
     
     // Theme/Mode selection (v1) - check for theme selector or tool selection (backward compatibility)
     const themeHeading = page.getByRole('heading', { name: /theme/i });
-    const toolHeading = page.getByRole('heading', { name: 'What do you want to generate?' });
+    const toolHeading = page.getByRole('heading', { name: 'What do you want to do?' });
     await expect(themeHeading.or(toolHeading)).toBeVisible();
     
     // Check for either Theme/Mode selectors (v1) or tool buttons (v0)

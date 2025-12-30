@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { ModeSettingsManager } from "@/components/ModeSettingsManager";
 
 interface AppConfig {
   version: number;

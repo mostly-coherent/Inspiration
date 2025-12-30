@@ -12,7 +12,7 @@ export async function POST() {
     // Check if running on Vercel (simplified check: if local cursor DB path is missing)
     // We'll let the script fail if it can't find the DB, and handle the error output.
     
-    return new Promise((resolve) => {
+    return new Promise<NextResponse>((resolve) => {
       const process = spawn("python3", [scriptPath], {
         cwd: enginePath,
       });
