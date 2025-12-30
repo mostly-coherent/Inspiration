@@ -12,6 +12,7 @@ import {
 import { GenerateResult } from "@/lib/types";
 import { copyToClipboard, downloadFile } from "@/lib/utils";
 import { MarkdownContent } from "./MarkdownContent";
+import { LoadingSpinner } from "./LoadingSpinner";
 
 export const RunHistory = memo(function RunHistory() {
   const [runs, setRuns] = useState<RunHistoryEntry[]>([]);
@@ -130,7 +131,10 @@ export const RunHistory = memo(function RunHistory() {
       </div>
 
       {loading ? (
-        <p className="text-adobe-gray-400">Loading...</p>
+        <div className="flex items-center gap-2 text-adobe-gray-400">
+          <LoadingSpinner />
+          <span className="text-sm">Loading run history...</span>
+        </div>
       ) : runs.length === 0 ? (
         <p className="text-adobe-gray-400">No run history yet.</p>
       ) : (
