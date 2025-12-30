@@ -114,6 +114,118 @@ Conversations:
         return conversations_text
 
 
+def compress_single_message(
+    text: str,
+    llm: Optional[LLMProvider] = None,
+    max_chars: int = 6000,
+    compression_model: str = "gpt-3.5-turbo",
+    max_retries: int = 3,
+) -> Optional[str]:
+    """
+    Compress a single long message while preserving key information.
+    
+    Designed for embedding preparation - preserves:
+    - Key technical decisions and rationale
+    - Important code patterns and solutions
+    - Problem statements and requirements
+    - Critical insights and learnings
+    
+    Args:
+        text: Message text to compress
+        llm: LLM provider (if None, creates one from config)
+        max_chars: Target max characters for compressed text
+        compression_model: Model to use for compression (default: gpt-3.5-turbo)
+    
+    Returns:
+        Compressed text (or original if compression fails)
+    """
+    if len(text) <= max_chars:
+        return text
+    
+    # Create compression LLM if not provided
+    if llm is None:
+        config = load_config()
+        llm_config = config.get("llm", {})
+        compression_config = llm_config.get("promptCompression", {})
+        compression_model = compression_config.get("compressionModel", compression_model)
+        
+        compression_llm = LLMProvider(
+            provider="openai",
+            model=compression_model,
+            fallback_provider="anthropic",
+            fallback_model="claude-sonnet-4-20250514",
+        )
+    else:
+        compression_llm = llm
+    
+    # Compression prompt for single message
+    compression_prompt = f"""Compress this message while preserving ALL critical information:
+
+1. Key technical decisions and rationale
+2. Important code patterns and solutions
+3. Problem statements and requirements
+4. Critical insights and learnings
+5. Important context and background
+
+Remove:
+- Redundant explanations
+- Verbose descriptions
+- Repeated information
+- Unnecessary context
+
+Make it concise but preserve all important details.
+Target: ~{max_chars} characters.
+
+Message:
+{text}"""
+
+    system_prompt = """You are a message compression assistant. Your job is to reduce length while preserving ALL critical information needed for semantic search and embedding. This is lossless compression - nothing important should be lost."""
+
+    # Retry logic with exponential backoff
+    import time
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            compressed_text = compression_llm.generate(
+                compression_prompt,
+                system_prompt=system_prompt,
+                max_tokens=max_chars // 4,  # Rough estimate: 4 chars per token
+                temperature=0.0,  # Deterministic compression
+            )
+            
+            # Ensure it's within limits (compression might overshoot)
+            if len(compressed_text) > max_chars:
+                # Truncate if compression overshot
+                truncated = compressed_text[:max_chars]
+                last_period = truncated.rfind('.')
+                last_newline = truncated.rfind('\n')
+                cut_point = max(last_period, last_newline)
+                
+                if cut_point > max_chars * 0.8:
+                    return truncated[:cut_point + 1] + "\n\n[Message compressed and truncated]"
+                else:
+                    return truncated + "\n\n[Message compressed and truncated]"
+            
+            return compressed_text.strip() + "\n\n[Message compressed to preserve key information]"
+            
+        except Exception as e:
+            last_error = e
+            # Don't retry on last attempt
+            if attempt == max_retries - 1:
+                break
+            
+            # Exponential backoff: 1s, 2s, 4s
+            delay = 2 ** attempt
+            import sys
+            print(f"⚠️  Compression attempt {attempt + 1}/{max_retries} failed: {e}", file=sys.stderr)
+            print(f"   Retrying in {delay}s...", file=sys.stderr)
+            time.sleep(delay)
+    
+    # All retries failed - return None to signal failure (caller can truncate)
+    return None
+
+
 def compress_single_conversation(
     conversation: dict,
     llm: Optional[LLMProvider] = None,

@@ -19,28 +19,27 @@ import { ModeCard } from "@/components/ModeCard";
 import { AdvancedSettings } from "@/components/AdvancedSettings";
 import { ExpectedOutput } from "@/components/ExpectedOutput";
 import { LogoutButton } from "@/components/LogoutButton";
-import { ThemeSelector } from "@/components/ThemeSelector";
-import { ModeSelector } from "@/components/ModeSelector";
+import { SimpleModeSelector } from "@/components/SimpleModeSelector";
 import { RunHistory } from "@/components/RunHistory";
-import { getModeAsync } from "@/lib/themes";
+import { getModeAsync, loadThemesAsync } from "@/lib/themes";
 import { saveRunToHistory } from "@/lib/runHistory";
 
 export default function Home() {
-  // State - v1 theme/mode system
-  const [selectedTheme, setSelectedTheme] = useState<ThemeType>("generation");
+  // State - simplified mode system (theme auto-determined from mode)
   const [selectedModeId, setSelectedModeId] = useState<ModeType>("idea");
+  const [selectedTheme, setSelectedTheme] = useState<ThemeType>("generation"); // Auto-determined from mode
   const [selectedMode, setSelectedMode] = useState<PresetMode>("sprint");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<GenerateResult | null>(null);
   
-  // Seek state - derived from selected theme
+  // Seek state - derived from selected mode
   const [showSeek, setShowSeek] = useState(false);
   
-  // Sync showSeek with selectedTheme
+  // Sync showSeek with selectedModeId (use_case mode = seek theme)
   useEffect(() => {
-    setShowSeek(selectedTheme === "seek");
-  }, [selectedTheme]);
+    setShowSeek(selectedModeId === "use_case");
+  }, [selectedModeId]);
   const [reverseQuery, setReverseQuery] = useState("");
   const [isSeeking, setIsSeeking] = useState(false);
   const [seekResult, setSeekResult] = useState<SeekResult | null>(null);
@@ -52,6 +51,12 @@ export default function Home() {
   // Sync state
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  
+  // Brain stats
+  const [brainStats, setBrainStats] = useState<{
+    localSize: string | null;
+    vectorSize: string | null;
+  }>({ localSize: null, vectorSize: null });
 
   // Progress tracking
   const [progress, setProgress] = useState(0);
@@ -78,16 +83,26 @@ export default function Home() {
   const [modeConfig, setModeConfig] = useState<{ name: string; icon: string; color: string } | null>(null);
   
   useEffect(() => {
-    getModeAsync(selectedTheme, selectedModeId).then((mode) => {
-      if (mode) {
-        setModeConfig({
-          name: mode.name,
-          icon: mode.icon,
-          color: mode.color,
-        });
+    // Auto-determine theme from mode if needed
+    const determineTheme = async () => {
+      // Load themes to find which theme contains the selected mode
+      const themesConfig = await loadThemesAsync();
+      for (const theme of themesConfig.themes) {
+        const mode = theme.modes.find(m => m.id === selectedModeId);
+        if (mode) {
+          setSelectedTheme(theme.id as ThemeType);
+          setModeConfig({
+            name: mode.name,
+            icon: mode.icon,
+            color: mode.color,
+          });
+          return;
+        }
       }
-    });
-  }, [selectedTheme, selectedModeId]);
+    };
+    
+    determineTheme();
+  }, [selectedModeId]);
   
   // Backward compatibility: derive tool from mode for display
   const displayTool: ToolType = selectedModeId === "idea" ? "ideas" : "insights";
@@ -126,6 +141,23 @@ export default function Home() {
     return days;
   }, []);
 
+  // Fetch brain stats
+  const fetchBrainStats = useCallback(async () => {
+    try {
+      const res = await fetch("/api/brain-stats");
+      const data = await res.json();
+      
+      if (data.success) {
+        setBrainStats({
+          localSize: data.localSize,
+          vectorSize: data.vectorSize,
+        });
+      }
+    } catch (e) {
+      console.error("Failed to fetch brain stats:", e);
+    }
+  }, []);
+
   // Sync brain with local Cursor history
   const handleSync = useCallback(async () => {
     if (isSyncing) return;
@@ -137,11 +169,26 @@ export default function Home() {
       const data = await res.json();
       
       if (data.success) {
-        if (data.stats && data.stats.indexed > 0) {
-          setSyncStatus(`✓ Synced ${data.stats.indexed} new items`);
+        if (data.stats) {
+          const { indexed = 0, skipped = 0, failed = 0 } = data.stats;
+          if (indexed > 0) {
+            const statusMsg = skipped > 0 
+              ? `✓ Synced ${indexed} new items (${skipped} already indexed)`
+              : `✓ Synced ${indexed} new items`;
+            setSyncStatus(statusMsg);
+          } else if (skipped > 0) {
+            setSyncStatus(`✓ Brain up to date (${skipped} already indexed)`);
+          } else {
+            setSyncStatus("✓ Brain up to date");
+          }
+          if (failed > 0) {
+            console.warn(`${failed} messages failed to sync`);
+          }
         } else {
           setSyncStatus("✓ Brain up to date");
         }
+        // Refresh brain stats after sync
+        await fetchBrainStats();
       } else {
         // Handle cloud environment limitation gracefully
         if (data.error && data.error.includes("Cannot sync from cloud")) {
@@ -159,13 +206,20 @@ export default function Home() {
       // Clear status after 5 seconds
       setTimeout(() => setSyncStatus(null), 5000);
     }
-  }, [isSyncing]);
+  }, [isSyncing, fetchBrainStats]);
 
-  // Auto-sync on mount
+  // Auto-sync on mount and fetch brain stats
+  // Note: Only works when running locally (not on Vercel)
+  // On Vercel, it will gracefully show "Cloud Mode (Read-only)" status
   useEffect(() => {
+    fetchBrainStats();
+    // Auto-sync on first load (only works locally)
     handleSync().catch((error) => {
       console.error("Auto-sync failed:", error);
-      setSyncStatus("Sync failed. Click 'Sync' to retry.");
+      // Don't show error if it's just cloud mode - that's expected
+      if (!error?.message?.includes("cloud")) {
+        setSyncStatus("Sync failed. Click 'Refresh Brain' to retry.");
+      }
     });
   }, []); // Run once on mount
 
@@ -328,24 +382,42 @@ export default function Home() {
         {/* Header */}
         <header className="text-center space-y-4 pt-8 relative">
           <div className="absolute right-0 top-8 flex items-center gap-2">
-            {/* Sync Status / Refresh Button */}
-            <button
-              onClick={handleSync}
-              disabled={isSyncing}
-              className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                isSyncing 
-                  ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait" 
-                  : syncStatus === "☁️ Cloud Mode (Read-only)"
-                    ? "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
-                    : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white"
-              }`}
-              title={syncStatus === "☁️ Cloud Mode (Read-only)" ? "Running in cloud. Cannot sync from local disk." : "Refresh Brain with latest Cursor history"}
-            >
-              <span className={`text-base ${isSyncing ? "animate-spin" : ""}`}>
-                {syncStatus === "☁️ Cloud Mode (Read-only)" ? "☁️" : "🔄"}
-              </span>
-              {syncStatus || "Refresh Brain"}
-            </button>
+            {/* Sync Status / Refresh Button with Brain Size */}
+            <div className="flex items-center gap-2">
+              {/* Brain Size Display */}
+              {(brainStats.localSize || brainStats.vectorSize) && (
+                <div className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-white/5 text-slate-400">
+                  <span className="text-slate-500">🧠</span>
+                  {brainStats.localSize && (
+                    <span className="text-slate-300">{brainStats.localSize}</span>
+                  )}
+                  {brainStats.localSize && brainStats.vectorSize && (
+                    <span className="text-slate-500">/</span>
+                  )}
+                  {brainStats.vectorSize && (
+                    <span className="text-slate-300">{brainStats.vectorSize}</span>
+                  )}
+                </div>
+              )}
+              
+              <button
+                onClick={handleSync}
+                disabled={isSyncing}
+                className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                  isSyncing 
+                    ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait" 
+                    : syncStatus === "☁️ Cloud Mode (Read-only)"
+                      ? "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
+                      : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white"
+                }`}
+                title={syncStatus === "☁️ Cloud Mode (Read-only)" ? "Running in cloud. Cannot sync from local disk." : "Refresh Brain with latest Cursor history"}
+              >
+                <span className={`text-base ${isSyncing ? "animate-spin" : ""}`}>
+                  {syncStatus === "☁️ Cloud Mode (Read-only)" ? "☁️" : "🔄"}
+                </span>
+                {syncStatus || "Refresh Brain"}
+              </button>
+            </div>
 
             <a 
               href="/settings" 
@@ -366,26 +438,20 @@ export default function Home() {
           </p>
         </header>
 
-        {/* Theme/Mode Selection - Always Visible */}
+        {/* Mode Selection - Always Visible */}
         <section className="glass-card p-6 space-y-6">
           <div className="space-y-4">
             <h2 className="text-lg font-medium text-adobe-gray-300">
               What do you want to do?
             </h2>
             
-            <ThemeSelector
-              selectedTheme={selectedTheme}
-              onThemeChange={(themeId) => setSelectedTheme(themeId as ThemeType)}
+            <SimpleModeSelector
+              selectedModeId={selectedModeId}
+              onModeChange={(modeId, themeId) => {
+                setSelectedModeId(modeId as ModeType);
+                setSelectedTheme(themeId as ThemeType);
+              }}
             />
-            
-            {!showSeek && (
-              <ModeSelector
-                theme={selectedTheme}
-                selectedMode={selectedModeId}
-                onModeChange={setSelectedModeId}
-                onThemeChange={setSelectedTheme}
-              />
-            )}
           </div>
         </section>
 
@@ -486,7 +552,7 @@ export default function Home() {
           </>
         )}
 
-        {/* Seek Section - Only shown when Seek theme is selected */}
+        {/* Seek Section - Only shown when Use Case mode is selected */}
         {showSeek && (
           <SeekSection
             showSeek={showSeek}

@@ -16,14 +16,43 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.cursor_db import get_conversations_for_range
+from common.cursor_db import get_conversations_for_range, _get_conversations_for_date_sqlite
 from common.vector_db import (
     get_supabase_client,
     get_last_sync_timestamp,
     save_sync_state,
     index_message,
+    get_existing_message_ids,
 )
 from common.semantic_search import batch_get_embeddings
+from common.prompt_compression import compress_single_message
+
+
+# Optimization constants
+MAX_TEXT_LENGTH = 6000  # Compress messages longer than this (preserves more info)
+MIN_TEXT_LENGTH = 10   # Skip messages shorter than this (not useful for search)
+BATCH_SIZE = 200        # Increased from 100 for faster processing (OpenAI allows up to 2048)
+
+
+def truncate_text_for_embedding(text: str, max_chars: int = MAX_TEXT_LENGTH) -> str:
+    """
+    Truncate text to fit within embedding API limits.
+    Used as fallback when compression fails after retries.
+    """
+    if len(text) <= max_chars:
+        return text
+    
+    # Truncate and add indicator
+    truncated = text[:max_chars]
+    # Try to cut at a sentence boundary
+    last_period = truncated.rfind('.')
+    last_newline = truncated.rfind('\n')
+    cut_point = max(last_period, last_newline)
+    
+    if cut_point > max_chars * 0.8:  # If we found a good break point
+        return truncated[:cut_point + 1] + "\n\n[Message truncated due to length]"
+    else:
+        return truncated + "\n\n[Message truncated due to length]"
 
 
 def generate_message_id(workspace: str, chat_id: str, timestamp: int, text: str) -> str:
@@ -58,12 +87,28 @@ def sync_new_messages(
     print(f"   Date range: {start_date} to {end_date}")
     print(f"   Dry run: {dry_run}")
     
-    # Get conversations in date range
-    print("📚 Loading conversations...")
-    conversations = get_conversations_for_range(start_date, end_date, workspace_paths=None)
+    # Get conversations from LOCAL SQLite database (not Vector DB)
+    # We need to read from local DB to find new messages
+    print("📚 Loading conversations from LOCAL database...")
+    conversations = []
+    current_date = start_date
+    while current_date <= end_date:
+        day_conversations = _get_conversations_for_date_sqlite(current_date, workspace_paths=None, use_cache=False)
+        conversations.extend(day_conversations)
+        current_date += timedelta(days=1)
+    
+    # Deduplicate conversations by chat_id + workspace
+    seen = set()
+    unique_conversations = []
+    for conv in conversations:
+        key = (conv.get("chat_id"), conv.get("workspace"))
+        if key not in seen:
+            seen.add(key)
+            unique_conversations.append(conv)
+    conversations = unique_conversations
     
     # Filter to only new messages (timestamp > last_sync_ts)
-    new_messages = []
+    candidate_messages = []
     for convo in conversations:
         workspace = convo.get("workspace", "Unknown")
         chat_id = convo.get("chat_id", "unknown")
@@ -72,11 +117,28 @@ def sync_new_messages(
         for msg in convo.get("messages", []):
             msg_ts = msg.get("timestamp", 0)
             if msg_ts <= last_sync_ts:
-                continue  # Skip already indexed messages
+                continue  # Skip messages before last sync
             
             msg_text = msg.get("text", "").strip()
             if not msg_text:
                 continue
+            
+            # OPTIMIZATION: Skip very short messages (not useful for search)
+            if len(msg_text) < MIN_TEXT_LENGTH:
+                continue
+            
+            # OPTIMIZATION: Compress long messages to preserve information
+            if len(msg_text) > MAX_TEXT_LENGTH:
+                # Compress messages longer than MAX_TEXT_LENGTH to preserve critical info
+                # This adds cost (~$0.001) but preserves technical decisions, code patterns, insights
+                # Retry logic is built into compress_single_message (3 attempts with exponential backoff)
+                compressed_text = compress_single_message(msg_text, max_chars=MAX_TEXT_LENGTH, max_retries=3)
+                if compressed_text is None:
+                    # Compression failed after all retries - fallback to truncation
+                    print(f"  ⚠️  Compression failed after retries, using truncation fallback", flush=True)
+                    msg_text = truncate_text_for_embedding(msg_text)
+                else:
+                    msg_text = compressed_text
             
             message_id = generate_message_id(
                 workspace,
@@ -85,7 +147,7 @@ def sync_new_messages(
                 msg_text,
             )
             
-            new_messages.append({
+            candidate_messages.append({
                 "message_id": message_id,
                 "text": msg_text,
                 "timestamp": msg_ts,
@@ -95,7 +157,20 @@ def sync_new_messages(
                 "message_type": msg.get("type", "user"),
             })
     
-    print(f"📝 Found {len(new_messages)} new messages to index")
+    print(f"📝 Found {len(candidate_messages)} messages since last sync")
+    
+    # Check which ones already exist in Vector DB (deduplication)
+    print("🔍 Checking for duplicates in Vector DB...")
+    all_message_ids = [msg["message_id"] for msg in candidate_messages]
+    existing_ids = get_existing_message_ids(all_message_ids, client)
+    
+    # Filter to only truly new messages
+    new_messages = [msg for msg in candidate_messages if msg["message_id"] not in existing_ids]
+    skipped_count = len(candidate_messages) - len(new_messages)
+    
+    if skipped_count > 0:
+        print(f"   ✅ Already indexed: {skipped_count} messages (skipping)")
+    print(f"   🆕 New messages to index: {len(new_messages)}")
     
     if dry_run:
         print("🔍 DRY RUN: Would index messages above")
@@ -105,17 +180,20 @@ def sync_new_messages(
         print("✅ No new messages to sync")
         return
     
-    # Process in batches
-    batch_size = 100
+    # Process in batches (optimized batch size for faster processing)
     indexed_count = 0
     failed_count = 0
     max_timestamp = last_sync_ts
+    compressed_count = sum(1 for msg in new_messages if "[Message compressed" in msg["text"])
     
-    for i in range(0, len(new_messages), batch_size):
-        batch = new_messages[i:i + batch_size]
+    if compressed_count > 0:
+        print(f"   📦 {compressed_count} messages compressed (preserved critical info)")
+    
+    for i in range(0, len(new_messages), BATCH_SIZE):
+        batch = new_messages[i:i + BATCH_SIZE]
         batch_texts = [msg["text"] for msg in batch]
-        batch_num = i // batch_size + 1
-        total_batches = (len(new_messages) + batch_size - 1) // batch_size
+        batch_num = i // BATCH_SIZE + 1
+        total_batches = (len(new_messages) + BATCH_SIZE - 1) // BATCH_SIZE
         
         print(f"  Processing batch {batch_num}/{total_batches} ({len(batch)} messages)...", flush=True)
         
