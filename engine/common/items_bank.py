@@ -378,6 +378,16 @@ class ItemsBank:
         
         return True
     
+    def clear(self) -> bool:
+        """
+        Clear all items and categories from the bank.
+        
+        Returns:
+            True if successful
+        """
+        self._bank = {"version": 2, "items": [], "categories": []}
+        return self.save()
+    
     def get_stats(self) -> dict[str, Any]:
         """Get bank statistics."""
         items = self._bank["items"]

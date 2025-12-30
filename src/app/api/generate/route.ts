@@ -7,7 +7,12 @@ import { logger } from "@/lib/logger";
 import { parseRankedItems, extractEstimatedCost } from "@/lib/resultParser";
 import { resolveThemeModeFromTool, validateThemeMode, getModeSettings } from "@/lib/themes";
 
-export const maxDuration = 300; // 5 minutes for long-running generation
+// Performance note: Generation time scales with:
+// - best_of: Each candidate = 1 LLM call (parallelized, but still takes time)
+// - reranking: 1 additional LLM call if best_of > 1
+// - date range: More dates = more semantic searches (parallelized)
+// Typical times: best_of=1 (~30s), best_of=5 (~3-5min), best_of=10 (~5-8min)
+export const maxDuration = 600; // 10 minutes for long-running generation
 
 export async function POST(request: NextRequest) {
   try {
@@ -165,14 +170,74 @@ export async function POST(request: NextRequest) {
     const result = await runPythonScript(toolPath, toolConfig.script, args, signal);
 
     // Check for script errors
-    if (result.exitCode !== 0 && result.stderr) {
-      logger.error(`[Inspiration] Script error (exit ${result.exitCode}):`, result.stderr);
+    if (result.exitCode !== 0) {
+      // Log both stdout and stderr for debugging
+      logger.error(`[Inspiration] Script error (exit ${result.exitCode})`);
+      if (result.stdout) {
+        logger.error(`[Inspiration] stdout:`, result.stdout.slice(-2000)); // Last 2000 chars
+      }
+      if (result.stderr) {
+        logger.error(`[Inspiration] stderr:`, result.stderr.slice(-2000)); // Last 2000 chars
+      }
+      
+      // Combine stdout and stderr for error extraction (Python sometimes prints errors to stdout)
+      const combinedOutput = [result.stderr || '', result.stdout || ''].join('\n');
+      
+      // Extract actual error message from combined output (filter out progress messages)
+      let errorMessage = result.stderr || result.stdout || 'Unknown error';
+      
+      // Look for actual error patterns (Traceback, Error:, Failed:, RuntimeError, etc.)
+      const errorPatterns = [
+        /Traceback \(most recent call last\):[\s\S]*?(?=\n\n|\n🔍|\n📥|\n✅|\n⚠️|$)/, // Full traceback
+        /(?:Error|Failed|RuntimeError|Exception|Traceback):[^\n]*(?:\n[^\n]*)*/gi, // Error lines
+        /❌[^\n]*(?:\n[^\n]*)*/g, // Error emoji lines
+      ];
+      
+      let extractedError: string | null = null;
+      for (const pattern of errorPatterns) {
+        const match = combinedOutput.match(pattern);
+        if (match && match[0]) {
+          extractedError = match[0].trim();
+          break;
+        }
+      }
+      
+      // If we found a specific error, use it; otherwise show last portion of output
+      if (extractedError) {
+        errorMessage = extractedError;
+      } else {
+        // Show last portion of combined output (most recent messages) which likely contains the error
+        const lines = combinedOutput.split('\n');
+        const errorLines = lines.filter(line => 
+          line.includes('Error') || 
+          line.includes('Failed') || 
+          line.includes('Traceback') ||
+          line.includes('❌') ||
+          line.includes('Exception') ||
+          line.includes('RuntimeError')
+        );
+        
+        if (errorLines.length > 0) {
+          // Show context around error lines (last 50 lines)
+          const lastLines = lines.slice(-50).join('\n');
+          errorMessage = lastLines;
+        } else {
+          // Fallback: show last 1000 chars of combined output
+          errorMessage = combinedOutput.slice(-1000);
+        }
+      }
+      
+      // Truncate if still too long
+      const errorPreview = errorMessage.length > 2000 
+        ? `${errorMessage.slice(0, 2000)}\n... (truncated, ${result.stderr.length} total chars in stderr)`
+        : errorMessage;
+      
       return NextResponse.json(
         {
           success: false,
           tool: resolvedTool,
           mode,
-          error: `Script failed: ${result.stderr.slice(0, 500)}`,
+          error: `Script failed (exit ${result.exitCode}): ${errorPreview}`,
           stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, candidatesGenerated: 0 },
           timestamp: new Date().toISOString(),
         },
@@ -215,8 +280,13 @@ export async function POST(request: NextRequest) {
     // Extract estimated cost
     const estimatedCost = content ? extractEstimatedCost(content, stats.candidatesGenerated) : undefined;
 
+    // Determine success: script ran successfully AND content was actually generated
+    const hasContent = !!content && content.trim().length > 0;
+    const hasItems = items && items.length > 0;
+    const actuallySuccessful = hasContent || hasItems;
+    
     const response: GenerateResult = {
-      success: true,
+      success: actuallySuccessful, // Only true if content was actually generated
       tool: resolvedTool, // Return resolved tool for backward compatibility
       mode,
       outputFile, // Deprecated - kept for backward compatibility
@@ -227,6 +297,11 @@ export async function POST(request: NextRequest) {
       stats,
       timestamp: new Date().toISOString(),
     };
+    
+    // If no content generated, add helpful error message
+    if (!actuallySuccessful) {
+      response.error = "No output generated. The conversations may have been routine work without notable patterns, or the date range had no relevant activity.";
+    }
 
     return NextResponse.json(response);
   } catch (error) {
@@ -325,18 +400,28 @@ async function runPythonScript(
 
 function parseStats(stdout: string): GenerateResult["stats"] {
   // Parse summary section from output
-  const daysProcessedMatch = stdout.match(/Days processed:\s*(\d+)/);
-  const daysWithActivityMatch = stdout.match(/Days with activity:\s*(\d+)/);
-  const daysWithOutputMatch = stdout.match(/Days with (?:ideas|posts):\s*(\d+)/);
-  const candidatesMatch = stdout.match(/best-of\s*(\d+)/i);
-  const conversationsMatch = stdout.match(/(\d+)\s+conversations/i);
+  // Handle both "Days processed:" (single date) and "Days with activity:" (aggregated)
+  const daysProcessedMatch = stdout.match(/Days processed:\s*(\d+)/i);
+  const daysWithActivityMatch = stdout.match(/Days with activity:\s*(\d+)/i);
+  const daysWithOutputMatch = stdout.match(/Days with (?:ideas|posts):\s*(\d+)/i);
+  
+  // Parse candidates - look for "best-of X" or "best_of X" or from summary
+  const candidatesMatch = stdout.match(/best[-_]of\s*(\d+)/i) || stdout.match(/Candidates generated:\s*(\d+)/i);
+  
+  // Parse conversations - look for "Conversations analyzed:" or "X conversations"
+  const conversationsMatch = stdout.match(/Conversations analyzed:\s*(\d+)/i) || stdout.match(/(\d+)\s+conversations/i);
   
   // Parse harmonization stats
-  const harmonizationMatch = stdout.match(/Harmonization Stats:\s*(\d+)\s+processed,\s*(\d+)\s+added,\s*(\d+)\s+updated,\s*(\d+)\s+deduplicated/);
+  const harmonizationMatch = stdout.match(/Harmonization Stats:\s*(\d+)\s+processed,\s*(\d+)\s+added,\s*(\d+)\s+updated,\s*(\d+)\s+deduplicated/i);
+  
+  // For aggregated ranges, daysProcessed = daysWithActivity if not explicitly stated
+  const daysProcessed = daysProcessedMatch 
+    ? parseInt(daysProcessedMatch[1]) 
+    : (daysWithActivityMatch ? parseInt(daysWithActivityMatch[1]) : 0);
   
   return {
-    daysProcessed: daysProcessedMatch ? parseInt(daysProcessedMatch[1]) : 0,
-    daysWithActivity: daysWithActivityMatch ? parseInt(daysWithActivityMatch[1]) : 0,
+    daysProcessed,
+    daysWithActivity: daysWithActivityMatch ? parseInt(daysWithActivityMatch[1]) : daysProcessed,
     daysWithOutput: daysWithOutputMatch ? parseInt(daysWithOutputMatch[1]) : 0,
     candidatesGenerated: candidatesMatch ? parseInt(candidatesMatch[1]) : 1,
     conversationsAnalyzed: conversationsMatch ? parseInt(conversationsMatch[1]) : 0,

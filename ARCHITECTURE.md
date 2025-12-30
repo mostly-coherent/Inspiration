@@ -4,6 +4,18 @@
 
 ---
 
+## Canonical Use Cases (Context)
+
+Before diving into technical details, understand what each mode is for:
+
+- **Generate (Insights):** Extract shareable insights from coding sessions → Social media posts
+- **Generate (Ideas):** Identify problems worth building solutions for → Prototype ideas
+- **Seek (Use Cases):** "I want to build X, do I have similar examples?" → Synthesized use cases from history
+
+See PLAN.md for detailed use case descriptions.
+
+---
+
 ## System Overview
 
 ```
@@ -53,7 +65,7 @@ inspiration/
 │   ├── components/             # React components (UI layer)
 │   │   ├── BanksOverview.tsx   # Bank statistics & display
 │   │   ├── ResultsPanel.tsx    # Results display (formatted/raw)
-│   │   ├── ReverseMatchSection.tsx # Reverse match search UI
+│   │   ├── SeekSection.tsx # Seek (Use Case) search UI
 │   │   ├── ProgressPanel.tsx   # Generation progress display
 │   │   ├── ModeCard.tsx        # Mode selection card
 │   │   ├── AdvancedSettings.tsx # Advanced settings panel
@@ -70,23 +82,26 @@ inspiration/
 │   └── hooks/                  # Custom React hooks
 │       └── useDebounce.ts      # Debounce hook
 ├── engine/                     # Python generation engine
-│   ├── generate.py             # Unified content generation CLI (insights/ideas modes)
-│   ├── reverse_match.py        # Reverse matching CLI
+│   ├── generate.py             # Unified content generation CLI (insights/ideas/use_case modes)
+│   ├── seek.py                 # Seek (Use Case) CLI (uses unified synthesis pipeline)
 │   ├── common/                 # Shared Python utilities
 │   │   ├── cursor_db.py        # Cursor DB extraction (SQLite + Bubble logic)
 │   │   ├── vector_db.py        # Supabase pgvector integration
 │   │   ├── llm.py              # Anthropic + OpenAI wrapper
 │   │   ├── config.py           # User config loader
-│   │   ├── bank.py             # Bank harmonization logic
+│   │   ├── items_bank.py       # Unified ItemsBank harmonization
+│   │   ├── prompt_compression.py # Per-conversation compression
 │   │   └── semantic_search.py  # Embedding generation & vector similarity
 │   ├── scripts/                # Utility scripts
 │   │   ├── index_all_messages.py # One-time Vector DB indexer
 │   │   ├── sync_messages.py    # Incremental Vector DB sync
-│   │   └── init_vector_db.sql  # Supabase schema setup
+│   │   ├── init_vector_db.sql  # Supabase schema setup
+│   │   └── clear_bank.py       # Clear ItemsBank utility
 │   └── prompts/                # LLM prompt templates
 │       ├── base_synthesize.md  # Shared prompt base (common rules)
 │       ├── insights_synthesize.md # Insights-specific prompt
 │       ├── ideas_synthesize.md    # Ideas-specific prompt
+│       ├── use_case_synthesize.md # Use case synthesis prompt (NEW)
 │       └── judge.md            # Reranking judge prompt
 └── data/                       # User data (gitignored)
     ├── config.json             # User configuration
@@ -112,7 +127,7 @@ inspiration/
 │  │                                                          │  │
 │  │  Feature Components (Domain-Specific)                    │  │
 │  │  ├── BanksOverview.tsx         (Bank domain)            │  │
-│  │  ├── ReverseMatchSection.tsx    (Search domain)          │  │
+│  │  ├── SeekSection.tsx            (Search domain)          │  │
 │  │  ├── ResultsPanel.tsx           (Results domain)         │  │
 │  │  │                                                          │  │
 │  │  UI Components (Reusable)                               │  │
@@ -174,7 +189,7 @@ inspiration/
 
 **Feature Components** (Domain-Specific):
 - **BanksOverview**: Displays idea/insight bank statistics. Owns bank state, fetches from `/api/banks`.
-- **ReverseMatchSection**: Reverse match search UI. Owns search state, calls `/api/reverse-match`.
+- **SeekSection**: Seek (Use Case) search UI. Owns search state, calls `/api/seek`.
 - **ResultsPanel**: Displays generation results. Pure presentation, receives `GenerateResult` prop.
 
 **UI Components** (Reusable):
@@ -196,7 +211,7 @@ inspiration/
 |-----------|---------------|-------|-----------|--------------|
 | `page.tsx` | Orchestration, routing, state management | 20+ useState hooks | Yes (`/api/generate`, `/api/sync`) | All components |
 | `BanksOverview` | Bank statistics & display | Bank stats state | Yes (`/api/banks`) | None |
-| `ReverseMatchSection` | Reverse match search UI | Search state | Yes (`/api/reverse-match`) | None |
+| `SeekSection` | Seek (Use Case) search UI | Search state | Yes (`/api/seek`) | None |
 | `ResultsPanel` | Results display | View mode (formatted/raw) | No | `MarkdownContent` |
 | `ModeCard` | Mode selection card | None (controlled) | No | None |
 | `ProgressPanel` | Progress display | None (controlled) | No | `LoadingSpinner`, `StopIcon` |
@@ -217,27 +232,29 @@ page.tsx (Orchestrator)
     ├─→ State updates (useState)
     │   ├─→ selectedTool, selectedMode, showAdvanced
     │   ├─→ isGenerating, result, progress
-    │   └─→ reverseMatch state
+    │   └─→ seek state
     │
     ├─→ API calls (fetch)
     │   │
     │   ├─→ /api/generate (POST)
     │   │   └─→ Python: generate.py --mode {tool}
-    │   │       └─→ Vector DB (Supabase)
+    │   │       └─→ Unified Synthesis Pipeline
+    │   │           └─→ Vector DB (Supabase) → LLM → ItemsBank
+    │   │
+    │   ├─→ /api/seek (POST)
+    │   │   └─→ Python: seek.py --query {query}
+    │   │       └─→ Unified Synthesis Pipeline
+    │   │           └─→ Vector DB (Supabase) → LLM → ItemsBank
     │   │
     │   ├─→ /api/sync (POST)
     │   │   └─→ Python: sync_messages.py
     │   │       └─→ Cursor DB (SQLite) → Vector DB (Supabase)
-    │   │
-    │   └─→ /api/reverse-match (POST)
-    │       └─→ Python: reverse_match.py
-    │           └─→ Vector DB (Supabase)
     │
     └─→ Props to Components
         │
         ├─→ Feature Components (domain state)
         │   ├─→ BanksOverview (fetches own data)
-        │   └─→ ReverseMatchSection (receives state from parent)
+        │   └─→ SeekSection (receives state from parent)
         │
         └─→ UI Components (presentation)
             └─→ ResultsPanel, ModeCard, ProgressPanel, etc.
@@ -251,7 +268,7 @@ page.tsx (Orchestrator)
 - **State**: `selectedTool`, `selectedMode`, `isGenerating`, `result`, `progress`
 - **API**: `/api/generate`
 
-**2. Reverse Match Context** (`page.tsx`, `ReverseMatchSection`)
+**2. Seek Context** (`page.tsx`, `SeekSection`)
 - **Purpose**: Search chat history for evidence of user-provided insights/ideas
 - **Boundaries**: Query input → Search → Results display
 - **State**: `reverseQuery`, `reverseDaysBack`, `reverseTopK`, `reverseMinSimilarity`, `reverseResult`
@@ -394,7 +411,7 @@ import type { ToolType } from "@/lib/types";
 src/app/api/
 ├── generate/route.ts          # Content generation endpoint
 ├── generate-stream/route.ts  # Streaming generation endpoint
-├── reverse-match/route.ts    # Reverse match search endpoint
+├── seek/route.ts             # Seek (Use Case) search endpoint
 ├── sync/route.ts             # Vector DB sync endpoint
 ├── banks/route.ts            # Bank reading endpoint
 ├── config/route.ts          # Config CRUD endpoint
@@ -460,16 +477,16 @@ Component re-renders unnecessarily?
 
 | Component | Lines | Status | Recommendation |
 |-----------|-------|--------|----------------|
-| `page.tsx` | 511 | ⚠️ Large | Consider splitting into `GenerationSection`, `ReverseMatchSection` |
-| `ReverseMatchSection.tsx` | 469 | ⚠️ Large | Consider splitting into `MatchList`, `MatchItem` |
+| `page.tsx` | 511 | ⚠️ Large | Consider splitting into `GenerationSection`, `SeekSection` |
+| `SeekSection.tsx` | 469 | ⚠️ Large | Consider splitting into `MatchList`, `MatchItem` |
 | `AdvancedSettings.tsx` | 235 | ✅ Good | Acceptable size |
 | `BanksOverview.tsx` | 220 | ✅ Good | Acceptable size |
 | `ResultsPanel.tsx` | 170 | ✅ Good | Acceptable size |
 | Others | <105 | ✅ Excellent | Well-sized |
 
 **Performance Recommendations:**
-1. **Split `page.tsx`**: Extract `GenerationSection` and `ReverseMatchSection` components
-2. **Split `ReverseMatchSection.tsx`**: Extract `MatchList` and `MatchItem` components
+1. **Split `page.tsx`**: Extract `GenerationSection` and `SeekSection` components
+2. **Split `SeekSection.tsx`**: Extract `MatchList` and `MatchItem` components
 3. **Add React Suspense**: Wrap lazy-loaded components (if splitting)
 4. **Bundle Analysis**: Configure `@next/bundle-analyzer` for monitoring
 
@@ -512,11 +529,32 @@ To handle large chat histories (e.g., 2.1GB+), we use an external Vector DB.
 *   **Flow:** Check `vector_db_sync_state.json` → Fetch new messages from SQLite (since last sync) → Embed & Upsert to Supabase.
 *   **Frequency:** Can be run daily via cron.
 
-### 3. Search (Reverse Match)
+### 3. Unified Synthesis Pipeline (Generate & Seek)
+
+Both Generate and Seek now use the same pipeline:
+
+**Step 1: Semantic Search**
 *   **Module:** `engine/common/semantic_search.py`
-*   **Logic:**
-    *   **IF** Supabase credentials exist & Vector DB is populated: Use `vector_db.py` to run similarity search in Postgres (fast).
-    *   **ELSE**: Fall back to loading JSON cache and calculating cosine similarity in memory (slow for >1GB data).
+*   **Logic:** Use `vector_db.py` to run similarity search in Postgres (fast)
+*   **Generate:** Uses predefined queries (configurable per mode)
+*   **Seek:** Uses user's query
+
+**Step 2: Fetch Conversations**
+*   **Module:** `engine/common/vector_db.py`
+*   **Function:** `get_conversations_by_chat_ids()` - fetches only relevant conversations
+
+**Step 3: Compress (if needed)**
+*   **Module:** `engine/common/prompt_compression.py`
+*   **Logic:** Per-conversation compression for large conversations (>800 tokens)
+
+**Step 4: LLM Synthesis**
+*   **Module:** `engine/generate.py` → `generate_content()`
+*   **Prompts:** Mode-specific (`insights_synthesize.md`, `ideas_synthesize.md`, `use_case_synthesize.md`)
+*   **Output:** Structured content (Ideas, Insights, or Use Cases)
+
+**Step 5: Save & Harmonize**
+*   **Module:** `engine/generate.py` → `save_output()` + `harmonize_all_outputs()`
+*   **Logic:** Save to markdown file → Parse items → Add to ItemsBank → Generate categories
 
 ---
 
@@ -584,11 +622,12 @@ To handle large chat histories (e.g., 2.1GB+), we use an external Vector DB.
 
 ## E2E Workflows
 
-### Workflow 6: Reverse Match (Vector DB Powered)
+### Workflow 6: Seek (Use Case) - Unified Synthesis Pipeline
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│                      REVERSE MATCH WORKFLOW                           │
+│                      SEEK (USE CASE) WORKFLOW                         │
+│              (Unified Synthesis Pipeline - Same as Generate)           │
 └──────────────────────────────────────────────────────────────────────┘
 
 User        UI          API            Python Engine      Supabase (PgVector)
@@ -597,29 +636,56 @@ User        UI          API            Python Engine      Supabase (PgVector)
   │  query   │           │                  │                 │
   │           │           │                  │                 │
   │─ Click ──▶│           │                  │                 │
-  │ Search    │           │                  │                 │
+  │ Seek      │           │                  │                 │
   │           │── POST ──▶│                  │                 │
-  │           │/reverse-  │                  │                 │
-  │           │  match    │                  │                 │
+  │           │/api/seek  │                  │                 │
   │           │           │                  │                 │
   │           │           │──── Spawn ──────▶│                 │
-  │           │           │   python reverse_ │                 │
-  │           │           │   match.py       │                 │
+  │           │           │   python seek.py │                 │
   │           │           │                  │                 │
-  │           │           │                  │─ Embed query ──▶ OpenAI API
-  │           │           │                  │◀─ Vector ───────┘
+  │           │           │                  │─ Semantic ─────▶│
+  │           │           │                  │   Search        │
+  │           │           │                  │◀─ Conversations │
   │           │           │                  │                 │
-  │           │           │                  │── RPC Search ──▶│
-  │           │           │                  │   (similarity)  │
-  │           │           │                  │◀── Matches ─────│
+  │           │           │                  │─ Fetch Full ───▶│
+  │           │           │                  │   Conversations │
+  │           │           │                  │◀─ Full Context ─│
+  │           │           │                  │                 │
+  │           │           │                  │─ Compress ──────▶│
+  │           │           │                  │   (if needed)   │
+  │           │           │                  │◀─ Compressed ───│
+  │           │           │                  │                 │
+  │           │           │                  │─ LLM ───────────▶│
+  │           │           │                  │   Synthesis      │
+  │           │           │                  │   (use_case)    │
+  │           │           │                  │◀─ Use Cases ────│
+  │           │           │                  │                 │
+  │           │           │                  │─ Save File ─────▶│
+  │           │           │                  │   (markdown)     │
+  │           │           │                  │                 │
+  │           │           │                  │─ Harmonize ─────▶│
+  │           │           │                  │   ItemsBank      │
+  │           │           │                  │◀─ Saved ────────│
+  │           │           │                  │                 │
+  │           │           │                  │─ Categories ────▶│
+  │           │           │                  │   (auto-group)   │
+  │           │           │                  │◀─ Grouped ──────│
   │           │           │                  │                 │
   │           │           │◀──── stdout ─────│                 │
-  │           │           │   JSON matches   │                 │
+  │           │           │   JSON (content   │                 │
+  │           │           │   + items)       │                 │
   │           │◀─ JSON ───│                  │                 │
   │◀─ Render ─│  response │                  │                 │
-  │   matches │           │                  │                 │
+  │   use     │           │                  │                 │
+  │   cases   │           │                  │                 │
   │           │           │                  │                 │
 ```
+
+**Key Difference from Generate:**
+- Input: User's query (not predefined queries)
+- Prompt: `use_case_synthesize.md` (finds examples, not generates new ideas)
+- Output: Structured use cases (What, How, Context, Similarity, Takeaways)
+- Bank Mode: `use_case` (saved to ItemsBank with `theme="seek"`)
 
 ---
 
@@ -648,13 +714,134 @@ Auto-detects path based on OS:
 
 ## Performance Characteristics
 
+### Generation Performance (2025-12-30 Optimizations)
+
+| Scenario | Before Optimizations | After Optimizations | Speedup |
+|----------|----------------------|---------------------|---------|
+| **Single day** | ~3-5s | **~0.5-1s** | **5-10x** |
+| **7 days** | ~20-35s | **~2-5s** | **7-10x** |
+| **14 days (sprint)** | ~40-70s | **~4-8s** | **8-10x** |
+| **28 days (month)** | ~80-140s | **~8-15s** | **8-10x** |
+
+### Search Performance
+
 | Operation | Before (SQLite/JSON) | After (Vector DB) | Improvement |
 |-----------|----------------------|-------------------|-------------|
-| **Reverse Match (90 days)** | 3-5 seconds | **0.5-1 second** | **5-10x Faster** |
+| **Seek (Use Case) - 90 days** | 3-5 seconds | **0.5-1 second** | **5-10x Faster** |
 | **Scaling Limit** | ~3GB database | Terabytes | **Unlimited** |
 | **Data Integrity** | Locked file risks | Independent clone | **High** |
 | **Search Cost** | Per-query embedding | One-time indexing | **~99% Cheaper** |
 
+### Performance Optimization Architecture (2025-01-30)
+
+**1. Parallelized Semantic Searches**
+- **Implementation:** `ThreadPoolExecutor` with max 5 workers
+- **Location:** `engine/generate.py` → `_get_relevant_conversations()`
+- **Impact:** 5 search queries run concurrently instead of sequentially
+- **Speedup:** ~5x faster search phase (from ~1-2.5s to ~200-500ms)
+
+**2. Optimized Data Fetching**
+- **Implementation:** New `get_conversations_by_chat_ids()` function
+- **Location:** `engine/common/vector_db.py`
+- **Impact:** Fetches only relevant conversations (not all then filter)
+- **Speedup:** 10-100x faster for days with many conversations
+
+**3. Parallelized Date Processing**
+- **Implementation:** `ThreadPoolExecutor` with max 10 workers
+- **Location:** `engine/generate.py` → `process_aggregated_range()`
+- **Impact:** Processes multiple dates concurrently
+- **Speedup:** Up to 10x faster for multi-day ranges
+
+**Performance Optimizations (2025-01-30):**
+
+1. **Skip Judging for `best_of=1`**
+   - **When:** Only 1 candidate generated
+   - **Impact:** Saves 5-15 seconds, ~$0.003 per generation
+   - **Implementation:** Early return in `generate_content()` if `best_of <= 1`
+
+2. **Skip Compression for Small Date Ranges**
+   - **When:** Date range < 7 days
+   - **Impact:** Saves 10-30 seconds, ~$0.001-0.005 per generation
+   - **Implementation:** Check `date_range_days < 7` before compression in `process_aggregated_range()` and `seek_use_case()`
+
+3. **Async Category Generation**
+   - **When:** Items added to bank
+   - **Impact:** Saves 15-30 seconds from user wait time (non-blocking)
+   - **Implementation:** Background thread using `threading.Thread` with `daemon=True`
+   - **Fallback:** Synchronous if threading fails
+
+**Performance Bottlenecks Eliminated:**
+- ❌ Sequential semantic searches (5 queries waiting for each other)
+- ❌ Over-fetching conversations (fetch all, filter client-side)
+- ❌ Sequential date processing (one date at a time)
+- ❌ Unnecessary judging when only 1 candidate (2025-01-30)
+- ❌ Compression for small date ranges (2025-01-30)
+- ❌ Blocking category generation (2025-01-30)
+
+**Current Architecture:**
+```
+Generation Request
+    │
+    ├─→ Parallel Semantic Searches (5 concurrent)
+    │   └─→ ThreadPoolExecutor (max 5 workers)
+    │
+    ├─→ Efficient Data Fetching (by chat_ids only)
+    │   └─→ get_conversations_by_chat_ids()
+    │
+    └─→ Parallel Date Processing (multi-day ranges)
+        └─→ ThreadPoolExecutor (max 10 workers)
+```
+
 ---
 
-**Last Updated:** 2025-12-28
+---
+
+## Unified Synthesis Pipeline Architecture (2025-01-30)
+
+**All modes (Generate Insights, Generate Ideas, Seek Use Cases) now use the same backend flow:**
+
+```
+1. Semantic Search
+   ├─→ Generate: Predefined queries (configurable per mode)
+   └─→ Seek: User's query
+   │
+   └─→ Vector DB (Supabase pgvector)
+       └─→ Returns relevant chat_ids
+
+2. Fetch Conversations
+   └─→ get_conversations_by_chat_ids()
+       └─→ Returns full conversations (only relevant ones)
+
+3. Compress (if needed)
+   └─→ compress_single_conversation()
+       └─→ Per-conversation compression (>800 tokens)
+
+4. LLM Synthesis
+   ├─→ generate_content()
+   ├─→ Mode-specific prompt:
+   │   ├─→ insights_synthesize.md (for Insights)
+   │   ├─→ ideas_synthesize.md (for Ideas)
+   │   └─→ use_case_synthesize.md (for Use Cases)
+   └─→ Returns structured content
+
+5. Save to File
+   └─→ save_output()
+       └─→ Markdown file with header + content + candidates
+
+6. Harmonize to Bank
+   ├─→ _parse_output() - Extract items from markdown
+   ├─→ ItemsBank.add_item() - Add/update items
+   └─→ ItemsBank.save() - Persist to items_bank.json
+
+7. Generate Categories
+   └─→ ItemsBank.generate_categories()
+       └─→ Groups similar items using cosine similarity
+```
+
+**Key Benefits:**
+- Single codebase for all modes (DRY principle)
+- Consistent behavior across modes
+- Easier to maintain and extend
+- Use cases become reusable assets in bank
+
+**Last Updated:** 2025-01-30

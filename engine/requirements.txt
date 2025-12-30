@@ -7,5 +7,8 @@ openai>=1.0.0
 # Semantic Search
 numpy>=1.24.0
 
+# Prompt Compression
+tiktoken>=0.5.0
+
 # Database
 supabase>=2.0.0

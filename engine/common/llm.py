@@ -1,9 +1,10 @@
 """
-LLM Provider Abstraction — Unified interface for Anthropic and OpenAI.
+LLM Provider Abstraction — Unified interface for Anthropic, OpenAI, and OpenRouter.
 
 Supports:
 - Anthropic Claude (primary)
 - OpenAI GPT (fallback)
+- OpenRouter (500+ models from 60+ providers)
 """
 
 import os
@@ -29,6 +30,8 @@ except ImportError:
 # Default models
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
 DEFAULT_OPENAI_MODEL = "gpt-4o"
+DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4"  # OpenRouter model ID
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # Token limits
 MAX_TOKENS_DEFAULT = 4000
@@ -40,18 +43,37 @@ class LLMProvider:
     
     def __init__(
         self,
-        provider: Literal["anthropic", "openai"] = "anthropic",
+        provider: Literal["anthropic", "openai", "openrouter"] = "anthropic",
         model: str | None = None,
-        fallback_provider: Literal["anthropic", "openai", None] = "openai",
+        fallback_provider: Literal["anthropic", "openai", "openrouter", None] = "openai",
         fallback_model: str | None = None,
-        judge_provider: Literal["anthropic", "openai", None] = None,
+        judge_provider: Literal["anthropic", "openai", "openrouter", None] = None,
         judge_model: str | None = None,
         use_cheaper_judge: bool = True,
     ):
         self.provider = provider
-        self.model = model or (DEFAULT_ANTHROPIC_MODEL if provider == "anthropic" else DEFAULT_OPENAI_MODEL)
+        # Set default model based on provider
+        if model is None:
+            if provider == "anthropic":
+                self.model = DEFAULT_ANTHROPIC_MODEL
+            elif provider == "openrouter":
+                self.model = DEFAULT_OPENROUTER_MODEL
+            else:
+                self.model = DEFAULT_OPENAI_MODEL
+        else:
+            self.model = model
+        
         self.fallback_provider = fallback_provider
-        self.fallback_model = fallback_model or (DEFAULT_OPENAI_MODEL if fallback_provider == "openai" else DEFAULT_ANTHROPIC_MODEL)
+        # Set default fallback model
+        if fallback_model is None and fallback_provider:
+            if fallback_provider == "anthropic":
+                self.fallback_model = DEFAULT_ANTHROPIC_MODEL
+            elif fallback_provider == "openrouter":
+                self.fallback_model = DEFAULT_OPENROUTER_MODEL
+            else:
+                self.fallback_model = DEFAULT_OPENAI_MODEL
+        else:
+            self.fallback_model = fallback_model
         
         # Judge model configuration (for cheaper judging)
         self.use_cheaper_judge = use_cheaper_judge
@@ -61,6 +83,7 @@ class LLMProvider:
         # Initialize clients
         self._anthropic_client = None
         self._openai_client = None
+        self._openrouter_client = None
         
         self._init_clients()
     
@@ -103,6 +126,15 @@ class LLMProvider:
             api_key = os.environ.get("OPENAI_API_KEY")
             if api_key:
                 self._openai_client = openai.OpenAI(api_key=api_key)
+        
+        # OpenRouter (uses OpenAI client with custom base URL)
+        if OPENAI_AVAILABLE:
+            api_key = os.environ.get("OPENROUTER_API_KEY")
+            if api_key:
+                self._openrouter_client = openai.OpenAI(
+                    api_key=api_key,
+                    base_url=OPENROUTER_BASE_URL
+                )
     
     def is_available(self, provider: str) -> bool:
         """Check if a provider is available."""
@@ -110,11 +142,15 @@ class LLMProvider:
             return self._anthropic_client is not None
         elif provider == "openai":
             return self._openai_client is not None
+        elif provider == "openrouter":
+            return self._openrouter_client is not None
         return False
     
     def get_available_providers(self) -> list[str]:
         """Get list of available providers."""
         available = []
+        if self.is_available("openrouter"):
+            available.append("openrouter")
         if self._anthropic_client:
             available.append("anthropic")
         if self._openai_client:
@@ -193,7 +229,7 @@ class LLMProvider:
         available = self.get_available_providers()
         if not available:
             raise RuntimeError(
-                "No LLM provider available. Please set ANTHROPIC_API_KEY or OPENAI_API_KEY "
+                "No LLM provider available. Please set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY "
                 "in your environment or .env file."
             )
         
@@ -267,6 +303,8 @@ class LLMProvider:
             yield from self._call_anthropic_stream(model, prompt, system_prompt, max_tokens, temperature)
         elif provider == "openai":
             yield from self._call_openai_stream(model, prompt, system_prompt, max_tokens, temperature)
+        elif provider == "openrouter":
+            yield from self._call_openrouter_stream(model, prompt, system_prompt, max_tokens, temperature)
         else:
             raise ValueError(f"Unknown provider: {provider}")
     
@@ -403,6 +441,8 @@ class LLMProvider:
             return self._call_anthropic(model, prompt, system_prompt, max_tokens, temperature)
         elif provider == "openai":
             return self._call_openai(model, prompt, system_prompt, max_tokens, temperature)
+        elif provider == "openrouter":
+            return self._call_openrouter(model, prompt, system_prompt, max_tokens, temperature)
         else:
             raise ValueError(f"Unknown provider: {provider}")
     
@@ -456,6 +496,61 @@ class LLMProvider:
         )
         
         return response.choices[0].message.content
+    
+    def _call_openrouter(
+        self,
+        model: str,
+        prompt: str,
+        system_prompt: str | None,
+        max_tokens: int,
+        temperature: float,
+    ) -> str:
+        """Call OpenRouter (OpenAI-compatible API)."""
+        if not self._openrouter_client:
+            raise RuntimeError("OpenRouter client not initialized")
+        
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        
+        response = self._openrouter_client.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        
+        return response.choices[0].message.content
+    
+    def _call_openrouter_stream(
+        self,
+        model: str,
+        prompt: str,
+        system_prompt: str | None,
+        max_tokens: int,
+        temperature: float,
+    ):
+        """Stream tokens from OpenRouter (OpenAI-compatible API)."""
+        if not self._openrouter_client:
+            raise RuntimeError("OpenRouter client not initialized")
+        
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        
+        stream = self._openrouter_client.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            stream=True,
+        )
+        
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
 
 
 def create_llm(config: dict | None = None) -> LLMProvider:

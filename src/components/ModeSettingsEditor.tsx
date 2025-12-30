@@ -18,6 +18,7 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
   const [implementedItemsFolder, setImplementedItemsFolder] = useState("");
   const [temperature, setTemperature] = useState<number | null>(null);
   const [minSimilarity, setMinSimilarity] = useState<number | null>(null);
+  const [semanticSearchQueries, setSemanticSearchQueries] = useState<string[]>([]);
 
   useEffect(() => {
     loadMode();
@@ -33,6 +34,7 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
         setImplementedItemsFolder(modeData.settings.implementedItemsFolder || "");
         setTemperature(modeData.settings.temperature);
         setMinSimilarity(modeData.settings.minSimilarity);
+        setSemanticSearchQueries(modeData.settings.semanticSearchQueries || []);
       }
     } catch (error) {
       console.error("Failed to load mode:", error);
@@ -53,6 +55,7 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
           implementedItemsFolder: implementedItemsFolder || null,
           temperature: temperature,
           minSimilarity: minSimilarity,
+          semanticSearchQueries: semanticSearchQueries.length > 0 ? semanticSearchQueries : null,
         },
       };
 
@@ -176,6 +179,38 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
             {mode === "idea"
               ? "Folder containing implemented projects (items will be marked as implemented if found)"
               : "Folder containing published posts (items will be marked as implemented if found)"}
+          </p>
+        </div>
+      )}
+
+      {/* Semantic Search Queries (for generation and seek modes) */}
+      {(mode === "idea" || mode === "insight" || mode === "use_case") && (
+        <div>
+          <label className="block text-sm text-adobe-gray-400 mb-1">
+            Semantic Search Queries
+          </label>
+          <p className="text-xs text-adobe-gray-500 mb-2">
+            Queries used to find relevant conversations. One query per line.
+            {mode === "use_case" && " These queries will be combined with your search query to find similar examples."}
+          </p>
+          <textarea
+            value={semanticSearchQueries.join("\n")}
+            onChange={(e) => {
+              const lines = e.target.value.split("\n").filter(line => line.trim());
+              setSemanticSearchQueries(lines);
+            }}
+            placeholder={
+              mode === "use_case"
+                ? "Examples of similar projects\nRelated use cases and implementations"
+                : "What did I learn? What problems did I solve?"
+            }
+            rows={4}
+            className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-white font-mono text-sm"
+          />
+          <p className="text-xs text-adobe-gray-500 mt-1">
+            {mode === "use_case" 
+              ? "Each query will be combined with your search query (e.g., 'Examples of similar projects related to: [your query]'). Multiple queries help find different types of relevant content."
+              : "Each query searches your chat history for semantically similar conversations. Multiple queries help find different types of relevant content."}
           </p>
         </div>
       )}

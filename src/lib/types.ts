@@ -156,8 +156,8 @@ export function getToolPath(tool: ToolType): string {
   return config.getPath();
 }
 
-// Reverse Match Types
-export interface ReverseMatchRequest {
+// Seek Types (Theme: Seek, Mode: Use Case)
+export interface SeekRequest {
   query: string;
   daysBack?: number;
   topK?: number;
@@ -165,7 +165,7 @@ export interface ReverseMatchRequest {
   workspaces?: string[];
 }
 
-export interface ReverseMatchMessage {
+export interface SeekMessage {
   type: "user" | "assistant";
   text: string;
   timestamp: number;
@@ -174,25 +174,24 @@ export interface ReverseMatchMessage {
   chat_type?: "composer" | "chat";
 }
 
-export interface ReverseMatchResult {
+export interface SeekResult {
   success: boolean;
   query: string;
-  matches: Array<{
-    message: ReverseMatchMessage;
-    similarity: number;
-    context: {
-      before: ReverseMatchMessage[];
-      after: ReverseMatchMessage[];
-    };
-  }>;
+  content?: string; // Synthesized use cases (markdown)
+  items?: Array<{
+    title: string;
+    what?: string;
+    how?: string;
+    context?: string;
+    similarity?: string;
+    takeaways?: string;
+  }>; // Parsed use case items
   stats: {
-    totalMessages: number;
-    matchesFound: number;
+    conversationsAnalyzed: number;
     daysSearched: number;
-    startDate?: string;
-    endDate?: string;
-    conversationsExamined?: number;
+    useCasesFound: number;
   };
+  outputFile?: string;
   error?: string;
 }
 
@@ -252,6 +251,7 @@ export interface ModeSettings {
   minSimilarity: number | null;
   goldenExamplesFolder: string | null;
   implementedItemsFolder: string | null;
+  semanticSearchQueries: string[] | null; // Semantic search queries for finding relevant conversations
 }
 
 export interface Mode {

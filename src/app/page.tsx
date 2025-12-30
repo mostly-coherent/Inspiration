@@ -7,13 +7,13 @@ import {
   GenerateResult,
   PRESET_MODES,
   TOOL_CONFIG,
-  ReverseMatchResult,
+  SeekResult,
   ThemeType,
   ModeType,
 } from "@/lib/types";
 import { BanksOverview } from "@/components/BanksOverview";
 import { ResultsPanel } from "@/components/ResultsPanel";
-import { ReverseMatchSection } from "@/components/ReverseMatchSection";
+import { SeekSection } from "@/components/SeekSection";
 import { ProgressPanel } from "@/components/ProgressPanel";
 import { ModeCard } from "@/components/ModeCard";
 import { AdvancedSettings } from "@/components/AdvancedSettings";
@@ -34,20 +34,20 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<GenerateResult | null>(null);
   
-  // Reverse Match state - derived from selected theme
-  const [showReverseMatch, setShowReverseMatch] = useState(false);
+  // Seek state - derived from selected theme
+  const [showSeek, setShowSeek] = useState(false);
   
-  // Sync showReverseMatch with selectedTheme
+  // Sync showSeek with selectedTheme
   useEffect(() => {
-    setShowReverseMatch(selectedTheme === "seek");
+    setShowSeek(selectedTheme === "seek");
   }, [selectedTheme]);
   const [reverseQuery, setReverseQuery] = useState("");
-  const [isReverseMatching, setIsReverseMatching] = useState(false);
-  const [reverseResult, setReverseResult] = useState<ReverseMatchResult | null>(null);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const [seekResult, setSeekResult] = useState<SeekResult | null>(null);
   const [reverseDaysBack, setReverseDaysBack] = useState(90);
   const [reverseTopK, setReverseTopK] = useState(10);
   const [reverseMinSimilarity, setReverseMinSimilarity] = useState(0.0);
-  const reverseAbortController = useRef<AbortController | null>(null);
+  const seekAbortController = useRef<AbortController | null>(null);
 
   // Sync state
   const [isSyncing, setIsSyncing] = useState(false);
@@ -302,9 +302,9 @@ export default function Home() {
         abortController.current.abort();
         abortController.current = null;
       }
-      if (reverseAbortController.current) {
-        reverseAbortController.current.abort();
-        reverseAbortController.current = null;
+      if (seekAbortController.current) {
+        seekAbortController.current.abort();
+        seekAbortController.current = null;
       }
     };
   }, []);
@@ -378,7 +378,7 @@ export default function Home() {
               onThemeChange={(themeId) => setSelectedTheme(themeId as ThemeType)}
             />
             
-            {!showReverseMatch && (
+            {!showSeek && (
               <ModeSelector
                 theme={selectedTheme}
                 selectedMode={selectedModeId}
@@ -389,7 +389,7 @@ export default function Home() {
           </div>
         </section>
 
-        {showReverseMatch ? null : (
+        {showSeek ? null : (
           <>
         {/* Time Period & Settings Section */}
         <section className="glass-card p-6 space-y-6">
@@ -463,7 +463,7 @@ export default function Home() {
               <button
                 onClick={handleGenerate}
                 className="btn-primary text-2xl px-16 py-5 font-semibold shadow-lg shadow-inspiration-ideas/20 hover:shadow-inspiration-ideas/30 transition-all"
-                aria-busy={isGenerating}
+                aria-busy={isGenerating ? "true" : "false"}
                 aria-live="polite"
               >
                 <span className="flex items-center gap-3">
@@ -486,24 +486,24 @@ export default function Home() {
           </>
         )}
 
-        {/* Reverse Match Section - Only shown when Seek theme is selected */}
-        {showReverseMatch && (
-          <ReverseMatchSection
-          showReverseMatch={showReverseMatch}
-          setShowReverseMatch={setShowReverseMatch}
-          query={reverseQuery}
-          setQuery={setReverseQuery}
-          daysBack={reverseDaysBack}
-          setDaysBack={setReverseDaysBack}
-          topK={reverseTopK}
-          setTopK={setReverseTopK}
-          minSimilarity={reverseMinSimilarity}
-          setMinSimilarity={setReverseMinSimilarity}
-          isMatching={isReverseMatching}
-          setIsMatching={setIsReverseMatching}
-          result={reverseResult}
-          setResult={setReverseResult}
-          abortController={reverseAbortController}
+        {/* Seek Section - Only shown when Seek theme is selected */}
+        {showSeek && (
+          <SeekSection
+            showSeek={showSeek}
+            setShowSeek={setShowSeek}
+            query={reverseQuery}
+            setQuery={setReverseQuery}
+            daysBack={reverseDaysBack}
+            setDaysBack={setReverseDaysBack}
+            topK={reverseTopK}
+            setTopK={setReverseTopK}
+            minSimilarity={reverseMinSimilarity}
+            setMinSimilarity={setReverseMinSimilarity}
+            isSeeking={isSeeking}
+            setIsSeeking={setIsSeeking}
+            result={seekResult}
+            setResult={setSeekResult}
+            abortController={seekAbortController}
           />
         )}
       </div>

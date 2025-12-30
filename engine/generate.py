@@ -48,6 +48,7 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 OUTPUT_DIRS = {
     "insights": get_data_dir() / "insights_output",
     "ideas": get_data_dir() / "ideas_output",
+    "use_cases": get_data_dir() / "use_cases_output",
 }
 
 # Default generation settings
@@ -86,7 +87,7 @@ _prompt_cache: dict[str, str] = {}
 _prompt_file_mtimes: dict[str, float] = {}
 
 
-def load_synthesize_prompt(mode: Literal["insights", "ideas"]) -> str:
+def load_synthesize_prompt(mode: Literal["insights", "ideas", "use_case"]) -> str:
     """Load the synthesis prompt for the given mode (cached, combines base + mode-specific)."""
     # Load base prompt (common elements)
     base_prompt_name = "base_synthesize"
@@ -133,8 +134,10 @@ def load_synthesize_prompt(mode: Literal["insights", "ideas"]) -> str:
     if not combined:
         if mode == "insights":
             return "Generate 3 LinkedIn post drafts from the following Cursor chat history."
-        else:
+        elif mode == "ideas":
             return "Generate 3 idea briefs from the following Cursor chat history."
+        else:  # use_case
+            return "Find and synthesize real-world use cases from the following Cursor chat history."
     
     return combined
 
@@ -232,7 +235,7 @@ def get_author_context() -> tuple[str, str]:
 
 def generate_content(
     conversations_text: str,
-    mode: Literal["insights", "ideas"],
+    mode: Literal["insights", "ideas", "use_case"],
     *,
     llm: LLMProvider,
     max_tokens: int = 2000,
@@ -299,6 +302,7 @@ def generate_content(
     
     # Multiple candidates with reranking - generate in parallel for speed
     candidates = []
+    errors = []  # Collect errors for better diagnostics
     with ThreadPoolExecutor(max_workers=min(best_of, 5)) as executor:
         # Submit all generation tasks
         futures = {}
@@ -321,28 +325,58 @@ def generate_content(
                 text = future.result()
                 candidates.append((candidate_id, text))
             except Exception as e:
-                print(f"⚠️  Failed to generate {candidate_id}: {e}")
+                import traceback
+                error_msg = str(e)
+                error_traceback = traceback.format_exc()
+                error_info = f"{candidate_id}: {error_msg}"
+                errors.append(error_info)
+                print(f"⚠️  Failed to generate {candidate_id}: {error_msg}", file=sys.stderr)
+                print(f"   Traceback:\n{error_traceback}", file=sys.stderr)
                 # Continue with remaining candidates
     
     # Check if we have any successful candidates
     if not candidates:
+        error_summary = "\n".join(f"  - {err}" for err in errors) if errors else "  (No error details captured)"
         raise RuntimeError(
-            "All candidate generations failed. This may be due to:\n"
-            "- Rate limits (prompt too large)\n"
-            "- API errors\n"
-            "- Network issues\n\n"
+            f"All candidate generations failed ({best_of} attempts).\n\n"
+            f"Errors encountered:\n{error_summary}\n\n"
+            "Common causes:\n"
+            "  - Rate limits (prompt too large, too many requests)\n"
+            "  - API key issues (invalid or missing API key)\n"
+            "  - API errors (service unavailable, timeout)\n"
+            "  - Network issues\n"
+            "  - Prompt exceeds token limits\n\n"
             "Try:\n"
-            "- Enabling prompt compression in settings\n"
-            "- Reducing the date range\n"
-            "- Using a smaller best-of value"
+            "  - Enabling prompt compression in settings\n"
+            "  - Reducing the date range\n"
+            "  - Using a smaller best-of value\n"
+            "  - Checking API keys in .env file\n"
+            "  - Verifying API quota/limits"
         )
     
     if not rerank:
         return candidates[0][1], candidates
     
+    # OPTIMIZATION: Skip judging if only one candidate (no choice needed)
+    if best_of <= 1 or len(candidates) <= 1:
+        print(f"⏭️  Skipping judge (only {len(candidates)} candidate(s))", file=sys.stderr)
+        return candidates[0][1], candidates
+    
     # Rerank candidates using cheaper judge model if available
     judge_prompt = load_judge_prompt()
-    candidates_blob = "\n\n".join([f"---\nCANDIDATE {cid}\n---\n{text}" for cid, text in candidates])
+    
+    # OPTIMIZATION: Truncate candidates for faster judging
+    # Judge only needs to see enough to compare quality, not full content
+    MAX_CANDIDATE_CHARS = 1500  # ~375 tokens per candidate
+    truncated_candidates = []
+    for cid, text in candidates:
+        if len(text) > MAX_CANDIDATE_CHARS:
+            truncated_text = text[:MAX_CANDIDATE_CHARS] + "\n... (truncated for judging)"
+        else:
+            truncated_text = text
+        truncated_candidates.append((cid, truncated_text))
+    
+    candidates_blob = "\n\n".join([f"---\nCANDIDATE {cid}\n---\n{text}" for cid, text in truncated_candidates])
     judge_user = f"Pick the best set.\n\n{candidates_blob}"
     
     # Use cheaper judge model if configured (saves ~80% cost)
@@ -350,10 +384,11 @@ def generate_content(
     if judge_llm != llm:
         print(f"💰 Using {judge_llm.provider}/{judge_llm.model} for judging (cost optimization)")
     
+    print(f"⚖️  Judging {len(candidates)} candidates...", file=sys.stderr)
     judge_text = judge_llm.generate(
         judge_user,
         system_prompt=judge_prompt,
-        max_tokens=300,
+        max_tokens=200,  # Reduced from 300 - judge response is simple JSON
         temperature=0.0,
     )
     
@@ -366,6 +401,25 @@ def generate_content(
     
     # Find best match, or use first candidate if best_id not found
     best_match = next((t for cid, t in candidates if cid == best_id), candidates[0][1])
+    
+    # VALIDATION: Check if best_match has valid content format
+    # If judge picked an invalid/empty candidate, try other candidates
+    # Skip validation for use_case mode (not in MODE_CONFIG)
+    if mode in MODE_CONFIG:
+        config = MODE_CONFIG[mode]
+        if not config["has_output_check"](best_match):
+        print(f"⚠️  Judge picked {best_id} but it has no valid output format", file=sys.stderr)
+        print(f"   Trying other candidates...", file=sys.stderr)
+        # Try to find a candidate with valid format
+        for cid, candidate_text in candidates:
+            if config["has_output_check"](candidate_text):
+                print(f"   ✅ Found valid candidate: {cid}", file=sys.stderr)
+                best_match = candidate_text
+                best_id = cid
+                break
+        else:
+            # No valid candidates found - log warning but continue
+            print(f"   ⚠️  No candidates have valid output format. Using judge's pick anyway.", file=sys.stderr)
     
     if include_scorecard and judge:
         scorecard_md = _format_scorecard(judge, candidates)
@@ -426,16 +480,10 @@ def _format_scorecard(judge: dict, candidates: list[tuple[str, str]]) -> str:
 def save_output(
     content: str,
     target_date: datetime.date,
-    mode: Literal["insights", "ideas"],
+    mode: Literal["insights", "ideas", "use_case"],
     all_candidates: list[tuple[str, str]] | None = None,
 ) -> Path:
     """Save generated content to file."""
-    config = MODE_CONFIG[mode]
-    output_dir = config["output_dir"]
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    date_str = target_date.strftime("%Y-%m-%d")
-    
     # Clean markdown code fences
     content = content.strip()
     if content.startswith("```"):
@@ -446,19 +494,40 @@ def save_output(
             lines = lines[:-1]
         content = "\n".join(lines)
     
-    has_output = config["has_output_check"](content)
-    suffix = config["output_suffix"] if has_output else config["no_output_suffix"]
-    output_file = output_dir / f"{date_str}{suffix}"
-    
-    # Remove alternate file if exists
-    alt_suffix = config["no_output_suffix"] if has_output else config["output_suffix"]
-    alt_file = output_dir / f"{date_str}{alt_suffix}"
-    if alt_file.exists():
-        alt_file.unlink()
-    
-    workspaces = get_workspaces()
-    
-    header = f"""# {config["header_title"]} — {date_str}
+    # Handle use_case mode (not in MODE_CONFIG)
+    if mode == "use_case":
+        output_dir = OUTPUT_DIRS["use_cases"]
+        output_dir.mkdir(parents=True, exist_ok=True)
+        date_str = target_date.strftime("%Y%m%d_%H%M%S")
+        output_file = output_dir / f"use_case_{date_str}.md"
+        
+        header = f"""# Use Cases — {target_date.strftime("%Y-%m-%d")}
+
+Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+---
+
+"""
+    else:
+        config = MODE_CONFIG[mode]
+        output_dir = config["output_dir"]
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        date_str = target_date.strftime("%Y-%m-%d")
+        
+        has_output = config["has_output_check"](content)
+        suffix = config["output_suffix"] if has_output else config["no_output_suffix"]
+        output_file = output_dir / f"{date_str}{suffix}"
+        
+        # Remove alternate file if exists
+        alt_suffix = config["no_output_suffix"] if has_output else config["output_suffix"]
+        alt_file = output_dir / f"{date_str}{alt_suffix}"
+        if alt_file.exists():
+            alt_file.unlink()
+        
+        workspaces = get_workspaces()
+        
+        header = f"""# {config["header_title"]} — {date_str}
 
 Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 Workspaces: {', '.join(workspaces) if workspaces else 'All'}
@@ -579,7 +648,14 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
         for f in batch:
             content = f.read_text()
             parsed_items = _parse_output(content, mode)
-            items.extend(parsed_items)
+            if parsed_items:
+                items.extend(parsed_items)
+            else:
+                # Log when file has no parseable items (helps debug)
+                print(f"   ⚠️  No items found in {f.name} (content may be empty or wrong format)", file=sys.stderr)
+                # Log a snippet of content to help debug
+                content_preview = content[:200].replace('\n', ' ')
+                print(f"      Content preview: {content_preview}...", file=sys.stderr)
         
         if items:
             # Use v1 ItemsBank system
@@ -618,13 +694,33 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
             print(f"   🗑️  Deleted: {f.name}")
         processed += len(batch)
     
-    # Generate categories after harmonization
+    # OPTIMIZATION: Generate categories asynchronously (non-blocking)
+    # Category generation takes 15-30 seconds but doesn't need to block the response
+    # User gets results immediately; categories update in background
     if items_added_count > 0:
-        print(f"\n📂 Generating categories for {mode_id} mode...")
-        bank = ItemsBank()
-        categories = bank.generate_categories(mode=mode_id, similarity_threshold=0.75)
-        bank.save()
-        print(f"✅ Created/updated {len(categories)} categor{'y' if len(categories) == 1 else 'ies'}")
+        print(f"\n📂 Generating categories for {mode_id} mode (non-blocking)...", file=sys.stderr)
+        try:
+            import threading
+            def generate_categories_async():
+                try:
+                    bank = ItemsBank()
+                    categories = bank.generate_categories(mode=mode_id, similarity_threshold=0.75)
+                    bank.save()
+                    print(f"✅ Created/updated {len(categories)} categor{'y' if len(categories) == 1 else 'ies'} (background)", file=sys.stderr)
+                except Exception as e:
+                    print(f"⚠️  Category generation failed (non-critical): {e}", file=sys.stderr)
+            
+            # Start category generation in background thread
+            category_thread = threading.Thread(target=generate_categories_async, daemon=True)
+            category_thread.start()
+            print(f"   ⏳ Categories will be generated in background (results available immediately)", file=sys.stderr)
+        except Exception as e:
+            # Fallback to synchronous if threading fails
+            print(f"⚠️  Failed to start async category generation, running synchronously: {e}", file=sys.stderr)
+            bank = ItemsBank()
+            categories = bank.generate_categories(mode=mode_id, similarity_threshold=0.75)
+            bank.save()
+            print(f"✅ Created/updated {len(categories)} categor{'y' if len(categories) == 1 else 'ies'}")
     
     return processed
 
@@ -632,6 +728,9 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
 def _parse_output(content: str, mode: Literal["insights", "ideas"]) -> list[dict[str, Any]]:
     """Parse output file into structured format based on mode."""
     items = []
+    
+    if not content or not content.strip():
+        return items
     
     # Parse the main/best output (before "## All Generated Candidates")
     main_section = content.split("## All Generated Candidates")[0]
@@ -689,25 +788,37 @@ def _parse_output(content: str, mode: Literal["insights", "ideas"]) -> list[dict
     
     else:  # ideas mode
         # Extract all idea sections from main content
-        idea_pattern = r'^## Idea \d+:\s*(.+?)(?=^## |\Z)'
-        for match in re.finditer(idea_pattern, main_section, re.MULTILINE | re.DOTALL):
-            item = {}
-            item["title"] = match.group(1).strip().split('\n')[0]
+        # Try multiple patterns in case format varies
+        idea_patterns = [
+            r'^## Idea \d+:\s*(.+?)(?=^## |\Z)',  # Standard format: ## Idea 1: Title
+            r'^##\s+Idea\s+\d+[:\-]\s*(.+?)(?=^## |\Z)',  # Variant with dash or no colon
+        ]
+        
+        found_items = False
+        for pattern in idea_patterns:
+            for match in re.finditer(pattern, main_section, re.MULTILINE | re.DOTALL):
+                item = {}
+                item["title"] = match.group(1).strip().split('\n')[0]
+                
+                idea_content = match.group(0)
+                patterns = {
+                    "problem": r'\*\*Problem:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                    "solution": r'\*\*Solution:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                    "context": r'\*\*Why It Matters:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                }
+                
+                for key, pattern in patterns.items():
+                    pattern_match = re.search(pattern, idea_content, re.DOTALL | re.IGNORECASE)
+                    if pattern_match:
+                        item[key] = pattern_match.group(1).strip()
+                
+                if item.get("title"):
+                    items.append(item)
+                    found_items = True
             
-            idea_content = match.group(0)
-            patterns = {
-                "problem": r'\*\*Problem:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "solution": r'\*\*Solution:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "context": r'\*\*Why It Matters:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-            }
-            
-            for key, pattern in patterns.items():
-                pattern_match = re.search(pattern, idea_content, re.DOTALL | re.IGNORECASE)
-                if pattern_match:
-                    item[key] = pattern_match.group(1).strip()
-            
-            if item.get("title"):
-                items.append(item)
+            # If we found items with this pattern, stop trying other patterns
+            if found_items:
+                break
         
         # Parse all candidates section if it exists
         if "## All Generated Candidates" in content:
@@ -838,9 +949,10 @@ def _get_relevant_conversations(
 ) -> list[dict]:
     """
     Use semantic search to find conversations likely to contain insights or ideas.
+    Optimized with parallel searches and efficient data fetching.
     """
     try:
-        from common.vector_db import get_supabase_client, get_conversations_from_vector_db
+        from common.vector_db import get_supabase_client, get_conversations_by_chat_ids
         from common.semantic_search import search_messages
         
         # Try Vector DB semantic search first
@@ -851,32 +963,40 @@ def _get_relevant_conversations(
             start_ts = int(start_datetime.timestamp() * 1000)
             end_ts = int(end_datetime.timestamp() * 1000)
             
-            # Mode-specific search queries
-            if mode == "insights":
-                search_queries = [
-                    "What did I learn today?",
-                    "What problems did I solve?",
-                    "What decisions did I make?",
-                    "What patterns did I notice?",
-                    "What insights came up?",
-                ]
-            else:  # ideas
-                search_queries = [
-                    "What should I build?",
-                    "What problems need solving?",
-                    "What tools would be useful?",
-                    "What features should I add?",
-                    "What prototypes could I make?",
-                ]
+            # Load search queries from mode settings (configurable per mode)
+            from common.mode_settings import get_mode_setting
             
-            # Collect unique chat_ids from semantic search
+            # Map mode to theme/mode IDs
+            theme_id = "generation"
+            mode_id = "insight" if mode == "insights" else "idea"
+            
+            # Get queries from mode settings, fallback to defaults
+            search_queries = get_mode_setting(theme_id, mode_id, "semanticSearchQueries", None)
+            
+            if not search_queries:
+                # Fallback to defaults if not configured
+                if mode == "insights":
+                    search_queries = [
+                        "What did I learn? What problems did I solve?",
+                        "What decisions did I make? What patterns did I notice?",
+                        "What insights came up?",
+                    ]
+                else:  # ideas
+                    search_queries = [
+                        "What should I build? What problems need solving?",
+                        "What tools would be useful? What features should I add?",
+                        "What prototypes could I make?",
+                    ]
+            
+            # Collect unique chat_ids from semantic search (PARALLELIZED)
             relevant_chat_ids: set[tuple[str, str, str]] = set()  # (workspace, chat_id, chat_type)
             
-            for query in search_queries:
-                matches = search_messages(
+            def search_query(query: str) -> list[dict]:
+                """Helper to run a single search query."""
+                return search_messages(
                     query,
                     messages=[],  # Empty - will use Vector DB
-                    top_k=top_k // len(search_queries) + 1,  # Distribute top_k across queries
+                    top_k=top_k,  # Use full top_k per query (queries are combined now)
                     min_similarity=0.3,  # Lower threshold to cast wider net
                     context_messages=0,  # Don't need context for grouping
                     use_vector_db=True,
@@ -884,44 +1004,47 @@ def _get_relevant_conversations(
                     end_timestamp=end_ts,
                     workspace_paths=workspace_paths,
                 )
-                
-                # Collect chat_ids from matches
-                for match in matches:
-                    chat_id = match.get("chat_id", "unknown")
-                    workspace = match.get("workspace", "Unknown")
-                    chat_type = match.get("chat_type", "unknown")
-                    relevant_chat_ids.add((workspace, chat_id, chat_type))
+            
+            # Run searches in parallel (much faster!)
+            print(f"🔍 Running {len(search_queries)} semantic searches in parallel...", file=sys.stderr)
+            with ThreadPoolExecutor(max_workers=min(len(search_queries), 5)) as executor:
+                futures = {executor.submit(search_query, query): query for query in search_queries}
+                for future in as_completed(futures):
+                    matches = future.result()
+                    # Collect chat_ids from matches
+                    for match in matches:
+                        chat_id = match.get("chat_id", "unknown")
+                        workspace = match.get("workspace", "Unknown")
+                        chat_type = match.get("chat_type", "unknown")
+                        relevant_chat_ids.add((workspace, chat_id, chat_type))
             
             if relevant_chat_ids:
-                # Fetch FULL conversations for these chat_ids from Vector DB
+                # Fetch ONLY relevant conversations (much more efficient!)
                 print(f"🔍 Found {len(relevant_chat_ids)} relevant conversations via semantic search", file=sys.stderr)
-                print(f"📥 Fetching full conversations from Vector DB...", file=sys.stderr)
+                print(f"📥 Fetching conversations by chat_ids (optimized)...", file=sys.stderr)
                 
-                # Get all messages in date range, then filter to relevant conversations
-                all_conversations = get_conversations_from_vector_db(
+                # Use optimized function that only fetches relevant conversations
+                filtered_conversations = get_conversations_by_chat_ids(
+                    list(relevant_chat_ids),
                     target_date,
                     target_date,
-                    workspace_paths=workspace_paths,
                 )
                 
-                # Filter to only relevant conversations
-                filtered_conversations = []
-                for conv in all_conversations:
-                    conv_key = (conv.get("workspace", "Unknown"), conv.get("chat_id", "unknown"), conv.get("chat_type", "unknown"))
-                    if conv_key in relevant_chat_ids:
-                        filtered_conversations.append(conv)
-                
                 if filtered_conversations:
-                    print(f"✅ Using {len(filtered_conversations)} relevant conversations (instead of {len(all_conversations)} total)", file=sys.stderr)
+                    print(f"✅ Using {len(filtered_conversations)} relevant conversations", file=sys.stderr)
                     return filtered_conversations
             
             # If semantic search found nothing, return empty
             print(f"⚠️  Semantic search found no matches", file=sys.stderr)
             return []
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         print(f"⚠️  Semantic search failed: {e}", file=sys.stderr)
+        print(f"   Full traceback:\n{error_details}", file=sys.stderr)
         raise RuntimeError(
             f"Failed to retrieve conversations from Vector DB: {e}\n"
+            f"Traceback:\n{error_details}\n"
             "Make sure Vector DB is synced and RPC function exists."
         ) from e
     
@@ -944,7 +1067,13 @@ def process_single_date(
 ) -> dict:
     """Process a single date and return results."""
     # Use semantic search to find relevant conversations
-    conversations = _get_relevant_conversations(target_date, mode, workspace_paths=None)
+    try:
+        conversations = _get_relevant_conversations(target_date, mode, workspace_paths=None)
+    except Exception as e:
+        import traceback
+        error_msg = f"Failed to get conversations for {target_date}: {e}\n{traceback.format_exc()}"
+        print(f"❌ {error_msg}", file=sys.stderr)
+        raise RuntimeError(error_msg) from e
     
     config = MODE_CONFIG[mode]
     has_output_key = "has_posts" if mode == "insights" else "has_ideas"
@@ -952,22 +1081,50 @@ def process_single_date(
     if not conversations:
         return {"date": target_date, "conversations": 0, has_output_key: False, "output_file": None}
     
-    conversations_text = format_conversations_for_prompt(conversations)
+    # Step 4: Compress/distill each conversation individually (lossless compression)
+    # Users want signals/reminders, not all details - compression preserves key info
+    from common.prompt_compression import compress_single_conversation, estimate_tokens
     
-    # Optional prompt compression for cost savings
-    app_config = load_config()
-    llm_config = app_config.get("llm", {})
-    compression_config = llm_config.get("promptCompression", {})
-    if compression_config.get("enabled", False):
-        from common.prompt_compression import compress_conversations
-        threshold = compression_config.get("threshold", 10000)
-        compression_model = compression_config.get("compressionModel", "gpt-3.5-turbo")
-        conversations_text = compress_conversations(
-            conversations_text,
-            llm=None,  # Will create compression LLM from config
-            threshold=threshold,
-            compression_model=compression_model,
-        )
+    # Pre-calculate which conversations need compression (avoid redundant formatting)
+    conversations_to_compress = []
+    conversations_to_keep = []
+    
+    for conv in conversations:
+        conv_text = format_conversations_for_prompt([conv])
+        conv_tokens = estimate_tokens(conv_text)
+        if conv_tokens > 800:
+            conversations_to_compress.append((conv, conv_tokens))
+        else:
+            conversations_to_keep.append((conv, conv_tokens))
+    
+    # Compress conversations in parallel (much faster!)
+    compressed_conversations = []
+    total_before = sum(tokens for _, tokens in conversations_to_compress) + sum(tokens for _, tokens in conversations_to_keep)
+    
+    if conversations_to_compress:
+        print(f"📦 Compressing {len(conversations_to_compress)} large conversations...", file=sys.stderr)
+        with ThreadPoolExecutor(max_workers=min(len(conversations_to_compress), 5)) as executor:
+            futures = {executor.submit(compress_single_conversation, conv, llm=llm, max_tokens=500): conv for conv, _ in conversations_to_compress}
+            for future in as_completed(futures):
+                compressed_conv = future.result()
+                compressed_conversations.append(compressed_conv)
+        
+        # Add uncompressed conversations
+        compressed_conversations.extend([conv for conv, _ in conversations_to_keep])
+        
+        # Calculate total after compression
+        total_after = 0
+        for conv in compressed_conversations:
+            conv_text = format_conversations_for_prompt([conv])
+            total_after += estimate_tokens(conv_text)
+        
+        if total_before > total_after:
+            reduction = ((total_before - total_after) / total_before) * 100
+            print(f"✅ Compressed {len(conversations)} conversations: {total_before:,} → {total_after:,} tokens ({reduction:.1f}% reduction)", file=sys.stderr)
+    else:
+        compressed_conversations = [conv for conv, _ in conversations_to_keep]
+    
+    conversations_text = format_conversations_for_prompt(compressed_conversations)
     
     if verbose:
         print(f"\n--- {target_date} Conversations ---")
@@ -1010,23 +1167,149 @@ def process_aggregated_range(
     rerank: bool = True,
 ) -> dict:
     """Process a date range with aggregated output."""
-    # MVP: Search ALL workspaces regardless of config (non-negotiable)
-    all_conversations = []
-    days_with_activity = 0
+    # OPTIMIZATION: Search entire date range at once instead of per-date
+    # This reduces semantic search calls from (days × queries) to just queries
+    if not dates:
+        return {
+            "start_date": None,
+            "end_date": None,
+            "total_conversations": 0,
+            "days_with_activity": 0,
+            "has_posts" if mode == "insights" else "has_ideas": False,
+            "output_file": None,
+        }
     
-    print(f"📥 Collecting relevant conversations from {len(dates)} days (using semantic search)...")
-    for i, date in enumerate(dates):
-        conversations = _get_relevant_conversations(date, mode, workspace_paths=None)
-        if conversations:
-            days_with_activity += 1
-            for conv in conversations:
-                conv["source_date"] = str(date)
-            all_conversations.extend(conversations)
-        if (i + 1) % 7 == 0 or i == len(dates) - 1:
-            print(f"   [{i+1}/{len(dates)}] {len(all_conversations)} conversations so far...")
+    start_date = dates[0]
+    end_date = dates[-1]
     
-    print(f"✅ Found {len(all_conversations)} conversations across {days_with_activity} active days")
-    print(f"📊 Conversations analyzed: {len(all_conversations)}")
+    print(f"📥 Collecting relevant conversations from {len(dates)} days ({start_date} to {end_date})...")
+    print(f"🔍 Searching entire date range at once (optimized)...", file=sys.stderr)
+    
+    try:
+        from common.vector_db import get_supabase_client, get_conversations_by_chat_ids
+        from common.semantic_search import search_messages
+        
+        # Search entire date range at once (much faster!)
+        if get_supabase_client():
+            start_datetime = datetime.combine(start_date, datetime.min.time())
+            end_datetime = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+            start_ts = int(start_datetime.timestamp() * 1000)
+            end_ts = int(end_datetime.timestamp() * 1000)
+            
+            # Load search queries from mode settings (configurable per mode)
+            from common.mode_settings import get_mode_setting
+            
+            # Map mode to theme/mode IDs
+            theme_id = "generation"
+            mode_id = "insight" if mode == "insights" else "idea"
+            
+            # Get queries from mode settings, fallback to defaults
+            search_queries = get_mode_setting(theme_id, mode_id, "semanticSearchQueries", None)
+            
+            if not search_queries:
+                # Fallback to defaults if not configured
+                if mode == "insights":
+                    search_queries = [
+                        "What did I learn? What problems did I solve?",
+                        "What decisions did I make? What patterns did I notice?",
+                        "What insights came up?",
+                    ]
+                else:  # ideas
+                    search_queries = [
+                        "What should I build? What problems need solving?",
+                        "What tools would be useful? What features should I add?",
+                        "What prototypes could I make?",
+                    ]
+            
+            # Collect unique chat_ids from semantic search (PARALLELIZED across date range)
+            relevant_chat_ids: set[tuple[str, str, str]] = set()
+            
+            def search_query(query: str) -> list[dict]:
+                """Helper to run a single search query across entire date range."""
+                return search_messages(
+                    query,
+                    messages=[],
+                    top_k=50,  # Higher top_k since we're searching entire range
+                    min_similarity=0.3,
+                    context_messages=0,
+                    use_vector_db=True,
+                    start_timestamp=start_ts,
+                    end_timestamp=end_ts,
+                    workspace_paths=None,
+                )
+            
+            # Run searches in parallel (only 3 searches instead of days × 5)
+            print(f"🔍 Running {len(search_queries)} semantic searches across {len(dates)} days...", file=sys.stderr)
+            with ThreadPoolExecutor(max_workers=len(search_queries)) as executor:
+                futures = {executor.submit(search_query, query): query for query in search_queries}
+                for future in as_completed(futures):
+                    matches = future.result()
+                    for match in matches:
+                        chat_id = match.get("chat_id", "unknown")
+                        workspace = match.get("workspace", "Unknown")
+                        chat_type = match.get("chat_type", "unknown")
+                        relevant_chat_ids.add((workspace, chat_id, chat_type))
+            
+            if relevant_chat_ids:
+                print(f"🔍 Found {len(relevant_chat_ids)} relevant conversations via semantic search", file=sys.stderr)
+                print(f"📥 Fetching conversations by chat_ids...", file=sys.stderr)
+                
+                # Fetch all conversations at once (much faster than per-date)
+                all_conversations = get_conversations_by_chat_ids(
+                    list(relevant_chat_ids),
+                    start_date,
+                    end_date,
+                )
+                
+                # Add source_date based on message timestamps
+                for conv in all_conversations:
+                    if conv.get("messages"):
+                        first_msg_ts = conv["messages"][0].get("timestamp", 0)
+                        if first_msg_ts:
+                            msg_date = datetime.fromtimestamp(first_msg_ts / 1000).date()
+                            conv["source_date"] = str(msg_date)
+                
+                days_with_activity = len(set(conv.get("source_date", "") for conv in all_conversations))
+                print(f"✅ Found {len(all_conversations)} conversations across {days_with_activity} active days")
+                print(f"📊 Processing all {len(all_conversations)} conversations (compression will handle size)")
+            else:
+                all_conversations = []
+                days_with_activity = 0
+                print(f"⚠️  Semantic search found no matches", file=sys.stderr)
+        else:
+            raise RuntimeError("Vector DB not configured")
+            
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"⚠️  Failed to get conversations: {e}", file=sys.stderr)
+        print(f"   Traceback: {traceback.format_exc()}", file=sys.stderr)
+        # Fallback to per-date search if range search fails
+        print(f"   Falling back to per-date search...", file=sys.stderr)
+        all_conversations = []
+        days_with_activity = 0
+        
+        def process_date(date: datetime.date) -> tuple[datetime.date, list[dict] | None]:
+            try:
+                conversations = _get_relevant_conversations(date, mode, workspace_paths=None)
+                if conversations:
+                    for conv in conversations:
+                        conv["source_date"] = str(date)
+                return (date, conversations)
+            except Exception as e:
+                return (date, None)
+        
+        max_workers = min(len(dates), 10)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(process_date, date): date for date in dates}
+            for future in as_completed(futures):
+                date, conversations = future.result()
+                if conversations:
+                    days_with_activity += 1
+                    all_conversations.extend(conversations)
+        
+        print(f"✅ Found {len(all_conversations)} conversations across {days_with_activity} active days")
+        print(f"📊 Processing all {len(all_conversations)} conversations (compression will handle size)")
     
     config = MODE_CONFIG[mode]
     has_output_key = "has_posts" if mode == "insights" else "has_ideas"
@@ -1041,22 +1324,64 @@ def process_aggregated_range(
             "output_file": None,
         }
     
-    conversations_text = format_conversations_for_prompt(all_conversations)
+    # Step 4: Compress/distill each conversation individually (lossless compression)
+    # Users want signals/reminders, not all details - compression preserves key info
+    # OPTIMIZATION: Skip compression for small date ranges (< 7 days)
+    # Small date ranges typically have small prompts; compression adds cost/time without much benefit
+    from common.prompt_compression import compress_single_conversation, estimate_tokens
     
-    # Optional prompt compression for cost savings
-    app_config = load_config()
-    llm_config = app_config.get("llm", {})
-    compression_config = llm_config.get("promptCompression", {})
-    if compression_config.get("enabled", False):
-        from common.prompt_compression import compress_conversations
-        threshold = compression_config.get("threshold", 10000)
-        compression_model = compression_config.get("compressionModel", "gpt-3.5-turbo")
-        conversations_text = compress_conversations(
-            conversations_text,
-            llm=None,  # Will create compression LLM from config
-            threshold=threshold,
-            compression_model=compression_model,
-        )
+    date_range_days = len(dates)
+    skip_compression = date_range_days < 7  # Skip compression for small ranges
+    
+    if skip_compression:
+        print(f"⏭️  Skipping compression (date range: {date_range_days} days < 7 days threshold)", file=sys.stderr)
+        compressed_conversations = all_conversations
+    else:
+        # Pre-calculate which conversations need compression (avoid redundant formatting)
+        conversations_to_compress = []
+        conversations_to_keep = []
+        
+        for conv in all_conversations:
+            conv_text = format_conversations_for_prompt([conv])
+            conv_tokens = estimate_tokens(conv_text)
+            if conv_tokens > 800:
+                conversations_to_compress.append((conv, conv_tokens))
+            else:
+                conversations_to_keep.append((conv, conv_tokens))
+        
+        # Compress conversations in parallel (much faster!)
+        compressed_conversations = []
+        total_before = sum(tokens for _, tokens in conversations_to_compress) + sum(tokens for _, tokens in conversations_to_keep)
+        
+        if conversations_to_compress:
+            print(f"📦 Compressing {len(conversations_to_compress)} large conversations (parallel)...", file=sys.stderr)
+            with ThreadPoolExecutor(max_workers=min(len(conversations_to_compress), 5)) as executor:
+                futures = {executor.submit(compress_single_conversation, conv, llm=llm, max_tokens=500): conv for conv, _ in conversations_to_compress}
+                for future in as_completed(futures):
+                    compressed_conv = future.result()
+                    compressed_conversations.append(compressed_conv)
+            
+            # Add uncompressed conversations
+            compressed_conversations.extend([conv for conv, _ in conversations_to_keep])
+            
+            # Calculate total after compression
+            total_after = 0
+            for conv in compressed_conversations:
+                conv_text = format_conversations_for_prompt([conv])
+                total_after += estimate_tokens(conv_text)
+            
+            if total_before > total_after:
+                reduction = ((total_before - total_after) / total_before) * 100
+                print(f"✅ Compressed {len(all_conversations)} conversations: {total_before:,} → {total_after:,} tokens ({reduction:.1f}% reduction)", file=sys.stderr)
+            
+            # Final safety check: warn if still too large (shouldn't happen with compression)
+            if total_after > 25000:
+                print(f"⚠️  Warning: Total size ({total_after:,} tokens) approaches rate limit (30k TPM)", file=sys.stderr)
+                print(f"   Consider reducing date range if generation fails", file=sys.stderr)
+        else:
+            compressed_conversations = [conv for conv, _ in conversations_to_keep]
+    
+    conversations_text = format_conversations_for_prompt(compressed_conversations)
     
     if dry_run:
         return {
