@@ -17,7 +17,12 @@
             "temperature": 0.2,
             "minSimilarity": null,
             "goldenExamplesFolder": null,
-            "implementedItemsFolder": null
+            "implementedItemsFolder": null,
+            "semanticSearchQueries": [
+              "What should I build? What problems need solving?",
+              "What tools would be useful? What features should I add?",
+              "What prototypes could I make?"
+            ]
           },
           "defaultBestOf": 5,
           "createdBy": "system",
@@ -34,7 +39,12 @@
             "temperature": 0.2,
             "minSimilarity": null,
             "goldenExamplesFolder": null,
-            "implementedItemsFolder": null
+            "implementedItemsFolder": null,
+            "semanticSearchQueries": [
+              "What did I learn? What problems did I solve?",
+              "What decisions did I make? What patterns did I notice?",
+              "What insights came up?"
+            ]
           },
           "defaultBestOf": 5,
           "createdBy": "system",
@@ -58,7 +68,12 @@
             "temperature": null,
             "minSimilarity": 0.0,
             "goldenExamplesFolder": null,
-            "implementedItemsFolder": null
+            "implementedItemsFolder": null,
+            "semanticSearchQueries": [
+              "Examples of similar projects",
+              "Related use cases and implementations",
+              "Similar approaches and solutions"
+            ]
           },
           "defaultBestOf": 10,
           "createdBy": "system",

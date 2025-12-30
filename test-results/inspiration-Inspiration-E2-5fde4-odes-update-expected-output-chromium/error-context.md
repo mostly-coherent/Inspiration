@@ -1,0 +1,146 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - main [ref=e2]:
+    - link "Skip to main content" [ref=e7] [cursor=pointer]:
+      - /url: "#main-content"
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - generic [ref=e10]:
+          - button "🔄 ✓ Brain up to date" [ref=e11] [cursor=pointer]:
+            - generic [ref=e12]: 🔄
+            - text: ✓ Brain up to date
+          - link "Open settings" [ref=e13] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e14]
+          - button "Logout" [ref=e17] [cursor=pointer]:
+            - img [ref=e18]
+        - heading "Inspiration" [level=1] [ref=e20]
+        - paragraph [ref=e21]: Turn your Cursor conversations into ideas and insights
+      - generic [ref=e23]:
+        - heading "What do you want to do?" [level=2] [ref=e24]
+        - generic [ref=e25]:
+          - generic [ref=e26]: Theme
+          - generic [ref=e27]:
+            - button "Generate Generate content from chat history" [pressed] [ref=e28] [cursor=pointer]:
+              - generic [ref=e29]:
+                - generic [ref=e30]: Generate
+                - generic [ref=e31]: Generate content from chat history
+            - button "Seek Search chat history for evidence" [ref=e32] [cursor=pointer]:
+              - generic [ref=e33]:
+                - generic [ref=e34]: Seek
+                - generic [ref=e35]: Search chat history for evidence
+        - generic [ref=e36]:
+          - generic [ref=e37]: Mode
+          - generic [ref=e38]:
+            - button "Idea Prototype & tool ideas worth building" [pressed] [ref=e39] [cursor=pointer]:
+              - generic [ref=e40]: 💡
+              - generic [ref=e41]:
+                - heading "Idea" [level=3] [ref=e42]
+                - paragraph [ref=e43]: Prototype & tool ideas worth building
+            - button "Insight Social media posts to share learnings" [ref=e44] [cursor=pointer]:
+              - generic [ref=e45]: ✨
+              - generic [ref=e46]:
+                - heading "Insight" [level=3] [ref=e47]
+                - paragraph [ref=e48]: Social media posts to share learnings
+            - button "Use Case Find chat history evidence for use cases" [ref=e49] [cursor=pointer]:
+              - generic [ref=e50]: 🔍
+              - generic [ref=e51]:
+                - heading "Use Case" [level=3] [ref=e52]
+                - paragraph [ref=e53]: Find chat history evidence for use cases
+      - generic [ref=e55]:
+        - generic [ref=e56]:
+          - heading "Time period & depth" [level=2] [ref=e57]
+          - button "Advanced →" [ref=e58] [cursor=pointer]
+        - generic [ref=e59]:
+          - 'button "Today mode: Today''s activity. 1 days, 3 candidates." [active] [pressed] [ref=e60] [cursor=pointer]':
+            - generic [ref=e61]: ⚡
+            - generic [ref=e62]:
+              - heading "Today" [level=3] [ref=e63]
+              - paragraph [ref=e64]: Today's activity
+          - 'button "Last 14 days mode: 2-week patterns. 14 days, 5 candidates." [ref=e65] [cursor=pointer]':
+            - generic [ref=e66]: 🏃
+            - generic [ref=e67]:
+              - heading "Last 14 days" [level=3] [ref=e68]
+              - paragraph [ref=e69]: 2-week patterns
+            - generic [ref=e70]: Recommended
+          - 'button "Last 30 days mode: Monthly patterns. 30 days, 10 candidates." [ref=e71] [cursor=pointer]':
+            - generic [ref=e72]: 📅
+            - generic [ref=e73]:
+              - heading "Last 30 days" [level=3] [ref=e74]
+              - paragraph [ref=e75]: Monthly patterns
+          - 'button "Last 90 days mode: Full history. 90 days, 15 candidates." [ref=e76] [cursor=pointer]':
+            - generic [ref=e77]: 🎯
+            - generic [ref=e78]:
+              - heading "Last 90 days" [level=3] [ref=e79]
+              - paragraph [ref=e80]: Full history
+        - generic [ref=e81]:
+          - generic [ref=e82]:
+            - generic [ref=e83]:
+              - generic [ref=e84]: "3"
+              - generic [ref=e85]: candidates
+            - generic [ref=e86]:
+              - generic [ref=e87]: "1"
+              - generic [ref=e88]: day
+            - generic [ref=e89]:
+              - generic [ref=e90]: $0.09
+              - generic [ref=e91]: est. cost
+          - generic [ref=e93]: Generates 3 candidates at temp 0.3, then selects the best idea.
+      - button "💡 Generate Idea" [ref=e96] [cursor=pointer]:
+        - generic [ref=e97]:
+          - generic [ref=e98]: 💡
+          - text: Generate Idea
+      - generic [ref=e99]:
+        - heading "🏦 Your Bank" [level=2] [ref=e101]:
+          - generic [ref=e102]: 🏦
+          - text: Your Bank
+        - generic [ref=e103]:
+          - generic [ref=e104]:
+            - generic [ref=e105]: Total Items
+            - generic [ref=e106]: "27"
+          - generic [ref=e107]:
+            - generic [ref=e108]: Categories
+            - generic [ref=e109]: "27"
+          - generic [ref=e110]:
+            - generic [ref=e111]: Implemented
+            - generic [ref=e112]: "0"
+          - generic [ref=e113]:
+            - generic [ref=e114]: Active
+            - generic [ref=e115]: "27"
+        - generic [ref=e116]:
+          - generic [ref=e117]:
+            - generic [ref=e118]: "View:"
+            - generic [ref=e119]:
+              - button "Items" [ref=e120] [cursor=pointer]
+              - button "Categories" [ref=e121] [cursor=pointer]
+          - generic [ref=e122]:
+            - generic [ref=e123]: "Theme:"
+            - combobox [ref=e124]:
+              - option "All" [selected]
+              - option "Generation"
+              - option "Seek"
+          - generic [ref=e125]:
+            - generic [ref=e126]: "Mode:"
+            - combobox [ref=e127]:
+              - option "All" [selected]
+              - option "Idea"
+              - option "Insight"
+              - option "Use_case"
+          - generic [ref=e128]:
+            - checkbox "Show implemented" [ref=e129]
+            - text: Show implemented
+          - button "Expand" [ref=e130] [cursor=pointer]
+      - generic [ref=e131]:
+        - generic [ref=e132]:
+          - heading "📜 Run History" [level=2] [ref=e133]:
+            - generic [ref=e134]: 📜
+            - text: Run History
+          - generic [ref=e135]:
+            - generic [ref=e136]: 0 runs (0.00 MB)
+            - button "Show All" [ref=e137] [cursor=pointer]
+        - paragraph [ref=e138]: No run history yet.
+  - button "Open Next.js Dev Tools" [ref=e144] [cursor=pointer]:
+    - img [ref=e145]
+  - alert [ref=e148]
+```

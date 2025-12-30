@@ -23,9 +23,9 @@ interface AppConfig {
     lastChecked: string | null;
   };
   llm: {
-    provider: "anthropic" | "openai";
+    provider: "anthropic" | "openai" | "openrouter";
     model: string;
-    fallbackProvider: "anthropic" | "openai" | null;
+    fallbackProvider: "anthropic" | "openai" | "openrouter" | null;
     fallbackModel: string | null;
     promptCompression?: {
       enabled: boolean;
@@ -680,13 +680,14 @@ export default function SettingsPage() {
                   value={config.llm.provider}
                   onChange={(e) =>
                     saveConfig({
-                      llm: { ...config.llm, provider: e.target.value as "anthropic" | "openai" },
+                      llm: { ...config.llm, provider: e.target.value as "anthropic" | "openai" | "openrouter" },
                     })
                   }
                   className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500/50"
                 >
                   <option value="anthropic">Anthropic (Claude)</option>
                   <option value="openai">OpenAI (GPT)</option>
+                  <option value="openrouter">OpenRouter (500+ Models)</option>
                 </select>
               </div>
               <div>

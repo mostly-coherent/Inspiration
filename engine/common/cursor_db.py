@@ -733,6 +733,7 @@ def get_conversations_for_range(
 def format_conversations_for_prompt(conversations: list[dict]) -> str:
     """
     Format conversations into a readable string for LLM prompts.
+    No size limits - compression handles token management.
     """
     if not conversations:
         return "(No conversations found)"
@@ -747,9 +748,7 @@ def format_conversations_for_prompt(conversations: list[dict]) -> str:
         for msg in convo.get("messages", []):
             role = "USER" if msg["type"] == "user" else "ASSISTANT"
             text = msg["text"]
-            # Truncate very long messages
-            if len(text) > 2000:
-                text = text[:2000] + "... (truncated)"
+            # No truncation - compression will handle size
             lines.append(f"[{role}]")
             lines.append(text)
             lines.append("")

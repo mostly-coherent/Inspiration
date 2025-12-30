@@ -20,9 +20,9 @@ DEFAULT_CONFIG = {
     "setupComplete": False,
     "workspaces": [],
     "llm": {
-        "provider": "anthropic",
+        "provider": "anthropic",  # Options: "anthropic", "openai", "openrouter"
         "model": "claude-sonnet-4-20250514",
-        "fallbackProvider": "openai",
+        "fallbackProvider": "openai",  # Optional fallback provider
         "fallbackModel": "gpt-4o",
         "judgeProvider": "openai",  # Cheaper model for judging
         "judgeModel": "gpt-3.5-turbo",  # ~80% cost reduction vs Claude Sonnet 4

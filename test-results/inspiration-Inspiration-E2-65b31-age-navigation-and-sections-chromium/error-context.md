@@ -1,0 +1,210 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - link "← Back" [ref=e6] [cursor=pointer]:
+            - /url: /
+          - heading "⚙️ Settings" [level=1] [ref=e7]
+        - generic [ref=e8]: Setup Complete
+    - main [ref=e10]:
+      - generic [ref=e11]:
+        - heading "📁 Workspaces" [level=2] [ref=e12]
+        - paragraph [ref=e13]: Directories containing Cursor projects to analyze
+        - generic [ref=e14]:
+          - generic [ref=e15]:
+            - generic [ref=e16]: /Users/jmbeh/Project Understanding
+            - 'button "Remove workspace: /Users/jmbeh/Project Understanding" [ref=e17] [cursor=pointer]': ✕
+          - generic [ref=e18]:
+            - generic [ref=e19]: /Users/jmbeh/Personal Builder Lab
+            - 'button "Remove workspace: /Users/jmbeh/Personal Builder Lab" [ref=e20] [cursor=pointer]': ✕
+          - generic [ref=e21]:
+            - textbox "/path/to/your/workspace" [ref=e22]
+            - button "Add" [disabled] [ref=e23]
+      - generic [ref=e24]:
+        - heading "🧠 Vector Database (Cloud Brain)" [level=2] [ref=e25]
+        - paragraph [ref=e26]: Set up Supabase Vector DB for efficient chat history search
+        - generic [ref=e27]:
+          - generic [ref=e28]:
+            - heading "Why Vector DB?" [level=4] [ref=e29]
+            - paragraph [ref=e30]: Vector DB enables fast semantic search across your entire chat history, even with 2GB+ of conversations. It's required for Inspiration v1.
+            - paragraph [ref=e31]:
+              - text: 💡
+              - strong [ref=e32]: "Setup:"
+              - text: Create a free Supabase project, run the SQL script (see link below), then enter your credentials here.
+          - generic [ref=e33]:
+            - generic [ref=e34]: Supabase Project URL
+            - textbox "https://xxxxx.supabase.co" [ref=e35]
+          - generic [ref=e36]:
+            - generic [ref=e37]: Supabase Anon Key
+            - textbox "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." [ref=e38]
+            - paragraph [ref=e39]: "Found in: Supabase Dashboard → Project Settings → API → anon/public key"
+          - generic [ref=e40]:
+            - generic [ref=e41]: Service Role Key (Optional)
+            - textbox "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... (optional)" [ref=e42]
+            - paragraph [ref=e43]: Only needed for admin operations. Keep this secret!
+          - generic [ref=e44]:
+            - generic [ref=e45]:
+              - heading "📁 Chat History Location" [level=4] [ref=e46]
+              - button "Refresh" [ref=e47] [cursor=pointer]
+            - generic [ref=e48]:
+              - generic [ref=e49]:
+                - generic [ref=e50]: ✓
+                - code [ref=e51]: /Users/jmbeh/Library/Application Support/Cursor/User/globalStorage/state.vscdb
+              - generic [ref=e52]:
+                - generic [ref=e53]: "Platform: macOS"
+                - generic [ref=e54]: File exists
+          - generic [ref=e55]:
+            - heading "📋 Setup Instructions" [level=4] [ref=e56]
+            - list [ref=e57]:
+              - listitem [ref=e58]:
+                - text: Create a free Supabase project at
+                - link "supabase.com" [ref=e59] [cursor=pointer]:
+                  - /url: https://supabase.com
+              - listitem [ref=e60]:
+                - text: "Run the SQL script:"
+                - code [ref=e61]: engine/scripts/init_vector_db.sql
+              - listitem [ref=e62]: Copy your Project URL and Anon Key from Project Settings → API
+              - listitem [ref=e63]: Enter them above and click "Test Connection"
+      - generic [ref=e64]:
+        - heading "✍️ Your Voice & Style" [level=2] [ref=e65]
+        - paragraph [ref=e66]: Configure how Inspiration captures your authentic writing voice
+        - generic [ref=e67]:
+          - generic [ref=e68]:
+            - generic [ref=e69]:
+              - generic [ref=e70]: Your Name
+              - textbox "e.g., JM" [ref=e71]: JM
+            - generic [ref=e72]:
+              - generic [ref=e73]: Brief Context
+              - textbox "e.g., PM at a tech company who builds with AI" [ref=e74]: PM at a large tech company who codes agentically
+          - generic [ref=e76]:
+            - generic [ref=e77]: 📝
+            - generic [ref=e78]:
+              - heading "Golden Examples Folder" [level=4] [ref=e79]
+              - paragraph [ref=e80]: Point to a folder with your actual social media posts or writing samples. The AI will study these to match your voice, style, and depth.
+              - textbox "/path/to/your/social-posts" [ref=e81]: /Users/jmbeh/Personal Builder Lab/MyPrivateProfileBuilding/LinkedIn_Postings
+              - paragraph [ref=e82]: "Tip: Save your best 5-10 posts as .md files in this folder"
+          - generic [ref=e84]:
+            - generic [ref=e85]: 📋
+            - generic [ref=e86]:
+              - heading "Voice Guide (Optional)" [level=4] [ref=e87]
+              - paragraph [ref=e88]: "A markdown file with explicit voice rules: words you use, words you avoid, sentence style preferences, emoji usage, etc."
+              - textbox "/path/to/voice-guide.md" [ref=e89]: /Users/jmbeh/Personal Builder Lab/MyPrivatePrompts/In_My_Voice.md
+          - generic [ref=e90]:
+            - heading "✓ Voice Profile Active" [level=4] [ref=e91]
+            - list [ref=e92]:
+              - listitem [ref=e93]: "• Author: JM"
+              - listitem [ref=e94]: "• Context: PM at a large tech company who codes agentically"
+              - listitem [ref=e95]: "• Examples: /Users/jmbeh/Personal Builder Lab/MyPrivateProfileBuilding/LinkedIn_Postings"
+              - listitem [ref=e96]: "• Voice Guide: /Users/jmbeh/Personal Builder Lab/MyPrivatePrompts/In_My_Voice.md"
+      - generic [ref=e97]:
+        - heading "🤖 LLM Provider" [level=2] [ref=e98]
+        - paragraph [ref=e99]: Configure your AI model for generation
+        - generic [ref=e100]:
+          - generic [ref=e101]:
+            - generic [ref=e102]: Primary Provider
+            - combobox [ref=e103]:
+              - option "Anthropic (Claude)" [selected]
+              - option "OpenAI (GPT)"
+          - generic [ref=e104]:
+            - generic [ref=e105]: Model
+            - textbox [ref=e106]: claude-sonnet-4-20250514
+          - generic [ref=e107]:
+            - generic [ref=e108] [cursor=pointer]:
+              - checkbox "Enable fallback provider" [checked] [ref=e109]
+              - text: Enable fallback provider
+            - paragraph [ref=e110]: If primary fails, automatically try the fallback
+          - generic [ref=e111]:
+            - generic [ref=e112] [cursor=pointer]:
+              - checkbox "Enable prompt compression" [checked] [ref=e113]
+              - text: Enable prompt compression
+            - paragraph [ref=e114]: Automatically compress large conversation histories to reduce token usage and avoid rate limits
+            - generic [ref=e115]:
+              - generic [ref=e116]:
+                - generic [ref=e117]: Compression threshold (tokens)
+                - spinbutton [ref=e118]: "10000"
+                - paragraph [ref=e119]: "Compress prompts larger than this (default: 10,000)"
+              - generic [ref=e120]:
+                - generic [ref=e121]: Compression model
+                - combobox [ref=e122]:
+                  - option "GPT-3.5 Turbo (cheapest)"
+                  - option "GPT-4o Mini" [selected]
+                  - option "GPT-4o"
+                - paragraph [ref=e123]: Model used for compression (cheaper = lower cost)
+      - generic [ref=e124]:
+        - heading "⚙️ Mode Settings" [level=2] [ref=e125]
+        - paragraph [ref=e126]: Configure settings for each generation mode
+        - generic [ref=e127]:
+          - generic [ref=e128]:
+            - generic [ref=e129]: Theme
+            - generic [ref=e130]:
+              - button "Generate" [ref=e131] [cursor=pointer]
+              - button "Seek" [ref=e132] [cursor=pointer]
+          - generic [ref=e133]:
+            - generic [ref=e134]: Mode
+            - generic [ref=e135]:
+              - button "💡Idea" [ref=e136] [cursor=pointer]
+              - button "✨Insight" [ref=e137] [cursor=pointer]
+          - generic [ref=e138]:
+            - generic [ref=e139]:
+              - heading "Modes" [level=3] [ref=e140]
+              - button "+ Create Mode" [ref=e141] [cursor=pointer]
+            - generic [ref=e142]:
+              - generic [ref=e144]:
+                - generic [ref=e145]: 💡
+                - generic [ref=e146]:
+                  - generic [ref=e147]: Idea
+                  - generic [ref=e148]: Prototype & tool ideas worth building
+              - generic [ref=e150]:
+                - generic [ref=e151]: ✨
+                - generic [ref=e152]:
+                  - generic [ref=e153]: Insight
+                  - generic [ref=e154]: Social media posts to share learnings
+          - generic [ref=e156]:
+            - generic [ref=e157]:
+              - heading "Idea Settings" [level=3] [ref=e158]
+              - paragraph [ref=e159]: Prototype & tool ideas worth building
+            - generic [ref=e160]:
+              - generic [ref=e161]: Temperature
+              - spinbutton [ref=e162]: "0.2"
+            - generic [ref=e163]:
+              - generic [ref=e164]: Golden Examples Folder
+              - textbox "/path/to/golden/examples" [ref=e165]
+              - paragraph [ref=e166]: Folder containing example outputs for this mode
+            - generic [ref=e167]:
+              - generic [ref=e168]: Implemented Items Folder
+              - textbox "/path/to/implemented/projects" [ref=e169]
+              - paragraph [ref=e170]: Folder containing implemented projects (items will be marked as implemented if found)
+            - button "Save Settings" [ref=e171] [cursor=pointer]
+      - generic [ref=e172]:
+        - heading "⚡ Power Features" [level=2] [ref=e173]
+        - paragraph [ref=e174]: Optional features for advanced users
+        - generic [ref=e175]:
+          - generic [ref=e176]:
+            - generic [ref=e177] [cursor=pointer]:
+              - checkbox "Social Media Sync" [checked] [ref=e178]
+              - text: Social Media Sync
+            - paragraph [ref=e179]: Mark insights as "shared" when they match your social media posts
+            - textbox "/path/to/social/posts" [ref=e181]: /Users/jmbeh/Personal Builder Lab/MyPrivateProfileBuilding/LinkedIn_Postings
+          - generic [ref=e182]:
+            - generic [ref=e183] [cursor=pointer]:
+              - checkbox "Solved Status Sync" [checked] [ref=e184]
+              - text: Solved Status Sync
+            - paragraph [ref=e185]: Mark ideas as "solved" when they match projects in your workspaces
+      - generic [ref=e186]:
+        - heading "🔑 API Keys" [level=3] [ref=e187]
+        - paragraph [ref=e188]:
+          - text: API keys are loaded from environment variables. Set
+          - code [ref=e189]: ANTHROPIC_API_KEY
+          - text: and/or
+          - code [ref=e190]: OPENAI_API_KEY
+          - text: in your
+          - code [ref=e191]: .env
+          - text: file.
+  - button "Open Next.js Dev Tools" [ref=e197] [cursor=pointer]:
+    - img [ref=e198]
+  - alert [ref=e201]
+```

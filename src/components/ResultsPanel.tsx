@@ -75,12 +75,21 @@ export const ResultsPanel = memo(function ResultsPanel({ result }: { result: Gen
     );
   }
 
+  // Show success header only if content was actually generated
+  const hasContent = result.content && result.content.trim().length > 0;
+  const hasItems = result.items && result.items.length > 0;
+  const actuallySuccessful = hasContent || hasItems;
+  
   return (
     <section className="glass-card p-6 space-y-4">
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-medium text-inspiration-ideas flex items-center gap-2">
-            ✅ Generated {TOOL_CONFIG[result.tool].label}
+          <h2 className={`text-lg font-medium flex items-center gap-2 ${
+            actuallySuccessful 
+              ? `text-inspiration-ideas` 
+              : `text-adobe-gray-400`
+          }`}>
+            {actuallySuccessful ? "✅" : "⚠️"} Generated {TOOL_CONFIG[result.tool].label}
           </h2>
           {estimatedCost > 0 && (
             <span className="text-xs text-adobe-gray-400">

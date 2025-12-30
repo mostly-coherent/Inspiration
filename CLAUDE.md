@@ -133,7 +133,7 @@ npm run dev
     "lastChecked": "2025-01-30T12:00:00Z"
   },
   "llm": {
-    "provider": "anthropic",
+    "provider": "anthropic",  // Options: "anthropic", "openai", "openrouter"
     "model": "claude-sonnet-4-20250514",
     "fallbackProvider": "openai",
     "fallbackModel": "gpt-4o",
@@ -231,11 +231,10 @@ npm run dev
 ## Environment Variables
 
 ```bash
-# Required
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Required for reverse match (embeddings)
-OPENAI_API_KEY=sk-...
+# LLM Provider (choose one or more)
+ANTHROPIC_API_KEY=sk-ant-...      # For Anthropic Claude
+OPENAI_API_KEY=sk-...              # For OpenAI GPT or embeddings
+OPENROUTER_API_KEY=sk-or-...       # For OpenRouter (500+ models)
 
 # Required for Vector DB
 SUPABASE_URL=...
