@@ -22,6 +22,11 @@ export interface AppConfig {
     model: string;
     fallbackProvider: "anthropic" | "openai" | null;
     fallbackModel: string | null;
+    promptCompression?: {
+      enabled: boolean;
+      threshold: number;
+      compressionModel: string;
+    };
   };
   features: {
     linkedInSync: {
@@ -49,11 +54,30 @@ const DEFAULT_CONFIG: AppConfig = {
   version: 1,
   setupComplete: false,
   workspaces: [],
+  vectordb: {
+    provider: "supabase",
+    url: null,
+    anonKey: null,
+    serviceRoleKey: null,
+    initialized: false,
+    lastSync: null,
+  },
+  chatHistory: {
+    path: null,
+    platform: null,
+    autoDetected: false,
+    lastChecked: null,
+  },
   llm: {
     provider: "anthropic",
     model: "claude-sonnet-4-20250514",
     fallbackProvider: "openai",
     fallbackModel: "gpt-4o",
+  },
+  userProfile: {
+    name: null,
+    jobContext: null,
+    styleguide: null,
   },
   features: {
     linkedInSync: {
@@ -70,6 +94,7 @@ const DEFAULT_CONFIG: AppConfig = {
       authorName: null,
       authorContext: null,
     },
+    v1Enabled: false,  // Feature flag: v1 features disabled by default
   },
   ui: {
     defaultTool: "insights",

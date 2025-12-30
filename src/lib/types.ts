@@ -13,8 +13,12 @@ export interface ModeConfig {
 }
 
 export interface GenerateRequest {
-  tool: ToolType;
+  // v0 backward compatibility
+  tool?: ToolType;
   mode: PresetMode;
+  // v1 theme/mode support
+  theme?: ThemeType;
+  modeId?: ModeType; // User-defined mode ID (e.g., "idea", "insight", "use_case")
   // Custom overrides
   days?: number;
   bestOf?: number;
@@ -24,13 +28,25 @@ export interface GenerateRequest {
   dryRun?: boolean;
 }
 
+export interface RankedItem {
+  id: string;
+  rank: number;
+  isBest: boolean;
+  name: string;
+  content: string;
+  rawMarkdown: string;
+  score?: number;
+}
+
 export interface GenerateResult {
   success: boolean;
   tool: ToolType;
   mode: PresetMode;
-  outputFile?: string;
+  outputFile?: string; // Deprecated - kept for backward compatibility
   content?: string;
   judgeContent?: string;
+  items?: RankedItem[]; // v1: Ranked items (best first)
+  estimatedCost?: number; // Estimated LLM cost
   stats: {
     daysProcessed: number;
     daysWithActivity: number;
@@ -105,7 +121,8 @@ export const TOOL_CONFIG = {
     description: "Prototype & tool ideas worth building",
     icon: "💡",
     color: "inspiration-ideas",
-    script: "ideas.py",
+    script: "generate.py",
+    mode: "ideas",
     // Path will be resolved at runtime
     getPath: () => {
       // When running in Next.js, resolve relative to project root
@@ -121,7 +138,8 @@ export const TOOL_CONFIG = {
     description: "Social media posts to share learnings",
     icon: "✨",
     color: "inspiration-insights",
-    script: "insights.py",
+    script: "generate.py",
+    mode: "insights",
     getPath: () => {
       if (typeof window === 'undefined') {
         const path = require('path');
@@ -176,5 +194,88 @@ export interface ReverseMatchResult {
     conversationsExamined?: number;
   };
   error?: string;
+}
+
+// v1 Unified Items/Categories Types
+export type ThemeType = "generation" | "seek";
+export type ModeType = string; // User-defined: "idea", "insight", "use_case", etc.
+
+export interface Item {
+  id: string;
+  mode: ModeType;
+  theme: ThemeType;
+  name: string;
+  content: Record<string, any>; // Original item data (varies by mode)
+  occurrence: number;
+  firstSeen: string; // ISO date string
+  lastSeen: string; // ISO date string
+  categoryId: string | null;
+  implemented: boolean;
+  implementedDate: string | null; // ISO date string
+  implementedSource: string | null; // File path if found via cosine similarity
+  embedding?: number[]; // For category grouping
+  metadata?: {
+    generatedDate?: string;
+    generationMode?: string;
+    candidatesGenerated?: number;
+  };
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  theme: ThemeType;
+  mode: ModeType;
+  itemIds: string[];
+  similarityThreshold: number;
+  createdDate: string; // ISO date string
+}
+
+export interface ItemsBank {
+  version: number;
+  items: Item[];
+  categories: Category[];
+  last_updated?: string;
+}
+
+export interface ItemsBankStats {
+  totalItems: number;
+  totalCategories: number;
+  byMode: Record<string, number>;
+  byTheme: Record<string, number>;
+  implemented: number;
+}
+
+// v1 Theme/Mode Types
+export interface ModeSettings {
+  temperature: number | null;
+  minSimilarity: number | null;
+  goldenExamplesFolder: string | null;
+  implementedItemsFolder: string | null;
+}
+
+export interface Mode {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  promptTemplate: string | null;
+  settings: ModeSettings;
+  defaultBestOf: number;
+  createdBy: "system" | "user";
+  createdDate: string;
+}
+
+export interface Theme {
+  id: ThemeType;
+  label: string;
+  description: string;
+  modes: Mode[];
+}
+
+export interface ThemesConfig {
+  version: number;
+  themes: Theme[];
 }
 

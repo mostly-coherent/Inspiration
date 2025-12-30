@@ -7,11 +7,30 @@ interface AppConfig {
   version: number;
   setupComplete: boolean;
   workspaces: string[];
+  vectordb?: {
+    provider: "supabase";
+    url: string | null;
+    anonKey: string | null;
+    serviceRoleKey: string | null;
+    initialized: boolean;
+    lastSync: string | null;
+  };
+  chatHistory?: {
+    path: string | null;
+    platform: "darwin" | "win32" | null;
+    autoDetected: boolean;
+    lastChecked: string | null;
+  };
   llm: {
     provider: "anthropic" | "openai";
     model: string;
     fallbackProvider: "anthropic" | "openai" | null;
     fallbackModel: string | null;
+    promptCompression?: {
+      enabled: boolean;
+      threshold: number;
+      compressionModel: string;
+    };
   };
   features: {
     linkedInSync: {
@@ -28,6 +47,7 @@ interface AppConfig {
       authorName: string | null;
       authorContext: string | null;
     };
+    v1Enabled?: boolean;
   };
   ui: {
     defaultTool: "ideas" | "insights";
@@ -35,7 +55,7 @@ interface AppConfig {
   };
 }
 
-type WizardStep = "workspaces" | "voice" | "llm" | "features" | "done";
+type WizardStep = "workspaces" | "vectordb" | "voice" | "llm" | "features" | "done";
 
 export default function SettingsPage() {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -43,12 +63,53 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<WizardStep>("workspaces");
+  const [chatHistoryPath, setChatHistoryPath] = useState<string | null>(null);
+  const [chatHistoryPlatform, setChatHistoryPlatform] = useState<"darwin" | "win32" | null>(null);
+  const [chatHistoryExists, setChatHistoryExists] = useState(false);
+  const [detectingChatHistory, setDetectingChatHistory] = useState(false);
   const [newWorkspace, setNewWorkspace] = useState("");
 
   // Load configuration
   useEffect(() => {
     loadConfig();
   }, []);
+
+  // Auto-detect chat history after config loads
+  useEffect(() => {
+    if (config) {
+      detectChatHistory();
+    }
+  }, [config]);
+
+  // Auto-detect chat history path
+  const detectChatHistory = async () => {
+    setDetectingChatHistory(true);
+    try {
+      const res = await fetch("/api/chat-history");
+      const data = await res.json();
+      if (data.success) {
+        setChatHistoryPath(data.path);
+        setChatHistoryPlatform(data.platform);
+        setChatHistoryExists(data.exists);
+        
+        // Save to config if not already set
+        if (data.path && config && (!config.chatHistory || !config.chatHistory.path)) {
+          await saveConfig({
+            chatHistory: {
+              path: data.path,
+              platform: data.platform,
+              autoDetected: true,
+              lastChecked: data.lastChecked,
+            },
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to detect chat history:", err);
+    } finally {
+      setDetectingChatHistory(false);
+    }
+  };
 
   const loadConfig = async () => {
     try {
@@ -155,9 +216,10 @@ export default function SettingsPage() {
         {!config.setupComplete && (
           <div className="mb-8">
             <div className="flex items-center justify-center gap-4 mb-6" role="navigation" aria-label="Setup wizard steps">
-              {(["workspaces", "voice", "llm", "features"] as const).map((step, i) => {
+              {(["workspaces", "vectordb", "voice", "llm", "features"] as const).map((step, i) => {
                 const stepLabels: Record<Exclude<WizardStep, "done">, string> = {
                   workspaces: "Configure Workspaces",
+                  vectordb: "Vector DB Setup",
                   voice: "Your Voice & Style",
                   llm: "LLM Settings",
                   features: "Power Features",
@@ -178,7 +240,7 @@ export default function SettingsPage() {
                     >
                       {i + 1}
                     </button>
-                    {i < 3 && (
+                    {i < 4 && (
                       <div className="w-12 h-0.5 bg-slate-800 mx-2" aria-hidden="true"></div>
                     )}
                   </div>
@@ -187,9 +249,10 @@ export default function SettingsPage() {
             </div>
             <div className="text-center text-sm text-slate-500">
               {currentStep === "workspaces" && "Step 1: Configure Workspaces"}
-              {currentStep === "voice" && "Step 2: Your Voice & Style"}
-              {currentStep === "llm" && "Step 3: LLM Settings"}
-              {currentStep === "features" && "Step 4: Power Features"}
+              {currentStep === "vectordb" && "Step 2: Vector DB Setup"}
+              {currentStep === "voice" && "Step 3: Your Voice & Style"}
+              {currentStep === "llm" && "Step 4: LLM Settings"}
+              {currentStep === "features" && "Step 5: Power Features"}
             </div>
           </div>
         )}
@@ -242,9 +305,196 @@ export default function SettingsPage() {
             {!config.setupComplete && (
               <div className="mt-6 flex justify-end">
                 <button
-                  onClick={() => setCurrentStep("voice")}
+                  onClick={() => setCurrentStep("vectordb")}
                   disabled={config.workspaces.length === 0}
                   className="px-6 py-2 bg-amber-500 text-slate-900 font-medium rounded-lg hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </Section>
+        )}
+
+        {/* VectorDB Setup Section */}
+        {(currentStep === "vectordb" || config.setupComplete) && (
+          <Section
+            title="🧠 Vector Database (Cloud Brain)"
+            description="Set up Supabase Vector DB for efficient chat history search"
+          >
+            <div className="space-y-6">
+              <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/30">
+                <h4 className="text-blue-400 font-medium mb-2">Why Vector DB?</h4>
+                <p className="text-sm text-slate-400 mb-2">
+                  Vector DB enables fast semantic search across your entire chat history, 
+                  even with 2GB+ of conversations. It's required for Inspiration v1.
+                </p>
+                <p className="text-xs text-slate-500">
+                  💡 <strong>Setup:</strong> Create a free Supabase project, run the SQL script 
+                  (see link below), then enter your credentials here.
+                </p>
+              </div>
+
+              {/* Supabase URL */}
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-2">
+                  Supabase Project URL
+                </label>
+                <input
+                  type="url"
+                  value={config.vectordb?.url || ""}
+                  onChange={(e) =>
+                    saveConfig({
+                      vectordb: {
+                        ...config.vectordb,
+                        provider: "supabase",
+                        url: e.target.value || null,
+                        anonKey: config.vectordb?.anonKey || null,
+                        serviceRoleKey: config.vectordb?.serviceRoleKey || null,
+                        initialized: config.vectordb?.initialized || false,
+                        lastSync: config.vectordb?.lastSync || null,
+                      },
+                    })
+                  }
+                  placeholder="https://xxxxx.supabase.co"
+                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
+                />
+              </div>
+
+              {/* Anon Key */}
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-2">
+                  Supabase Anon Key
+                </label>
+                <input
+                  type="password"
+                  value={config.vectordb?.anonKey || ""}
+                  onChange={(e) =>
+                    saveConfig({
+                      vectordb: {
+                        ...config.vectordb,
+                        provider: "supabase",
+                        url: config.vectordb?.url || null,
+                        anonKey: e.target.value || null,
+                        serviceRoleKey: config.vectordb?.serviceRoleKey || null,
+                        initialized: config.vectordb?.initialized || false,
+                        lastSync: config.vectordb?.lastSync || null,
+                      },
+                    })
+                  }
+                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 font-mono text-sm"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Found in: Supabase Dashboard → Project Settings → API → anon/public key
+                </p>
+              </div>
+
+              {/* Service Role Key (Optional) */}
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-2">
+                  Service Role Key (Optional)
+                </label>
+                <input
+                  type="password"
+                  value={config.vectordb?.serviceRoleKey || ""}
+                  onChange={(e) =>
+                    saveConfig({
+                      vectordb: {
+                        ...config.vectordb,
+                        provider: "supabase",
+                        url: config.vectordb?.url || null,
+                        anonKey: config.vectordb?.anonKey || null,
+                        serviceRoleKey: e.target.value || null,
+                        initialized: config.vectordb?.initialized || false,
+                        lastSync: config.vectordb?.lastSync || null,
+                      },
+                    })
+                  }
+                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... (optional)"
+                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 font-mono text-sm"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Only needed for admin operations. Keep this secret!
+                </p>
+              </div>
+
+              {/* Chat History Auto-Detection */}
+              <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
+                <div className="flex items-start justify-between mb-2">
+                  <h4 className="text-slate-200 font-medium">📁 Chat History Location</h4>
+                  <button
+                    onClick={detectChatHistory}
+                    disabled={detectingChatHistory}
+                    className="text-xs px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-slate-300 disabled:opacity-50 transition-colors"
+                  >
+                    {detectingChatHistory ? "Detecting..." : "Refresh"}
+                  </button>
+                </div>
+                {detectingChatHistory ? (
+                  <p className="text-sm text-slate-500">Detecting chat history location...</p>
+                ) : chatHistoryPath ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      {chatHistoryExists ? (
+                        <span className="text-emerald-400">✓</span>
+                      ) : (
+                        <span className="text-yellow-400">⚠</span>
+                      )}
+                      <code className="flex-1 px-2 py-1 bg-slate-900 rounded text-xs text-slate-300 break-all">
+                        {chatHistoryPath}
+                      </code>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-slate-500">
+                      <span>Platform: {chatHistoryPlatform === "darwin" ? "macOS" : chatHistoryPlatform === "win32" ? "Windows" : "Unknown"}</span>
+                      {chatHistoryExists ? (
+                        <span className="text-emerald-400">File exists</span>
+                      ) : (
+                        <span className="text-yellow-400">File not found (Cursor may not be installed)</span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    Click "Refresh" to auto-detect your Cursor chat history location.
+                  </p>
+                )}
+              </div>
+
+              {/* Setup Instructions */}
+              <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
+                <h4 className="text-slate-200 font-medium mb-2">📋 Setup Instructions</h4>
+                <ol className="text-sm text-slate-400 space-y-2 list-decimal list-inside">
+                  <li>Create a free Supabase project at <a href="https://supabase.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">supabase.com</a></li>
+                  <li>Run the SQL script: <code className="px-1.5 py-0.5 bg-slate-900 rounded text-xs">engine/scripts/init_vector_db.sql</code></li>
+                  <li>Copy your Project URL and Anon Key from Project Settings → API</li>
+                  <li>Enter them above and click "Test Connection"</li>
+                </ol>
+              </div>
+
+              {/* Status */}
+              {config.vectordb?.initialized && (
+                <div className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/30">
+                  <h4 className="text-emerald-400 font-medium mb-2">✓ Vector DB Configured</h4>
+                  <p className="text-sm text-slate-400">
+                    {config.vectordb.lastSync 
+                      ? `Last sync: ${new Date(config.vectordb.lastSync).toLocaleString()}`
+                      : "Ready to sync your chat history"}
+                  </p>
+                </div>
+              )}
+            </div>
+            {!config.setupComplete && (
+              <div className="mt-6 flex justify-between">
+                <button
+                  onClick={() => setCurrentStep("workspaces")}
+                  className="px-6 py-2 text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  ← Back
+                </button>
+                <button
+                  onClick={() => setCurrentStep("voice")}
+                  className="px-6 py-2 bg-amber-500 text-slate-900 font-medium rounded-lg hover:bg-amber-400 transition-colors"
                 >
                   Next →
                 </button>
@@ -474,6 +724,92 @@ export default function SettingsPage() {
                   If primary fails, automatically try the fallback
                 </p>
               </div>
+              
+              {/* Prompt Compression */}
+              <div className="pt-4 border-t border-slate-700/50">
+                <label className="flex items-center gap-3 text-sm text-slate-400 cursor-pointer">
+                  <input
+                    id="prompt-compression-toggle"
+                    type="checkbox"
+                    checked={config.llm.promptCompression?.enabled ?? false}
+                    onChange={(e) =>
+                      saveConfig({
+                        llm: {
+                          ...config.llm,
+                          promptCompression: {
+                            enabled: e.target.checked,
+                            threshold: config.llm.promptCompression?.threshold ?? 10000,
+                            compressionModel: config.llm.promptCompression?.compressionModel ?? "gpt-3.5-turbo",
+                          },
+                        },
+                      })
+                    }
+                    className="w-4 h-4 rounded bg-slate-800 border-slate-700"
+                  />
+                  Enable prompt compression
+                </label>
+                <p className="text-xs text-slate-500 mt-1 ml-7">
+                  Automatically compress large conversation histories to reduce token usage and avoid rate limits
+                </p>
+                {config.llm.promptCompression?.enabled && (
+                  <div className="mt-3 ml-7 space-y-2">
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">
+                        Compression threshold (tokens)
+                      </label>
+                      <input
+                        type="number"
+                        value={config.llm.promptCompression.threshold}
+                        onChange={(e) =>
+                          saveConfig({
+                            llm: {
+                              ...config.llm,
+                              promptCompression: {
+                                ...config.llm.promptCompression!,
+                                threshold: parseInt(e.target.value) || 10000,
+                              },
+                            },
+                          })
+                        }
+                        className="w-full px-3 py-1 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200 focus:outline-none focus:border-amber-500/50"
+                        min="1000"
+                        max="100000"
+                        step="1000"
+                      />
+                      <p className="text-xs text-slate-600 mt-1">
+                        Compress prompts larger than this (default: 10,000)
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">
+                        Compression model
+                      </label>
+                      <select
+                        value={config.llm.promptCompression.compressionModel}
+                        onChange={(e) =>
+                          saveConfig({
+                            llm: {
+                              ...config.llm,
+                              promptCompression: {
+                                ...config.llm.promptCompression!,
+                                compressionModel: e.target.value,
+                              },
+                            },
+                          })
+                        }
+                        className="w-full px-3 py-1 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200 focus:outline-none focus:border-amber-500/50"
+                      >
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo (cheapest)</option>
+                        <option value="gpt-4o-mini">GPT-4o Mini</option>
+                        <option value="gpt-4o">GPT-4o</option>
+                      </select>
+                      <p className="text-xs text-slate-600 mt-1">
+                        Model used for compression (cheaper = lower cost)
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             {!config.setupComplete && (
               <div className="mt-6 flex justify-between">
@@ -491,6 +827,16 @@ export default function SettingsPage() {
                 </button>
               </div>
             )}
+          </Section>
+        )}
+
+        {/* Mode Settings Section */}
+        {(currentStep === "features" || config.setupComplete) && (
+          <Section
+            title="⚙️ Mode Settings"
+            description="Configure settings for each generation mode"
+          >
+            <ModeSettingsManager />
           </Section>
         )}
 

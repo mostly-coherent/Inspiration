@@ -175,14 +175,14 @@ export function ReverseMatchSection({
               id="reverse-days-back"
               type="range"
               min={7}
-              max={90}
+              max={365}
               value={daysBack}
               onChange={(e) => setDaysBack(parseInt(e.target.value))}
               className="slider-track w-full"
               disabled={isMatching}
-              aria-label={`Days back to search: ${daysBack} (maximum 90 days)`}
+              aria-label={`Days back to search: ${daysBack}`}
               aria-valuemin={7}
-              aria-valuemax={90}
+              aria-valuemax={365}
               aria-valuenow={daysBack}
             />
           </div>
@@ -332,7 +332,7 @@ export function ReverseMatchSection({
                 </div>
               </div>
 
-              {result.matches.length === 0 ? (
+              {!result.matches || result.matches.length === 0 ? (
                 <div className="p-6 bg-adobe-gray-800/50 rounded-lg border border-white/10">
                   <div className="text-center space-y-3">
                     <div className="text-4xl mb-2">🔍</div>

@@ -2,8 +2,9 @@ import { NextRequest } from "next/server";
 import { spawn } from "child_process";
 import { readFile } from "fs/promises";
 import path from "path";
-import { GenerateRequest, TOOL_CONFIG, PRESET_MODES, getToolPath } from "@/lib/types";
+import { GenerateRequest, TOOL_CONFIG, PRESET_MODES, getToolPath, ThemeType, ModeType } from "@/lib/types";
 import { logger } from "@/lib/logger";
+import { resolveThemeModeFromTool, validateThemeMode, getModeSettings } from "@/lib/themes";
 
 export const maxDuration = 300; // 5 minutes for long-running generation
 
@@ -20,15 +21,47 @@ export async function POST(request: NextRequest) {
 
       try {
         const body: GenerateRequest = await request.json();
-        const { tool, mode, days, bestOf, temperature, fromDate, toDate, dryRun } = body;
+        const { tool, theme, modeId, mode, days, bestOf, temperature, fromDate, toDate, dryRun } = body;
         
         // Get abort signal from request
         const signal = request.signal;
 
-        // Get tool config
-        const toolConfig = TOOL_CONFIG[tool];
+        // Resolve theme and mode (support both v0 tool and v1 theme/mode)
+        let resolvedTheme: ThemeType;
+        let resolvedMode: ModeType;
+        let resolvedTool: ToolType;
+
+        if (theme && modeId) {
+          // v1: Explicit theme/mode
+          if (!validateThemeMode(theme, modeId)) {
+            send({ type: "error", error: `Invalid theme/mode combination: ${theme}/${modeId}` });
+            controller.close();
+            return;
+          }
+          resolvedTheme = theme;
+          resolvedMode = modeId;
+          resolvedTool = modeId === "idea" ? "ideas" : modeId === "insight" ? "insights" : "ideas";
+        } else if (tool) {
+          // v0: Backward compatibility - resolve from tool
+          const resolved = resolveThemeModeFromTool(tool);
+          if (!resolved) {
+            send({ type: "error", error: `Unknown tool: ${tool}` });
+            controller.close();
+            return;
+          }
+          resolvedTheme = resolved.theme;
+          resolvedMode = resolved.mode;
+          resolvedTool = tool;
+        } else {
+          send({ type: "error", error: "Either 'tool' (v0) or 'theme' + 'modeId' (v1) must be provided" });
+          controller.close();
+          return;
+        }
+
+        // Get tool config (for script path)
+        const toolConfig = TOOL_CONFIG[resolvedTool];
         if (!toolConfig) {
-          send({ type: "error", error: `Unknown tool: ${tool}` });
+          send({ type: "error", error: `Unknown tool: ${resolvedTool}` });
           controller.close();
           return;
         }
@@ -36,14 +69,20 @@ export async function POST(request: NextRequest) {
         // Get mode config (for defaults)
         const modeConfig = PRESET_MODES.find((m) => m.id === mode);
         
+        // Get mode settings from themes.json (v1)
+        const modeSettings = getModeSettings(resolvedTheme, resolvedMode);
+        
         // Build command arguments
         const args: string[] = [];
+        
+        // Add --mode parameter (required for unified generate.py)
+        args.push("--mode", resolvedMode === "idea" ? "ideas" : resolvedMode === "insight" ? "insights" : resolvedMode);
         
         if (mode !== "custom" && modeConfig) {
           args.push(`--${mode}`);
         } else {
           // Custom mode - use explicit args
-          // Note: insights.py only supports --days (last N days from today) or --date (single date)
+          // Note: generate.py only supports --days (last N days from today) or --date (single date)
           // For date ranges, we calculate the number of days and use --days
           if (fromDate && toDate) {
             // Calculate days between dates (inclusive)
@@ -57,12 +96,12 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        if (bestOf !== undefined) {
-          args.push("--best-of", bestOf.toString());
-        }
-        if (temperature !== undefined) {
-          args.push("--temperature", temperature.toString());
-        }
+        // Override with custom values if provided, or use mode defaults
+        const effectiveBestOf = bestOf ?? modeSettings?.defaultBestOf ?? modeConfig?.bestOf ?? 5;
+        const effectiveTemperature = temperature ?? modeSettings?.temperature ?? modeConfig?.temperature ?? 0.2;
+        
+        args.push("--best-of", effectiveBestOf.toString());
+        args.push("--temperature", effectiveTemperature.toString());
 
         if (dryRun) {
           args.push("--dry-run");

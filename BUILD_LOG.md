@@ -209,3 +209,181 @@ We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB**
 **Evidence:**
 - Indexed 484 conversations with 12,334 messages in the first 90-day scan.
 - Search times expected to drop from ~5s to <1s.
+
+---
+
+## Progress - 2025-01-30 (Unified Generation Script)
+
+**Done:**
+- ✅ Unified `insights.py` and `ideas.py` into single `generate.py` script
+  - Created `engine/generate.py` with `--mode` parameter (insights/ideas)
+  - All shared functionality (LLM generation, reranking, bank harmonization) unified
+  - Mode-specific logic (voice guides, golden posts for insights; solved status sync for ideas) conditionally applied
+  - Eliminated ~1,000+ lines of duplicate code
+
+- ✅ Refactored prompt system with shared base + mode-specific prompts
+  - Created `engine/prompts/base_synthesize.md` with common elements:
+    - Confidentiality & Professionalism Rules
+    - Audience Awareness guidelines
+    - Common Voice & Style rules
+    - Input format specification
+  - Updated `engine/prompts/insights_synthesize.md` to contain only insights-specific content
+  - Updated `engine/prompts/ideas_synthesize.md` to contain only ideas-specific content
+  - `generate.py` loads and combines base + mode-specific prompts automatically
+
+- ✅ Updated API routes to use unified script
+  - Updated `src/lib/types.ts` to reference `generate.py` for both tools
+  - Added `mode` property to `TOOL_CONFIG` for each tool
+  - Updated `/api/generate/route.ts` to pass `--mode` parameter
+  - Updated `/api/generate-stream/route.ts` to pass `--mode` parameter
+
+- ✅ Removed SQLite fallbacks across all modules
+  - Updated `engine/common/cursor_db.py` to require Vector DB (no fallback)
+  - Updated `engine/insights.py` → `engine/generate.py` to require Vector DB
+  - Updated `engine/ideas.py` → `engine/generate.py` to require Vector DB
+  - Updated `engine/reverse_match.py` to require Vector DB
+  - All modules now fail fast with clear error messages if Vector DB not configured
+
+**In Progress:**
+- [ ] Documentation audit (BUILD_LOG.md, PIVOTS.md, ARCHITECTURE.md)
+- [ ] Debug audit (Helpful Agents/Debug.md)
+- [ ] Architecture audit (Helpful Agents/ReArchitecture.md)
+
+**Next:**
+- [ ] Run comprehensive debug audit
+- [ ] Run architecture documentation audit
+- [ ] Test unified script end-to-end (insights and ideas modes)
+- [ ] Optional: Delete old `insights.py` and `ideas.py` files after verification
+
+**Blockers:**
+- None
+
+**Evidence:**
+- Files created:
+  - `engine/generate.py` - Unified generation script (1,200+ lines)
+  - `engine/prompts/base_synthesize.md` - Shared prompt base
+- Files modified:
+  - `engine/prompts/insights_synthesize.md` - Extracted to mode-specific only
+  - `engine/prompts/ideas_synthesize.md` - Extracted to mode-specific only
+  - `src/lib/types.ts` - Updated to use `generate.py`
+  - `src/app/api/generate/route.ts` - Added `--mode` parameter
+  - `src/app/api/generate-stream/route.ts` - Added `--mode` parameter
+  - `engine/common/cursor_db.py` - Removed SQLite fallbacks
+  - `engine/reverse_match.py` - Removed SQLite fallbacks
+- Files deprecated (still exist, no longer used):
+  - `engine/insights.py` - Functionality moved to `generate.py`
+  - `engine/ideas.py` - Functionality moved to `generate.py`
+
+**Impact Summary:**
+- **Code Quality:** Eliminated ~1,000+ lines of duplicate code
+- **Maintainability:** Common changes now made in one place
+- **Consistency:** Both modes use identical generation pipeline
+- **Architecture:** Cleaner, more maintainable codebase
+
+---
+
+## Progress - 2025-12-29
+
+**Done:**
+- ✅ **v0 → v1 Migration Complete**
+  - Ran `migrate_voice_profile.py`: Migrated `customVoice` → `userProfile` in config.json
+  - Ran `migrate_banks_to_v1.py`: Migrated 3 ideas + 24 insights → unified `items_bank.json` with 27 categories
+  - Removed v0 code files: `engine/ideas.py`, `engine/insights.py` (replaced by unified `generate.py`)
+  - Removed v0 API route: `/api/banks` (replaced by `/api/items`)
+  - Removed v0 data files: `idea_bank.json`, `insight_bank.json`, `IDEA_BANK.md`, `INSIGHT_BANK.md`
+  - Removed v0 fallback code from `generate.py`: Now uses ItemsBank exclusively
+  - Removed v0 imports from `common/__init__.py`: No longer exports bank functions
+  - Removed unused `_get_projects_summary()` function from `generate.py`
+  - Cleaned up `config.json`: Removed `customVoice` section (migrated to `userProfile`)
+  - Updated `CLAUDE.md`: Removed references to v0 files and legacy bank system
+  - **Result:** Clean v1-only codebase with no v0 dependencies
+
+**Evidence:**
+- Migration scripts executed successfully with backups created
+- Old files deleted: `ideas.py`, `insights.py`, `/api/banks/route.ts`, old bank JSON/MD files
+- Code now uses `ItemsBank` exclusively (no fallback to legacy bank system)
+- All linting passes with no errors
+- ItemsBank verified working: 27 items, 27 categories
+
+**Next:**
+- Continue with v1 feature development
+- Monitor for any edge cases from migration
+
+**Blockers:**
+- None
+
+---
+
+## Progress - 2025-12-29 (Evening)
+
+**Done:**
+- ✅ **Debug Audit & Recommendations Implementation**
+  - Completed comprehensive debug audit (see DEBUG_AUDIT_2025-12-29.md)
+  - Fixed ModeSelector performance issue (removed onModeChange from useEffect deps)
+  - Fixed BanksOverview accessibility (added id and aria-live to error message)
+  - Added loading states to ThemeSelector and ModeSelector components
+  - Added memoization to BanksOverview for filtered items/categories to prevent unnecessary re-renders
+  - Verified ErrorBoundary coverage (already wraps entire app in layout.tsx)
+
+**Evidence:**
+- DEBUG_AUDIT_2025-12-29.md created with full audit report
+- Components updated: ModeSelector.tsx, BanksOverview.tsx, ThemeSelector.tsx
+- All linting passes with no errors
+- Loading spinners added for async theme/mode loading
+
+**Next:**
+- Documentation cleanup (merge V1_*.md files into canonical structure)
+- Continue v1 feature development
+
+**Blockers:**
+- None
+
+---
+
+## Progress - 2025-12-29 (Documentation Cleanup)
+
+**Done:**
+- ✅ **Documentation Consolidation**
+  - Merged v1 vision/requirements from Next.md and V1_BUILD_PLAN.md into PLAN.md
+  - Merged v1 deployment strategy decision into PIVOTS.md
+  - Merged v1 feature migration strategy into PIVOTS.md
+  - Merged platform support and 90-day limit removal decisions into PIVOTS.md
+  - Added debug audit progress entry to BUILD_LOG.md
+  - Merged v1 implementation status summary into BUILD_LOG.md
+  - Deleted merged files: Next.md, V1_DEPLOYMENT_STRATEGY.md, V1_MIGRATION_ANALYSIS.md, V1_EVOLUTION_SUMMARY.md, DEBUG_AUDIT_*.md
+
+**Evidence:**
+- PLAN.md updated with v1 vision and evolution details
+- PIVOTS.md updated with v1-related decisions
+- BUILD_LOG.md updated with debug audit and v1 implementation progress
+- Only canonical files remain: README.md, CLAUDE.md, PLAN.md, BUILD_LOG.md, PIVOTS.md, ARCHITECTURE.md
+
+**Next:**
+- Continue v1 feature development and polish
+
+**Blockers:**
+- None
+
+---
+
+## v1 Implementation Summary
+
+**Status:** ✅ **COMPLETE** (All phases done)
+
+**Phases Completed:**
+- ✅ Phase 0: Platform Simplification & VectorDB Setup
+- ✅ Phase 1: Foundation & Data Model
+- ✅ Phase 2: Core Refactoring
+- ✅ Phase 3: UI Updates
+- ✅ Phase 4: Advanced Features
+- ✅ Phase 5.1: Category Generation Integration
+- ✅ Phase 5.2: Testing & Polish
+
+**Key Achievements:**
+- Unified Items/Categories system implemented
+- Theme/Mode system working
+- v0 → v1 migration complete
+- All v0 features retained or transformed
+- Documentation consolidated to canonical structure
+
+<!-- Merged from V1_IMPLEMENTATION_STATUS.md on 2025-12-29 -->

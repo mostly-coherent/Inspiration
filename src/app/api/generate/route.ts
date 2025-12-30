@@ -2,24 +2,62 @@ import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "child_process";
 import { readFile } from "fs/promises";
 import path from "path";
-import { GenerateRequest, GenerateResult, TOOL_CONFIG, PRESET_MODES, getToolPath } from "@/lib/types";
+import { GenerateRequest, GenerateResult, TOOL_CONFIG, PRESET_MODES, getToolPath, ThemeType, ModeType, ToolType } from "@/lib/types";
 import { logger } from "@/lib/logger";
+import { parseRankedItems, extractEstimatedCost } from "@/lib/resultParser";
+import { resolveThemeModeFromTool, validateThemeMode, getModeSettings } from "@/lib/themes";
 
 export const maxDuration = 300; // 5 minutes for long-running generation
 
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateRequest = await request.json();
-    const { tool, mode, days, bestOf, temperature, fromDate, toDate, dryRun } = body;
+    const { tool, theme, modeId, mode, days, bestOf, temperature, fromDate, toDate, dryRun } = body;
     
     // Get abort signal from request
     const signal = request.signal;
 
-    // Get tool config
-    const toolConfig = TOOL_CONFIG[tool];
+    // Resolve theme and mode (support both v0 tool and v1 theme/mode)
+    let resolvedTheme: ThemeType;
+    let resolvedMode: ModeType;
+    let resolvedTool: ToolType;
+
+    if (theme && modeId) {
+      // v1: Explicit theme/mode
+      if (!validateThemeMode(theme, modeId)) {
+        return NextResponse.json(
+          { success: false, error: `Invalid theme/mode combination: ${theme}/${modeId}` },
+          { status: 400 }
+        );
+      }
+      resolvedTheme = theme;
+      resolvedMode = modeId;
+      // Map mode back to tool for backward compatibility with generate.py
+      resolvedTool = modeId === "idea" ? "ideas" : modeId === "insight" ? "insights" : "ideas";
+    } else if (tool) {
+      // v0: Backward compatibility - resolve from tool
+      const resolved = resolveThemeModeFromTool(tool);
+      if (!resolved) {
+        return NextResponse.json(
+          { success: false, error: `Unknown tool: ${tool}` },
+          { status: 400 }
+        );
+      }
+      resolvedTheme = resolved.theme;
+      resolvedMode = resolved.mode;
+      resolvedTool = tool;
+    } else {
+      return NextResponse.json(
+        { success: false, error: "Either 'tool' (v0) or 'theme' + 'modeId' (v1) must be provided" },
+        { status: 400 }
+      );
+    }
+
+    // Get tool config (for script path)
+    const toolConfig = TOOL_CONFIG[resolvedTool];
     if (!toolConfig) {
       return NextResponse.json(
-        { success: false, error: `Unknown tool: ${tool}` },
+        { success: false, error: `Unknown tool: ${resolvedTool}` },
         { status: 400 }
       );
     }
@@ -27,18 +65,24 @@ export async function POST(request: NextRequest) {
     // Get mode config (for defaults)
     const modeConfig = PRESET_MODES.find((m) => m.id === mode);
     
-    // Maximum days allowed (90 days retention policy)
-    const MAX_DAYS = 90;
+    // Get mode settings from themes.json (v1)
+    const modeSettings = getModeSettings(resolvedTheme, resolvedMode);
+    
+    // Note: 90-day limit removed in v1 - Vector DB enables unlimited date ranges
     
     // Build command arguments
     const args: string[] = [];
     
+    // Add --mode parameter (required for unified generate.py)
+    // Use resolvedMode which maps to generate.py's mode parameter
+    args.push("--mode", resolvedMode === "idea" ? "ideas" : resolvedMode === "insight" ? "insights" : resolvedMode);
+    
     if (mode !== "custom" && modeConfig) {
-      // Use preset mode - presets are already validated (max 90 days)
+      // Use preset mode
       args.push(`--${mode}`);
     } else {
       // Custom mode - use explicit args
-      // Note: insights.py only supports --days (last N days from today) or --date (single date)
+      // Note: generate.py only supports --days (last N days from today) or --date (single date)
       // For date ranges, we calculate the number of days and use --days
       let effectiveDays: number | undefined;
       
@@ -58,7 +102,7 @@ export async function POST(request: NextRequest) {
               success: false,
               tool,
               mode,
-              error: `End date cannot be in the future. Please select dates within the last ${MAX_DAYS} days.`,
+              error: `End date cannot be in the future.`,
               stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, candidatesGenerated: 0 },
               timestamp: new Date().toISOString(),
             },
@@ -84,60 +128,14 @@ export async function POST(request: NextRequest) {
         // Calculate days from today to start date
         const daysFromTodayToStart = Math.ceil((today.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
         
-        // Validate: start date must be within last 90 days
-        if (daysFromTodayToStart >= MAX_DAYS) {
-          return NextResponse.json(
-            {
-              success: false,
-              tool,
-              mode,
-              error: `Start date is ${daysFromTodayToStart} days ago (more than ${MAX_DAYS} days). Please select dates within the last ${MAX_DAYS} days from today.`,
-              stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, candidatesGenerated: 0 },
-              timestamp: new Date().toISOString(),
-            },
-            { status: 400 }
-          );
-        }
-        
-        // Calculate range span
-        const diffTime = Math.abs(to.getTime() - from.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 for inclusive
-        
-        // Validate: range span cannot exceed 90 days
-        if (diffDays > MAX_DAYS) {
-          return NextResponse.json(
-            {
-              success: false,
-              tool,
-              mode,
-              error: `Date range spans ${diffDays} days (exceeds maximum of ${MAX_DAYS} days). Please select a range within ${MAX_DAYS} days.`,
-              stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, candidatesGenerated: 0 },
-              timestamp: new Date().toISOString(),
-            },
-            { status: 400 }
-          );
-        }
-        
         // Python --days means "last N days from today", so we need to calculate
         // how many days back to go to include the start date
         // Since we're searching backwards from today, we use daysFromTodayToStart + 1
         // (to include both start and end dates)
-        effectiveDays = Math.min(daysFromTodayToStart + 1, MAX_DAYS);
+        // Note: No 90-day limit in v1 - Vector DB enables unlimited ranges
+        effectiveDays = daysFromTodayToStart + 1;
       } else if (days) {
-        // Validate: enforce 90-day maximum
-        if (days > MAX_DAYS) {
-          return NextResponse.json(
-            {
-              success: false,
-              tool,
-              mode,
-              error: `Days value (${days}) exceeds maximum of ${MAX_DAYS} days. Please select ${MAX_DAYS} days or fewer.`,
-              stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, candidatesGenerated: 0 },
-              timestamp: new Date().toISOString(),
-            },
-            { status: 400 }
-          );
-        }
+        // Note: No 90-day limit in v1 - Vector DB enables unlimited ranges
         effectiveDays = days;
       }
       
@@ -146,13 +144,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Override with custom values if provided
-    if (bestOf !== undefined) {
-      args.push("--best-of", bestOf.toString());
-    }
-    if (temperature !== undefined) {
-      args.push("--temperature", temperature.toString());
-    }
+    // Override with custom values if provided, or use mode defaults
+    const effectiveBestOf = bestOf ?? modeSettings?.defaultBestOf ?? modeConfig?.bestOf ?? 5;
+    const effectiveTemperature = temperature ?? modeSettings?.temperature ?? modeConfig?.temperature ?? 0.2;
+    
+    args.push("--best-of", effectiveBestOf.toString());
+    args.push("--temperature", effectiveTemperature.toString());
 
     if (dryRun) {
       args.push("--dry-run");
@@ -173,7 +170,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          tool,
+          tool: resolvedTool,
           mode,
           error: `Script failed: ${result.stderr.slice(0, 500)}`,
           stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, candidatesGenerated: 0 },
@@ -212,13 +209,21 @@ export async function POST(request: NextRequest) {
     // Parse stats from output
     const stats = parseStats(result.stdout);
 
+    // Parse ranked items from content
+    const items = content ? parseRankedItems(content, resolvedTool) : undefined;
+    
+    // Extract estimated cost
+    const estimatedCost = content ? extractEstimatedCost(content, stats.candidatesGenerated) : undefined;
+
     const response: GenerateResult = {
       success: true,
-      tool,
+      tool: resolvedTool, // Return resolved tool for backward compatibility
       mode,
-      outputFile,
+      outputFile, // Deprecated - kept for backward compatibility
       content,
       judgeContent,
+      items, // v1: Ranked items
+      estimatedCost, // Estimated LLM cost
       stats,
       timestamp: new Date().toISOString(),
     };

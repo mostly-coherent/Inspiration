@@ -64,13 +64,13 @@ export function AdvancedSettings({
             <input
               type="range"
               min={1}
-              max={90}
+              max={365}
               value={customDays}
               onChange={(e) => setCustomDays(parseInt(e.target.value))}
               className="slider-track flex-1"
               aria-label={`Number of days to analyze: ${customDays}`}
               aria-valuemin={1}
-              aria-valuemax={90}
+              aria-valuemax={365}
               aria-valuenow={customDays}
             />
             <span className="w-16 text-center font-mono" aria-hidden="true">{customDays} days</span>
@@ -87,22 +87,11 @@ export function AdvancedSettings({
                   onChange={(e) => {
                     const selectedFrom = e.target.value;
                     setFromDate(selectedFrom);
-                    // Enforce 90-day maximum: if toDate is set, ensure range doesn't exceed 90 days
-                    if (toDate && selectedFrom) {
-                      const from = new Date(selectedFrom);
-                      const to = new Date(toDate);
-                      const diffDays = Math.ceil(Math.abs(to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                      if (diffDays > 90) {
-                        // Auto-adjust toDate to maintain 90-day limit
-                        const maxTo = new Date(from);
-                        maxTo.setDate(maxTo.getDate() + 89); // 90 days inclusive
-                        setToDate(maxTo.toISOString().split('T')[0]);
-                      }
-                    }
+                    // Note: No 90-day limit in v1 - Vector DB enables unlimited ranges
                   }}
                   max={toDate || new Date().toISOString().split('T')[0]}
                   className="input-field"
-                  aria-label="Start date for analysis (maximum 90 days back)"
+                  aria-label="Start date for analysis"
                 />
               </div>
               <div className="flex-1">
@@ -114,23 +103,12 @@ export function AdvancedSettings({
                   onChange={(e) => {
                     const selectedTo = e.target.value;
                     setToDate(selectedTo);
-                    // Enforce 90-day maximum: if fromDate is set, ensure range doesn't exceed 90 days
-                    if (fromDate && selectedTo) {
-                      const from = new Date(fromDate);
-                      const to = new Date(selectedTo);
-                      const diffDays = Math.ceil(Math.abs(to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                      if (diffDays > 90) {
-                        // Auto-adjust fromDate to maintain 90-day limit
-                        const minFrom = new Date(to);
-                        minFrom.setDate(minFrom.getDate() - 89); // 90 days inclusive
-                        setFromDate(minFrom.toISOString().split('T')[0]);
-                      }
-                    }
+                    // Note: No 90-day limit in v1 - Vector DB enables unlimited ranges
                   }}
                   min={fromDate}
                   max={new Date().toISOString().split('T')[0]}
                   className="input-field"
-                  aria-label="End date for analysis (maximum 90 days from start)"
+                  aria-label="End date for analysis"
                 />
               </div>
             </div>
@@ -138,9 +116,7 @@ export function AdvancedSettings({
               const from = new Date(fromDate);
               const to = new Date(toDate);
               const diffDays = Math.ceil(Math.abs(to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-              return diffDays > 90 ? (
-                <p className="text-xs text-red-400">⚠️ Range exceeds 90 days (max allowed). Adjusting automatically...</p>
-              ) : (
+              return (
                 <p className="text-xs text-adobe-gray-500">{diffDays} day{diffDays !== 1 ? 's' : ''} selected</p>
               );
             })()}
