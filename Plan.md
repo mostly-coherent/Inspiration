@@ -15,6 +15,44 @@
 
 ---
 
+## Canonical Use Cases
+
+Each mode serves a distinct purpose:
+
+### Generate (Insights)
+**Canonical Use Case:** Extract shareable insights from coding sessions to post on social media (e.g., LinkedIn).
+
+**What it does:** Analyzes chat history for learnings, patterns, and observations worth sharing. Generates 3 social media post drafts that are casual, thoughtful, and helpful.
+
+**Example:** "What did I learn about AI-assisted coding today that others would find valuable?"
+
+---
+
+### Generate (Ideas)
+**Canonical Use Case:** Identify problems worth building solutions for from patterns in chat history.
+
+**What it does:** Finds recurring pain points or gaps in your work. Generates 3 idea briefs (Problem + Solution + Value Proposition) for prototypes/tools that are broadly useful and buildable.
+
+**Example:** "What problems did I encounter repeatedly that could be solved with a tool?"
+
+---
+
+### Seek (Use Cases)
+**Canonical Use Case:** "I want to build X (or post Y on social media), do I have similar/related real-life examples from the past that I worked through?"
+
+**What it does:** Takes your query (what you want to build/find), searches chat history for similar examples, and synthesizes structured use cases showing:
+- **What** you built/did before
+- **How** you approached it
+- **Context** (when/why it happened)
+- **Similarity** to your query
+- **Key takeaways** (what's reusable)
+
+**Example:** "I want to build a task automation tool" → Returns: "You built email filtering in March, calendar sync in February, etc. Here's how you approached them..."
+
+**Key Difference:** Generate creates new content; Seek finds and synthesizes existing examples from your history.
+
+---
+
 ## Requirements
 
 ### Core Features
@@ -31,7 +69,7 @@
 | C8 | **Advanced Mode** | Custom days, date range, candidates, temperature | ✅ Done |
 | C9 | **Progress UI** | Real-time progress, elapsed time, stop button | ✅ Done |
 | C10 | **Results Display** | Rendered markdown output with formatted/raw toggle | ✅ Done |
-| C11 | **Reverse Match** | Search chat history for user-provided insights/ideas | ✅ Done |
+| C11 | **Seek (Use Case)** | Find and synthesize real-world examples from chat history using unified synthesis pipeline | ✅ Done |
 | C12 | **Abort Signal Support** | STOP button properly kills Python processes on cancel | ✅ Done |
 | C13 | **Vector DB Search** | Supabase pgvector backend for massive (>2GB) chat histories | ✅ Done |
 
@@ -62,7 +100,8 @@ The engine combines these into a comprehensive system prompt that helps Claude m
 |----|---------|-------------|--------|
 | L1 | **Anthropic Claude** | Primary LLM (Claude Sonnet 4) | ✅ Done |
 | L2 | **OpenAI Fallback** | GPT-4o as fallback if Anthropic unavailable | ✅ Done |
-| L3 | **Model Selection** | Let user choose model in settings | ✅ Done |
+| L3 | **OpenRouter** | Access 500+ models from 60+ providers via unified API | ✅ Done |
+| L4 | **Model Selection** | Let user choose provider and model in settings | ✅ Done |
 
 ### UX/Polish
 
@@ -78,7 +117,7 @@ The engine combines these into a comprehensive system prompt that helps Claude m
 
 ## MVP: Chat History Search Across All Workspaces
 
-**Requirement:** All three features (Generate Insights, Generate Ideas, Reverse Match) must search through chat history **regardless of workspace and LLM** (both Composer and regular chats). This is a **NON-NEGOTIABLE MVP**.
+**Requirement:** All three features (Generate Insights, Generate Ideas, Seek) must search through chat history **regardless of workspace and LLM** (both Composer and regular chats). This is a **NON-NEGOTIABLE MVP**.
 
 **Status:** ✅ IMPLEMENTED
 

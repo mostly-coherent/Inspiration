@@ -32,9 +32,9 @@ export interface AppConfig {
     lastChecked: string | null;
   };
   llm: {
-    provider: "anthropic" | "openai";
+    provider: "anthropic" | "openai" | "openrouter";
     model: string;
-    fallbackProvider: "anthropic" | "openai" | null;
+    fallbackProvider: "anthropic" | "openai" | "openrouter" | null;
     fallbackModel: string | null;
     promptCompression?: {
       enabled: boolean;

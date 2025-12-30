@@ -374,6 +374,114 @@ def get_conversations_from_vector_db(
         
     except Exception as e:
         import sys
+        import traceback
+        error_details = traceback.format_exc()
         print(f"⚠️  Failed to retrieve conversations from Vector DB: {e}", file=sys.stderr)
+        print(f"   Full traceback:\n{error_details}", file=sys.stderr)
+        # Re-raise to let caller handle (they can catch and provide better context)
+        raise RuntimeError(
+            f"Failed to retrieve conversations from Vector DB for {start_date} to {end_date}: {e}\n"
+            f"Traceback:\n{error_details}"
+        ) from e
+
+
+def get_conversations_by_chat_ids(
+    chat_ids: list[tuple[str, str, str]],
+    start_date: datetime.date,
+    end_date: datetime.date,
+) -> list[dict]:
+    """
+    Retrieve conversations by specific chat_ids (more efficient than fetching all then filtering).
+    
+    Args:
+        chat_ids: List of (workspace, chat_id, chat_type) tuples
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+    
+    Returns:
+        List of conversation dicts matching the chat_ids
+    """
+    client = get_supabase_client()
+    if not client:
         return []
+    
+    if not chat_ids:
+        return []
+    
+    # Calculate timestamp range
+    start_datetime = datetime.combine(start_date, datetime.min.time())
+    end_datetime = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+    start_ts = int(start_datetime.timestamp() * 1000)
+    end_ts = int(end_datetime.timestamp() * 1000)
+    
+    try:
+        # Build workspace and chat_id filters
+        workspace_to_chat_ids: dict[str, list[str]] = {}
+        for workspace, chat_id, _ in chat_ids:
+            if workspace not in workspace_to_chat_ids:
+                workspace_to_chat_ids[workspace] = []
+            workspace_to_chat_ids[workspace].append(chat_id)
+        
+        # Fetch messages for each workspace/chat_id combination
+        all_messages = []
+        for workspace, chat_id_list in workspace_to_chat_ids.items():
+            # Query messages matching workspace and chat_ids
+            query_builder = client.table("cursor_messages").select("*")
+            query_builder = query_builder.eq("workspace", workspace)
+            query_builder = query_builder.in_("chat_id", chat_id_list)
+            query_builder = query_builder.gte("timestamp", start_ts)
+            query_builder = query_builder.lt("timestamp", end_ts)
+            
+            result = query_builder.execute()
+            if result.data:
+                all_messages.extend(result.data)
+        
+        # Group messages by chat_id and workspace
+        conversations_dict: dict[str, dict] = {}
+        chat_id_set = {(w, c, t) for w, c, t in chat_ids}
+        
+        for msg in all_messages:
+            chat_id = msg.get("chat_id", "unknown")
+            workspace = msg.get("workspace", "Unknown")
+            chat_type = msg.get("chat_type", "unknown")
+            
+            # Only include if in our target set
+            if (workspace, chat_id, chat_type) not in chat_id_set:
+                continue
+            
+            # Create unique key for conversation
+            conv_key = f"{workspace}:{chat_id}"
+            
+            if conv_key not in conversations_dict:
+                conversations_dict[conv_key] = {
+                    "chat_id": chat_id,
+                    "chat_type": chat_type,
+                    "workspace": workspace,
+                    "messages": [],
+                }
+            
+            # Add message to conversation
+            conversations_dict[conv_key]["messages"].append({
+                "type": msg.get("message_type", "user"),
+                "text": msg.get("text", ""),
+                "timestamp": msg.get("timestamp", 0),
+            })
+        
+        # Sort messages within each conversation by timestamp
+        conversations = list(conversations_dict.values())
+        for conv in conversations:
+            conv["messages"].sort(key=lambda m: m.get("timestamp", 0))
+        
+        return conversations
+        
+    except Exception as e:
+        import sys
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"⚠️  Failed to retrieve conversations by chat_ids from Vector DB: {e}", file=sys.stderr)
+        print(f"   Full traceback:\n{error_details}", file=sys.stderr)
+        raise RuntimeError(
+            f"Failed to retrieve conversations by chat_ids from Vector DB: {e}\n"
+            f"Traceback:\n{error_details}"
+        ) from e
 

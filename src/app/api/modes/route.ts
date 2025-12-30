@@ -17,6 +17,7 @@ interface Mode {
     minSimilarity: number | null;
     goldenExamplesFolder: string | null;
     implementedItemsFolder: string | null;
+    semanticSearchQueries: string[] | null;
   };
   defaultBestOf: number;
   createdBy: string;
@@ -123,6 +124,7 @@ export async function POST(request: NextRequest) {
         minSimilarity: mode.settings?.minSimilarity ?? null,
         goldenExamplesFolder: mode.settings?.goldenExamplesFolder || null,
         implementedItemsFolder: mode.settings?.implementedItemsFolder || null,
+        semanticSearchQueries: mode.settings?.semanticSearchQueries || null,
       },
       defaultBestOf: mode.defaultBestOf || 5,
       createdBy: "user",

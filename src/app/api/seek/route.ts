@@ -5,7 +5,7 @@ import { logger } from "@/lib/logger";
 
 export const maxDuration = 300; // 5 minutes for semantic search (embedding generation can take time)
 
-export interface ReverseMatchRequest {
+export interface SeekRequest {
   query: string;
   daysBack?: number;
   topK?: number;
@@ -13,46 +13,30 @@ export interface ReverseMatchRequest {
   workspaces?: string[];
 }
 
-export interface ReverseMatchResult {
+export interface SeekResult {
   success: boolean;
   query: string;
-  matches: Array<{
-    message: {
-      type: "user" | "assistant";
-      text: string;
-      timestamp: number;
-      workspace?: string;
-      chat_id?: string;
-      chat_type?: "composer" | "chat";
-    };
-    similarity: number;
-    context: {
-      before: Array<{
-        type: "user" | "assistant";
-        text: string;
-        timestamp: number;
-      }>;
-      after: Array<{
-        type: "user" | "assistant";
-        text: string;
-        timestamp: number;
-      }>;
-    };
-  }>;
+  content?: string; // Synthesized use cases (markdown)
+  items?: Array<{
+    title: string;
+    what?: string;
+    how?: string;
+    context?: string;
+    similarity?: string;
+    takeaways?: string;
+  }>; // Parsed use case items
   stats: {
-    totalMessages: number;
-    matchesFound: number;
+    conversationsAnalyzed: number;
     daysSearched: number;
-    startDate?: string;
-    endDate?: string;
-    conversationsExamined?: number;
+    useCasesFound: number;
   };
+  outputFile?: string;
   error?: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body: ReverseMatchRequest = await request.json();
+    const body: SeekRequest = await request.json();
     const { query, daysBack = 90, topK = 10, minSimilarity = 0.0, workspaces } = body;
     
     // Note: 90-day limit removed in v1 - Vector DB enables unlimited date ranges
@@ -70,13 +54,13 @@ export async function POST(request: NextRequest) {
     // No 90-day limit - Vector DB enables unlimited ranges
     const effectiveDaysBack = daysBack;
 
-    // Build command arguments
+    // Build command arguments (always use --json for structured output)
     const args: string[] = [
       "--query", query,
       "--days", effectiveDaysBack.toString(),
       "--top-k", topK.toString(),
       "--min-similarity", minSimilarity.toString(),
-      "--json",
+      "--json", // Always JSON for API
     ];
 
     if (workspaces && workspaces.length > 0) {
@@ -87,9 +71,9 @@ export async function POST(request: NextRequest) {
 
     // Get engine path
     const enginePath = path.resolve(process.cwd(), "engine");
-    const scriptPath = path.join(enginePath, "reverse_match.py");
+    const scriptPath = path.join(enginePath, "seek.py");
 
-    logger.log(`[Inspiration] Running: python3 reverse_match.py ${args.join(" ")}`);
+    logger.log(`[Inspiration] Running: python3 seek.py ${args.join(" ")}`);
     logger.log(`[Inspiration] Working directory: ${enginePath}`);
 
     // Execute Python script with abort signal support
@@ -104,7 +88,7 @@ export async function POST(request: NextRequest) {
       try {
         const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          const output = JSON.parse(jsonMatch[0]) as ReverseMatchResult;
+          const output = JSON.parse(jsonMatch[0]) as SeekResult;
           if (output.error) {
             errorMessage = output.error;
           }
@@ -117,12 +101,10 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           query,
-          matches: [],
           stats: {
-            totalMessages: 0,
-            matchesFound: 0,
+            conversationsAnalyzed: 0,
             daysSearched: effectiveDaysBack,
-            conversationsExamined: 0,
+            useCasesFound: 0,
           },
           error: `Script failed: ${errorMessage}`,
         },
@@ -137,21 +119,47 @@ export async function POST(request: NextRequest) {
       if (!jsonMatch) {
         throw new Error("No JSON found in script output");
       }
-      const output = JSON.parse(jsonMatch[0]) as ReverseMatchResult;
-      output.success = true;
-      return NextResponse.json(output);
+      const output = JSON.parse(jsonMatch[0]) as {
+        query: string;
+        content?: string;
+        items?: Array<{
+          title: string;
+          what?: string;
+          how?: string;
+          context?: string;
+          similarity?: string;
+          takeaways?: string;
+        }>;
+        stats: {
+          conversationsAnalyzed: number;
+          daysSearched: number;
+          useCasesFound: number;
+        };
+        outputFile?: string;
+        error?: string;
+      };
+      
+      const seekResult: SeekResult = {
+        success: !output.error,
+        query: output.query,
+        content: output.content,
+        items: output.items,
+        stats: output.stats,
+        outputFile: output.outputFile,
+        error: output.error,
+      };
+      
+      return NextResponse.json(seekResult);
     } catch (parseError) {
       logger.error("[Inspiration] Failed to parse JSON output:", result.stdout);
       return NextResponse.json(
         {
           success: false,
           query,
-          matches: [],
           stats: {
-            totalMessages: 0,
-            matchesFound: 0,
+            conversationsAnalyzed: 0,
             daysSearched: effectiveDaysBack,
-            conversationsExamined: 0,
+            useCasesFound: 0,
           },
           error: `Failed to parse script output: ${parseError instanceof Error ? parseError.message : "Unknown error"}`,
         },
@@ -160,20 +168,19 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     logger.error("[Inspiration] Error:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        query: "",
-        matches: [],
-        stats: {
-          totalMessages: 0,
-          matchesFound: 0,
-          daysSearched: 0,
+      return NextResponse.json(
+        {
+          success: false,
+          query: "",
+          stats: {
+            conversationsAnalyzed: 0,
+            daysSearched: 0,
+            useCasesFound: 0,
+          },
+          error: error instanceof Error ? error.message : "Unknown error",
         },
-        error: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 }
-    );
+        { status: 500 }
+      );
   }
 }
 
