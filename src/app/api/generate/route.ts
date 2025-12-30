@@ -282,8 +282,8 @@ export async function POST(request: NextRequest) {
 
     // Determine success: script ran successfully AND content was actually generated
     const hasContent = !!content && content.trim().length > 0;
-    const hasItems = items && items.length > 0;
-    const actuallySuccessful = hasContent || hasItems;
+    const hasItems = !!(items && items.length > 0);
+    const actuallySuccessful = !!(hasContent || hasItems);
     
     const response: GenerateResult = {
       success: actuallySuccessful, // Only true if content was actually generated

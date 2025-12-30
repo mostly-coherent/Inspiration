@@ -49,13 +49,26 @@ export async function POST() {
         } else {
           // Parse stdout for stats
           const indexedMatch = stdout.match(/Indexed: (\d+)/);
+          const failedMatch = stdout.match(/Failed: (\d+)/);
+          const skippedMatch = stdout.match(/Already indexed.*?(\d+)/);
           const indexed = indexedMatch ? parseInt(indexedMatch[1]) : 0;
+          const failed = failedMatch ? parseInt(failedMatch[1]) : 0;
+          const skipped = skippedMatch ? parseInt(skippedMatch[1]) : 0;
           
-          resolve(NextResponse.json({ 
-            success: true, 
-            message: "Sync completed successfully",
-            stats: { indexed }
-          }));
+          // Check if there were no new messages
+          if (stdout.includes("No new messages to sync")) {
+            resolve(NextResponse.json({ 
+              success: true, 
+              message: "Brain is up to date",
+              stats: { indexed: 0, skipped, failed }
+            }));
+          } else {
+            resolve(NextResponse.json({ 
+              success: true, 
+              message: "Sync completed successfully",
+              stats: { indexed, skipped, failed }
+            }));
+          }
         }
       });
     });

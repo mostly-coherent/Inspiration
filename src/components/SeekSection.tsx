@@ -178,9 +178,6 @@ export function SeekSection({
               className="slider-track w-full"
               disabled={isSeeking}
               aria-label={`Days back to search: ${daysBack}`}
-              aria-valuemin="7"
-              aria-valuemax="365"
-              aria-valuenow={`${daysBack}`}
             />
           </div>
           <div>
@@ -197,9 +194,6 @@ export function SeekSection({
               className="slider-track w-full"
               disabled={isSeeking}
               aria-label={`Maximum number of results: ${topK}`}
-              aria-valuemin="5"
-              aria-valuemax="50"
-              aria-valuenow={`${topK}`}
             />
           </div>
           <div>
@@ -216,9 +210,6 @@ export function SeekSection({
               className="slider-track w-full"
               disabled={isSeeking}
               aria-label={`Minimum similarity threshold: ${(minSimilarity * 100).toFixed(0)}%`}
-              aria-valuemin="0"
-              aria-valuemax="100"
-              aria-valuenow={`${Math.round(minSimilarity * 100)}`}
             />
           </div>
         </div>

@@ -69,9 +69,6 @@ export function AdvancedSettings({
               onChange={(e) => setCustomDays(parseInt(e.target.value))}
               className="slider-track flex-1"
               aria-label={`Number of days to analyze: ${customDays}`}
-              aria-valuemin="1"
-              aria-valuemax="365"
-              aria-valuenow={`${customDays}`}
             />
             <span className="w-16 text-center font-mono" aria-hidden="true">{customDays} days</span>
           </div>
@@ -143,9 +140,6 @@ export function AdvancedSettings({
           onChange={(e) => setCustomBestOf(parseInt(e.target.value))}
           className="slider-track w-full"
           aria-label={`Number of candidates to generate: ${customBestOf}`}
-          aria-valuemin="1"
-          aria-valuemax="20"
-          aria-valuenow={`${customBestOf}`}
         />
         <div className="flex justify-between text-xs text-adobe-gray-500">
           <span>1 (fast)</span>
@@ -174,9 +168,6 @@ export function AdvancedSettings({
           onChange={(e) => setCustomTemperature(parseInt(e.target.value) / 100)}
           className="slider-track w-full"
           aria-label={`Temperature setting: ${customTemperature.toFixed(2)}`}
-          aria-valuemin="0"
-          aria-valuemax="1"
-          aria-valuenow={`${Math.round(customTemperature * 100) / 100}`}
         />
         <div className="flex justify-between text-xs text-adobe-gray-500">
           <span>0.0 (focused)</span>

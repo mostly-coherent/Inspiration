@@ -408,15 +408,15 @@ def generate_content(
     if mode in MODE_CONFIG:
         config = MODE_CONFIG[mode]
         if not config["has_output_check"](best_match):
-        print(f"⚠️  Judge picked {best_id} but it has no valid output format", file=sys.stderr)
-        print(f"   Trying other candidates...", file=sys.stderr)
-        # Try to find a candidate with valid format
-        for cid, candidate_text in candidates:
-            if config["has_output_check"](candidate_text):
-                print(f"   ✅ Found valid candidate: {cid}", file=sys.stderr)
-                best_match = candidate_text
-                best_id = cid
-                break
+            print(f"⚠️  Judge picked {best_id} but it has no valid output format", file=sys.stderr)
+            print(f"   Trying other candidates...", file=sys.stderr)
+            # Try to find a candidate with valid format
+            for cid, candidate_text in candidates:
+                if config["has_output_check"](candidate_text):
+                    print(f"   ✅ Found valid candidate: {cid}", file=sys.stderr)
+                    best_match = candidate_text
+                    best_id = cid
+                    break
         else:
             # No valid candidates found - log warning but continue
             print(f"   ⚠️  No candidates have valid output format. Using judge's pick anyway.", file=sys.stderr)

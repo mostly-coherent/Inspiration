@@ -283,6 +283,46 @@ def get_message_count(client: Optional[Client] = None) -> int:
         return 0
 
 
+def get_existing_message_ids(message_ids: list[str], client: Optional[Client] = None) -> set[str]:
+    """
+    Check which message IDs already exist in the vector database.
+    
+    Args:
+        message_ids: List of message IDs to check
+        client: Optional Supabase client (will create if not provided)
+    
+    Returns:
+        Set of message IDs that already exist
+    """
+    if client is None:
+        client = get_supabase_client()
+    
+    if not client or not message_ids:
+        return set()
+    
+    try:
+        # Query in chunks to avoid URL length limits (Supabase has limits on query size)
+        existing_ids = set()
+        chunk_size = 1000  # Process in chunks of 1000
+        
+        for i in range(0, len(message_ids), chunk_size):
+            chunk = message_ids[i:i + chunk_size]
+            result = client.table("cursor_messages")\
+                .select("message_id")\
+                .in_("message_id", chunk)\
+                .execute()
+            
+            if result.data:
+                existing_ids.update(msg.get("message_id") for msg in result.data if msg.get("message_id"))
+        
+        return existing_ids
+    except Exception as e:
+        # If check fails, return empty set (will process all messages)
+        import sys
+        print(f"⚠️  Warning: Could not check existing messages: {e}", file=sys.stderr)
+        return set()
+
+
 def get_conversations_from_vector_db(
     start_date: datetime.date,
     end_date: datetime.date,
