@@ -34,8 +34,13 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<GenerateResult | null>(null);
   
-  // Reverse Match state
+  // Reverse Match state - derived from selected theme
   const [showReverseMatch, setShowReverseMatch] = useState(false);
+  
+  // Sync showReverseMatch with selectedTheme
+  useEffect(() => {
+    setShowReverseMatch(selectedTheme === "seek");
+  }, [selectedTheme]);
   const [reverseQuery, setReverseQuery] = useState("");
   const [isReverseMatching, setIsReverseMatching] = useState(false);
   const [reverseResult, setReverseResult] = useState<ReverseMatchResult | null>(null);
@@ -361,108 +366,82 @@ export default function Home() {
           </p>
         </header>
 
-        {/* Mode Toggle */}
-        <section className="glass-card p-4">
-          <div className="flex items-center justify-center gap-4">
-            <button
-              onClick={() => setShowReverseMatch(false)}
-              aria-pressed={!showReverseMatch}
-              className={`px-6 py-2 rounded-lg transition-all ${
-                !showReverseMatch
-                  ? "bg-inspiration-ideas text-white"
-                  : "bg-white/10 text-adobe-gray-400 hover:bg-white/20"
-              }`}
-            >
-              Generate Ideas/Insights
-            </button>
-            <button
-              onClick={() => setShowReverseMatch(true)}
-              aria-pressed={showReverseMatch}
-              aria-label="Reverse Match - Find chat history evidence for your insights"
-              className={`px-6 py-2 rounded-lg transition-all ${
-                showReverseMatch
-                  ? "bg-inspiration-insights text-white"
-                  : "bg-white/10 text-adobe-gray-400 hover:bg-white/20"
-              }`}
-            >
-              <span aria-hidden="true">🔍</span> Reverse Match
-            </button>
-          </div>
-        </section>
-
         {showReverseMatch ? null : (
           <>
-        {/* Theme/Mode Selection */}
+        {/* Unified Configuration Section */}
         <section className="glass-card p-6 space-y-6">
-          <h2 className="text-lg font-medium text-adobe-gray-300">
-            What do you want to generate?
-          </h2>
-          
-          <ThemeSelector
-            selectedTheme={selectedTheme}
-            onThemeChange={setSelectedTheme}
-          />
-          
-          <ModeSelector
-            theme={selectedTheme}
-            selectedMode={selectedModeId}
-            onModeChange={setSelectedModeId}
-          />
-        </section>
-
-        {/* Mode Selection */}
-        <section className="glass-card p-6 space-y-4">
-          <div className="flex items-center justify-between">
+          {/* Theme/Mode Selection */}
+          <div className="space-y-4">
             <h2 className="text-lg font-medium text-adobe-gray-300">
-              Time period & depth
+              What do you want to do?
             </h2>
-            <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="text-sm text-inspiration-ideas hover:text-inspiration-ideas/80 transition-colors"
-            >
-              {showAdvanced ? "← Back to presets" : "Advanced settings →"}
-            </button>
+            
+            <ThemeSelector
+              selectedTheme={selectedTheme}
+              onThemeChange={(themeId) => setSelectedTheme(themeId as ThemeType)}
+            />
+            
+            <ModeSelector
+              theme={selectedTheme}
+              selectedMode={selectedModeId}
+              onModeChange={setSelectedModeId}
+            />
           </div>
 
-          {!showAdvanced ? (
-            <div className="grid grid-cols-4 gap-4">
-              {PRESET_MODES.map((mode) => (
-                <ModeCard
-                  key={mode.id}
-                  mode={mode}
-                  isSelected={selectedMode === mode.id}
-                  onClick={() => setSelectedMode(mode.id)}
-                />
-              ))}
+          {/* Time Period & Settings */}
+          <div className="space-y-4 pt-4 border-t border-white/10">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-medium text-adobe-gray-300">
+                Time period & depth
+              </h2>
+              <button
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="text-sm text-inspiration-ideas hover:text-inspiration-ideas/80 transition-colors"
+              >
+                {showAdvanced ? "← Presets" : "Advanced →"}
+              </button>
             </div>
-          ) : (
-            <AdvancedSettings
-              customDays={customDays}
-              setCustomDays={setCustomDays}
-              customBestOf={customBestOf}
-              setCustomBestOf={setCustomBestOf}
-              customTemperature={customTemperature}
-              setCustomTemperature={setCustomTemperature}
-              fromDate={fromDate}
-              setFromDate={setFromDate}
-              toDate={toDate}
-              setToDate={setToDate}
-              useCustomDates={useCustomDates}
-              setUseCustomDates={setUseCustomDates}
-            />
-          )}
 
-          {/* Expected output summary */}
-          <ExpectedOutput
-            tool={displayTool}
-            days={showAdvanced ? (useCustomDates ? calculateDateRangeDays(fromDate, toDate) : customDays) : (currentModeConfig?.days ?? 14)}
-            bestOf={getCurrentBestOf()}
-            temperature={showAdvanced ? customTemperature : (currentModeConfig?.temperature ?? 0.4)}
-            estimatedCost={estimateCost(getCurrentBestOf())}
-          />
+            {!showAdvanced ? (
+              <div className="grid grid-cols-4 gap-4">
+                {PRESET_MODES.map((mode) => (
+                  <ModeCard
+                    key={mode.id}
+                    mode={mode}
+                    isSelected={selectedMode === mode.id}
+                    onClick={() => setSelectedMode(mode.id)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <AdvancedSettings
+                customDays={customDays}
+                setCustomDays={setCustomDays}
+                customBestOf={customBestOf}
+                setCustomBestOf={setCustomBestOf}
+                customTemperature={customTemperature}
+                setCustomTemperature={setCustomTemperature}
+                fromDate={fromDate}
+                setFromDate={setFromDate}
+                toDate={toDate}
+                setToDate={setToDate}
+                useCustomDates={useCustomDates}
+                setUseCustomDates={setUseCustomDates}
+              />
+            )}
+
+            {/* Expected output summary - integrated */}
+            <ExpectedOutput
+              tool={displayTool}
+              days={showAdvanced ? (useCustomDates ? calculateDateRangeDays(fromDate, toDate) : customDays) : (currentModeConfig?.days ?? 14)}
+              bestOf={getCurrentBestOf()}
+              temperature={showAdvanced ? customTemperature : (currentModeConfig?.temperature ?? 0.4)}
+              estimatedCost={estimateCost(getCurrentBestOf())}
+            />
+          </div>
         </section>
 
-        {/* Generate Button & Progress */}
+        {/* Generate Button & Progress - More Prominent */}
         <div className="space-y-4">
           {isGenerating ? (
             <ProgressPanel
@@ -477,12 +456,13 @@ export default function Home() {
             <div className="flex justify-center">
               <button
                 onClick={handleGenerate}
-                className="btn-primary text-xl px-12 py-4"
+                className="btn-primary text-2xl px-16 py-5 font-semibold shadow-lg shadow-inspiration-ideas/20 hover:shadow-inspiration-ideas/30 transition-all"
                 aria-busy={isGenerating}
                 aria-live="polite"
               >
-                <span>
-                  Generate {modeConfig?.icon || toolConfig.icon} {modeConfig?.name || toolConfig.label}
+                <span className="flex items-center gap-3">
+                  <span className="text-3xl">{modeConfig?.icon || toolConfig.icon}</span>
+                  Generate {modeConfig?.name || toolConfig.label}
                 </span>
               </button>
             </div>

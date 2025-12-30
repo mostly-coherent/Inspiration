@@ -17,6 +17,20 @@ export interface AppConfig {
   version: number;
   setupComplete: boolean;
   workspaces: string[];
+  vectordb?: {
+    provider: "supabase";
+    url: string | null;
+    anonKey: string | null;
+    serviceRoleKey: string | null;
+    initialized: boolean;
+    lastSync: string | null;
+  };
+  chatHistory?: {
+    path: string | null;
+    platform: string | null;
+    autoDetected: boolean;
+    lastChecked: string | null;
+  };
   llm: {
     provider: "anthropic" | "openai";
     model: string;
@@ -27,6 +41,11 @@ export interface AppConfig {
       threshold: number;
       compressionModel: string;
     };
+  };
+  userProfile?: {
+    name: string | null;
+    jobContext: string | null;
+    styleguide: string | null;
   };
   features: {
     linkedInSync: {
@@ -43,6 +62,7 @@ export interface AppConfig {
       authorName: string | null;          // Author name for prompts
       authorContext: string | null;       // Brief author context (e.g., "PM at a large tech company")
     };
+    v1Enabled?: boolean;  // Feature flag: v1 features disabled by default
   };
   ui: {
     defaultTool: "ideas" | "insights";

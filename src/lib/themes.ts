@@ -41,7 +41,7 @@ export async function loadThemesAsync(): Promise<ThemesConfig> {
     const response = await fetch("/api/themes");
     const data = await response.json();
     if (data.success && data.themes) {
-      themesCache = data.themes;
+      themesCache = data.themes as ThemesConfig;
       return themesCache;
     }
   } catch (error) {

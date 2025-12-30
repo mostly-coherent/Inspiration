@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { spawn } from "child_process";
 import { readFile } from "fs/promises";
 import path from "path";
-import { GenerateRequest, TOOL_CONFIG, PRESET_MODES, getToolPath, ThemeType, ModeType } from "@/lib/types";
+import { GenerateRequest, TOOL_CONFIG, PRESET_MODES, getToolPath, ThemeType, ModeType, ToolType } from "@/lib/types";
 import { logger } from "@/lib/logger";
 import { resolveThemeModeFromTool, validateThemeMode, getModeSettings } from "@/lib/themes";
 
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Override with custom values if provided, or use mode defaults
-        const effectiveBestOf = bestOf ?? modeSettings?.defaultBestOf ?? modeConfig?.bestOf ?? 5;
+        const effectiveBestOf = bestOf ?? modeConfig?.bestOf ?? 5;
         const effectiveTemperature = temperature ?? modeSettings?.temperature ?? modeConfig?.temperature ?? 0.2;
         
         args.push("--best-of", effectiveBestOf.toString());
@@ -107,9 +107,9 @@ export async function POST(request: NextRequest) {
           args.push("--dry-run");
         }
 
-        const toolPath = getToolPath(tool);
+        const toolPath = getToolPath(resolvedTool);
         
-        send({ type: "start", message: `Starting ${tool} generation...` });
+        send({ type: "start", message: `Starting ${resolvedTool} generation...` });
         send({ type: "log", message: `Running: python3 ${toolConfig.script} ${args.join(" ")}` });
 
         // Execute Python script with streaming output

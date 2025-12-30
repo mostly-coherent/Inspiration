@@ -3,7 +3,7 @@
   "themes": [
     {
       "id": "generation",
-      "label": "Generation",
+      "label": "Generate",
       "description": "Generate content from chat history",
       "modes": [
         {
