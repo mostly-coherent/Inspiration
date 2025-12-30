@@ -166,20 +166,55 @@ inspiration/
 
 ---
 
+---
+
+## v1 Vision & Evolution
+
+**v1 Goal:** Transform Inspiration into a flexible, theme-based system where users can create custom modes, with unified Items/Categories system and visual-first display.
+
+**Key Changes:**
+- Themes (Generation, Seek) with user-creatable Modes
+- Unified Items/Categories system (replaces separate Idea/Insight banks)
+- Visual-first display (no auto-save .md files)
+- Enhanced settings (OpenRouter, mode management, folder tracking)
+
+**Platform Support:** Mac and Windows only (Linux support removed in v1)
+
+**UX Parity Requirements:**
+- ✅ Same look and feel — Maintain visual consistency with v0
+- ✅ Stop mid-way — Retain abort signal support and Stop button
+- ✅ See progress — Retain progress bar, percentage, phase, elapsed/remaining time
+- ✅ Conversations analyzed — Retain conversation count display in results
+- ✅ NFR retention — Keep all v0 non-functional requirements (performance, error handling, accessibility)
+
+**v1 Features:**
+- Theme: Generation (Modes: Idea, Insight, custom modes)
+- Theme: Seek (Mode: Use Case, custom modes)
+- Unified Items/Categories bank with cosine similarity grouping
+- Mode-specific settings (temperature, similarity thresholds, folder paths)
+- Folder-based tracking for implemented items
+- Run history storage (localStorage)
+- Optional file export (user-initiated, not auto-save)
+
+<!-- Merged from Next.md and V1_BUILD_PLAN.md on 2025-12-29 -->
+
+---
+
 ## 🎯 NEXT FOCUS
 
 **Priority:** Maintain stability & monitor Vector DB syncing.
 
 **Current Status:**
-- Phase 1-7 complete.
-- Vector DB architecture implemented and indexing.
-- Critical NFRs (caching, parallel processing) active.
+- v1 implementation complete (all phases done)
+- Vector DB architecture implemented and indexing
+- Critical NFRs (caching, parallel processing) active
+- v0 → v1 migration complete
 
 **Next Steps:**
-1. ✅ Monitor the initial indexing of the 2.1GB dataset.
-2. ✅ Verify incremental sync works for daily updates.
-3. Optional: Add a "Last Sync" indicator in the UI.
+1. ✅ Monitor the initial indexing of the 2.1GB dataset
+2. ✅ Verify incremental sync works for daily updates
+3. Continue v1 feature development and polish
 
 ---
 
-**Last Updated:** 2025-12-28
+**Last Updated:** 2025-12-29

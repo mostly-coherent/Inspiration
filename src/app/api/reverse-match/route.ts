@@ -55,8 +55,7 @@ export async function POST(request: NextRequest) {
     const body: ReverseMatchRequest = await request.json();
     const { query, daysBack = 90, topK = 10, minSimilarity = 0.0, workspaces } = body;
     
-    // Maximum days allowed (90 days retention policy)
-    const MAX_DAYS = 90;
+    // Note: 90-day limit removed in v1 - Vector DB enables unlimited date ranges
     
     // Get abort signal from request
     const signal = request.signal;
@@ -68,27 +67,8 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Validate: enforce 90-day maximum
-    if (daysBack > MAX_DAYS) {
-      return NextResponse.json(
-        {
-          success: false,
-          query,
-          matches: [],
-          stats: {
-            totalMessages: 0,
-            matchesFound: 0,
-            daysSearched: daysBack,
-            conversationsExamined: 0,
-          },
-          error: `Days back (${daysBack}) exceeds maximum of ${MAX_DAYS} days. Please select ${MAX_DAYS} days or fewer.`,
-        },
-        { status: 400 }
-      );
-    }
-    
-    // Clamp daysBack to maximum if somehow it exceeds
-    const effectiveDaysBack = Math.min(daysBack, MAX_DAYS);
+    // No 90-day limit - Vector DB enables unlimited ranges
+    const effectiveDaysBack = daysBack;
 
     // Build command arguments
     const args: string[] = [

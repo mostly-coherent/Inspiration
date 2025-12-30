@@ -1,7 +1,7 @@
 """
 Cursor Database Extraction — Cross-platform support for extracting chat history.
 
-Supports: macOS, Windows, Linux
+Supports: macOS, Windows (Linux support removed in v1)
 """
 
 import hashlib
@@ -19,12 +19,14 @@ def get_cursor_db_path() -> Path:
     """
     Auto-detect Cursor database path based on operating system.
     
+    Supports: macOS, Windows (Linux support removed in v1)
+    
     Returns:
         Path to state.vscdb file
         
     Raises:
         FileNotFoundError: If Cursor database not found
-        RuntimeError: If OS not supported
+        RuntimeError: If OS not supported (only Mac/Windows supported)
     """
     system = platform.system()
     
@@ -33,12 +35,14 @@ def get_cursor_db_path() -> Path:
     elif system == "Windows":
         appdata = os.environ.get("APPDATA", "")
         if not appdata:
-            raise RuntimeError("APPDATA environment variable not set")
+            raise RuntimeError("APPDATA environment variable not set. Windows requires APPDATA to locate Cursor database.")
         db_path = Path(appdata) / "Cursor/User/globalStorage/state.vscdb"
-    elif system == "Linux":
-        db_path = Path.home() / ".config/Cursor/User/globalStorage/state.vscdb"
     else:
-        raise RuntimeError(f"Unsupported operating system: {system}")
+        raise RuntimeError(
+            f"Unsupported operating system: {system}. "
+            "Inspiration v1 supports macOS and Windows only. "
+            "Linux support has been removed."
+        )
     
     if not db_path.exists():
         raise FileNotFoundError(
@@ -50,18 +54,25 @@ def get_cursor_db_path() -> Path:
 
 
 def get_workspace_storage_path() -> Path:
-    """Get the workspace storage directory path."""
+    """
+    Get the workspace storage directory path.
+    
+    Supports: macOS, Windows (Linux support removed in v1)
+    """
     system = platform.system()
     
     if system == "Darwin":
         return Path.home() / "Library/Application Support/Cursor/User/workspaceStorage"
     elif system == "Windows":
         appdata = os.environ.get("APPDATA", "")
+        if not appdata:
+            raise RuntimeError("APPDATA environment variable not set. Windows requires APPDATA to locate workspace storage.")
         return Path(appdata) / "Cursor/User/workspaceStorage"
-    elif system == "Linux":
-        return Path.home() / ".config/Cursor/User/workspaceStorage"
     else:
-        raise RuntimeError(f"Unsupported operating system: {system}")
+        raise RuntimeError(
+            f"Unsupported operating system: {system}. "
+            "Inspiration v1 supports macOS and Windows only."
+        )
 
 
 def get_workspace_mapping() -> dict[str, str]:
@@ -407,6 +418,35 @@ def get_conversations_for_date(
     use_cache: bool = True,
 ) -> list[dict]:
     """
+    Get conversations for a single date from Vector DB.
+    
+    Requires Vector DB to be set up and synced.
+    """
+    from .vector_db import get_supabase_client, get_conversations_from_vector_db
+    
+    client = get_supabase_client()
+    if not client:
+        raise RuntimeError(
+            "Vector DB not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY in your .env file.\n"
+            "See engine/scripts/init_vector_db.sql for setup instructions."
+        )
+    
+    # Use Vector DB exclusively
+    conversations = get_conversations_from_vector_db(
+        target_date,
+        target_date,
+        workspace_paths=workspace_paths,
+    )
+    
+    return conversations
+
+
+def _get_conversations_for_date_sqlite(
+    target_date: datetime.date,
+    workspace_paths: list[str] | None = None,
+    use_cache: bool = True,
+) -> list[dict]:
+    """
     Extract all conversations from the target date.
     Searches both Composer chats and regular chat conversations.
     
@@ -656,7 +696,9 @@ def get_conversations_for_range(
     workspace_paths: list[str] | None = None,
 ) -> list[dict]:
     """
-    Extract all conversations for a date range.
+    Extract all conversations for a date range from Vector DB.
+    
+    Requires Vector DB to be set up and synced.
     
     Args:
         start_date: Start date (inclusive)
@@ -668,84 +710,24 @@ def get_conversations_for_range(
         Note: Conversations are deduplicated by chat_id+workspace, and messages
         from all days in the range are included (not filtered to specific days).
     """
-    print(f"📅 [DEBUG] get_conversations_for_range: {start_date} to {end_date}", file=sys.stderr)
-    if workspace_paths:
-        print(f"🔍 [DEBUG] Workspace filter: {workspace_paths}", file=sys.stderr)
+    from .vector_db import get_supabase_client, get_conversations_from_vector_db
     
-    # Calculate timestamp range for the entire period
-    start_of_range = datetime.combine(start_date, datetime.min.time())
-    end_of_range = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
-    start_ts = int(start_of_range.timestamp() * 1000)
-    end_ts = int(end_of_range.timestamp() * 1000)
+    client = get_supabase_client()
+    if not client:
+        raise RuntimeError(
+            "Vector DB not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY in your .env file.\n"
+            "See engine/scripts/init_vector_db.sql for setup instructions."
+        )
     
-    print(f"⏰ [DEBUG] Timestamp range: {start_ts} to {end_ts} ({start_of_range} to {end_of_range})", file=sys.stderr)
+    # Use Vector DB exclusively
+    conversations = get_conversations_from_vector_db(
+        start_date,
+        end_date,
+        workspace_paths=workspace_paths,
+    )
     
-    # Get all conversations that have activity in ANY day of the range
-    # We'll collect unique conversations and include ALL their messages (not filtered by day)
-    conversation_map: dict[str, dict] = {}  # key: f"{workspace}:{chat_id}:{chat_type}"
-    
-    current = start_date
-    total_days = (end_date - start_date).days + 1
-    days_processed = 0
-    
-    while current <= end_date:
-        days_processed += 1
-        if days_processed % 10 == 0 or days_processed == total_days:
-            print(f"  [DEBUG] Processing day {days_processed}/{total_days}: {current}", file=sys.stderr)
-        
-        # Get conversations for this day (but we'll merge messages across days)
-        # Temporarily disable cache to see what's actually being found
-        convos = get_conversations_for_date(current, workspace_paths, use_cache=False)
-        
-        if convos:
-            print(f"  [DEBUG] Day {current}: Found {len(convos)} conversations", file=sys.stderr)
-        
-        for convo in convos:
-            workspace = convo.get("workspace", "Unknown")
-            chat_id = convo.get("chat_id", "unknown")
-            chat_type = convo.get("chat_type", "unknown")
-            key = f"{workspace}:{chat_id}:{chat_type}"
-            
-            if key not in conversation_map:
-                # New conversation - add it
-                conversation_map[key] = {
-                    "chat_id": chat_id,
-                    "chat_type": chat_type,
-                    "workspace": workspace,
-                    "messages": [],
-                }
-            
-            # Add messages from this day (they're already filtered to this day by get_conversations_for_date)
-            existing_messages = conversation_map[key]["messages"]
-            new_messages = convo.get("messages", [])
-            
-            # Merge messages, avoiding duplicates by timestamp
-            existing_timestamps = {msg["timestamp"] for msg in existing_messages}
-            for msg in new_messages:
-                if msg["timestamp"] not in existing_timestamps:
-                    existing_messages.append(msg)
-        
-        current += timedelta(days=1)
-    
-    print(f"📊 [DEBUG] Collected {len(conversation_map)} unique conversations", file=sys.stderr)
-    
-    # Convert map to list and filter messages to the full date range
-    all_conversations = []
-    for convo in conversation_map.values():
-        # STRICT filtering: Only include messages with valid timestamps within the date range
-        filtered_messages = [
-            msg for msg in convo["messages"]
-            if msg.get("timestamp", 0) > 0  # Must have valid timestamp
-            and start_ts <= msg["timestamp"] < end_ts  # Must be within date range
-        ]
-        if filtered_messages:
-            convo["messages"] = filtered_messages
-            all_conversations.append(convo)
-            print(f"  [DEBUG] Conversation {convo['chat_id']} ({convo['chat_type']}) in {convo['workspace']}: {len(filtered_messages)} messages in range", file=sys.stderr)
-    
-    print(f"✅ [DEBUG] Returning {len(all_conversations)} conversations with {sum(len(c['messages']) for c in all_conversations)} total messages (strictly filtered to date range)", file=sys.stderr)
-    
-    return all_conversations
+    print(f"🚀 [DEBUG] Using Vector DB: {len(conversations)} conversations", file=sys.stderr)
+    return conversations
 
 
 def format_conversations_for_prompt(conversations: list[dict]) -> str:

@@ -60,13 +60,10 @@ Rank ideas by:
 3. **Shareability:** Is it generic enough to open-source and benefit others?
 4. **Portfolio diversity:** Does it broaden your portfolio beyond family tools?
 
-## Voice & Style
+## Voice & Style (Ideas-Specific)
 
 - Be **concise** (idea briefs, not essays)
-- Be **constructive** (identify opportunities, not complaints)
 - Be **practical** (focus on buildable ideas, not pie-in-the-sky visions)
-- Be **honest** about complexity and tradeoffs
-- Use casual, conversational language
 
 ## Output Format
 
@@ -134,27 +131,3 @@ The chats were routine work with no clear patterns or pain points worth prototyp
 ### Why No Ideas
 [Brief explanation - e.g., "Debugging session with no recurring themes"]
 ```
-
-This is fine. Not every session yields a new idea. Quality over quantity.
-
-## Confidentiality Rules
-
-- **NO company names** — Use "my company", "our team", etc.
-- **Product names OK** — Tools you use as a customer (Cursor, Vercel, etc.)
-- **No proprietary reveals** — Don't hint at internal architectures or unreleased features
-- **No negative framing** — Don't complain about tools, teams, or processes. Extract constructive lessons only.
-
-## Input
-
-The user will provide chat history in this format:
-
-```
-=== Conversation: {title or first message} ===
-Workspace: {workspace path}
-Time: {timestamp}
-
-[User]: {message}
-[Assistant]: {response summary}
-...
-```
-

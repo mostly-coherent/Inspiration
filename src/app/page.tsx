@@ -8,6 +8,8 @@ import {
   PRESET_MODES,
   TOOL_CONFIG,
   ReverseMatchResult,
+  ThemeType,
+  ModeType,
 } from "@/lib/types";
 import { BanksOverview } from "@/components/BanksOverview";
 import { ResultsPanel } from "@/components/ResultsPanel";
@@ -17,10 +19,16 @@ import { ModeCard } from "@/components/ModeCard";
 import { AdvancedSettings } from "@/components/AdvancedSettings";
 import { ExpectedOutput } from "@/components/ExpectedOutput";
 import { LogoutButton } from "@/components/LogoutButton";
+import { ThemeSelector } from "@/components/ThemeSelector";
+import { ModeSelector } from "@/components/ModeSelector";
+import { RunHistory } from "@/components/RunHistory";
+import { getModeAsync } from "@/lib/themes";
+import { saveRunToHistory } from "@/lib/runHistory";
 
 export default function Home() {
-  // State
-  const [selectedTool, setSelectedTool] = useState<ToolType>("ideas");
+  // State - v1 theme/mode system
+  const [selectedTheme, setSelectedTheme] = useState<ThemeType>("generation");
+  const [selectedModeId, setSelectedModeId] = useState<ModeType>("idea");
   const [selectedMode, setSelectedMode] = useState<PresetMode>("sprint");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -56,8 +64,29 @@ export default function Home() {
   const [toDate, setToDate] = useState<string>("");
   const [useCustomDates, setUseCustomDates] = useState(false);
 
-  const currentModeConfig = PRESET_MODES.find((m) => m.id === selectedMode);
-  const toolConfig = TOOL_CONFIG[selectedTool];
+  const currentModeConfig = useMemo(
+    () => PRESET_MODES.find((m) => m.id === selectedMode),
+    [selectedMode]
+  );
+  
+  // Get mode config from themes.json
+  const [modeConfig, setModeConfig] = useState<{ name: string; icon: string; color: string } | null>(null);
+  
+  useEffect(() => {
+    getModeAsync(selectedTheme, selectedModeId).then((mode) => {
+      if (mode) {
+        setModeConfig({
+          name: mode.name,
+          icon: mode.icon,
+          color: mode.color,
+        });
+      }
+    });
+  }, [selectedTheme, selectedModeId]);
+  
+  // Backward compatibility: derive tool from mode for display
+  const displayTool: ToolType = selectedModeId === "idea" ? "ideas" : "insights";
+  const toolConfig = TOOL_CONFIG[displayTool];
 
   // Estimate generation time based on candidates (memoized to avoid recreation)
   const estimateTime = useCallback((bestOf: number): number => {
@@ -82,16 +111,14 @@ export default function Home() {
   }, [showAdvanced, customBestOf, currentModeConfig]);
 
   // Helper to calculate days from date range (memoized)
-  // Maximum 90 days enforced (retention policy)
-  const MAX_DAYS = 90;
+  // Note: 90-day limit removed in v1 - Vector DB enables unlimited date ranges
   const calculateDateRangeDays = useCallback((from: string, to: string): number => {
     if (!from || !to) return 0;
     const fromDate = new Date(from);
     const toDate = new Date(to);
     const diffTime = Math.abs(toDate.getTime() - fromDate.getTime());
     const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-    // Clamp to maximum 90 days
-    return Math.min(days, MAX_DAYS);
+    return days;
   }, []);
 
   // Sync brain with local Cursor history
@@ -131,7 +158,10 @@ export default function Home() {
 
   // Auto-sync on mount
   useEffect(() => {
-    handleSync();
+    handleSync().catch((error) => {
+      console.error("Auto-sync failed:", error);
+      setSyncStatus("Sync failed. Click 'Sync' to retry.");
+    });
   }, []); // Run once on mount
 
   const handleGenerate = async () => {
@@ -172,7 +202,8 @@ export default function Home() {
 
     try {
       const body: Record<string, unknown> = {
-        tool: selectedTool,
+        theme: selectedTheme,
+        modeId: selectedModeId,
         mode: showAdvanced ? "custom" : selectedMode,
       };
 
@@ -194,7 +225,12 @@ export default function Home() {
         signal: abortController.current.signal,
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        throw new Error("Invalid JSON response from server");
+      }
       
       if (!response.ok) {
         throw new Error(data.error || `Request failed with status ${response.status}`);
@@ -203,6 +239,11 @@ export default function Home() {
       setProgress(100);
       setProgressPhase("Complete!");
       setResult(data);
+      
+      // Save to run history
+      if (data.success) {
+        saveRunToHistory(data);
+      }
     } catch (error) {
       // Check if this was an abort
       if (error instanceof Error && error.name === "AbortError") {
@@ -211,7 +252,7 @@ export default function Home() {
       } else {
         setResult({
           success: false,
-          tool: selectedTool,
+          tool: displayTool,
           mode: selectedMode,
           error: error instanceof Error ? error.message : "Unknown error",
           stats: {
@@ -351,42 +392,22 @@ export default function Home() {
 
         {showReverseMatch ? null : (
           <>
-        {/* Tool Selection */}
-        <section className="glass-card p-6 space-y-4">
+        {/* Theme/Mode Selection */}
+        <section className="glass-card p-6 space-y-6">
           <h2 className="text-lg font-medium text-adobe-gray-300">
             What do you want to generate?
           </h2>
-          <div className="grid grid-cols-2 gap-4">
-            {(Object.keys(TOOL_CONFIG) as ToolType[]).map((tool) => {
-              const config = TOOL_CONFIG[tool];
-              const isSelected = selectedTool === tool;
-              return (
-                <button
-                  key={tool}
-                  onClick={() => setSelectedTool(tool)}
-                  aria-label={`Generate ${config.label}: ${config.description}`}
-                  aria-pressed={isSelected}
-                  className={`p-6 rounded-2xl border-2 transition-all duration-200 text-left ${
-                    isSelected
-                      ? tool === "insights"
-                        ? "border-inspiration-insights bg-inspiration-insights/10"
-                        : "border-inspiration-ideas bg-inspiration-ideas/10"
-                      : "border-white/10 bg-white/5 hover:bg-white/10"
-                  }`}
-                >
-                  <div className="flex items-center gap-4">
-                    <span className="text-4xl" aria-hidden="true">{config.icon}</span>
-                    <div>
-                      <h3 className="text-xl font-semibold">{config.label}</h3>
-                      <p className="text-adobe-gray-400 text-sm">
-                        {config.description}
-                      </p>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          
+          <ThemeSelector
+            selectedTheme={selectedTheme}
+            onThemeChange={setSelectedTheme}
+          />
+          
+          <ModeSelector
+            theme={selectedTheme}
+            selectedMode={selectedModeId}
+            onModeChange={setSelectedModeId}
+          />
         </section>
 
         {/* Mode Selection */}
@@ -433,7 +454,7 @@ export default function Home() {
 
           {/* Expected output summary */}
           <ExpectedOutput
-            tool={selectedTool}
+            tool={displayTool}
             days={showAdvanced ? (useCustomDates ? calculateDateRangeDays(fromDate, toDate) : customDays) : (currentModeConfig?.days ?? 14)}
             bestOf={getCurrentBestOf()}
             temperature={showAdvanced ? customTemperature : (currentModeConfig?.temperature ?? 0.4)}
@@ -461,7 +482,7 @@ export default function Home() {
                 aria-live="polite"
               >
                 <span>
-                  Generate {toolConfig.icon} {toolConfig.label}
+                  Generate {modeConfig?.icon || toolConfig.icon} {modeConfig?.name || toolConfig.label}
                 </span>
               </button>
             </div>
@@ -473,6 +494,9 @@ export default function Home() {
 
         {/* Banks Overview */}
         <BanksOverview />
+
+        {/* Run History */}
+        <RunHistory />
           </>
         )}
 

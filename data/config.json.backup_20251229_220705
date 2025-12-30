@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "setupComplete": true,
+  "workspaces": [
+    "/Users/jmbeh/Project Understanding",
+    "/Users/jmbeh/Personal Builder Lab"
+  ],
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-20250514",
+    "fallbackProvider": "openai",
+    "fallbackModel": "gpt-4o",
+    "promptCompression": {
+      "enabled": true,
+      "threshold": 10000,
+      "compressionModel": "gpt-4o-mini"
+    }
+  },
+  "features": {
+    "linkedInSync": {
+      "enabled": true,
+      "postsDirectory": "/Users/jmbeh/Personal Builder Lab/MyPrivateProfileBuilding/LinkedIn_Postings"
+    },
+    "solvedStatusSync": {
+      "enabled": true
+    },
+    "customVoice": {
+      "enabled": true,
+      "voiceGuideFile": "/Users/jmbeh/Personal Builder Lab/MyPrivatePrompts/In_My_Voice.md",
+      "goldenExamplesDir": "/Users/jmbeh/Personal Builder Lab/MyPrivateProfileBuilding/LinkedIn_Postings",
+      "authorName": "JM",
+      "authorContext": "PM at a large tech company who codes agentically"
+    }
+  },
+  "ui": {
+    "defaultTool": "insights",
+    "defaultMode": "sprint"
+  }
+}

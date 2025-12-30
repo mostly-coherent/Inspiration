@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "themes": [
+    {
+      "id": "generation",
+      "label": "Generation",
+      "description": "Generate content from chat history",
+      "modes": [
+        {
+          "id": "idea",
+          "name": "Idea",
+          "description": "Prototype & tool ideas worth building",
+          "icon": "💡",
+          "color": "inspiration-ideas",
+          "promptTemplate": "ideas_synthesize.md",
+          "settings": {
+            "temperature": 0.2,
+            "minSimilarity": null,
+            "goldenExamplesFolder": null,
+            "implementedItemsFolder": null
+          },
+          "defaultBestOf": 5,
+          "createdBy": "system",
+          "createdDate": "2025-01-01"
+        },
+        {
+          "id": "insight",
+          "name": "Insight",
+          "description": "Social media posts to share learnings",
+          "icon": "✨",
+          "color": "inspiration-insights",
+          "promptTemplate": "insights_synthesize.md",
+          "settings": {
+            "temperature": 0.2,
+            "minSimilarity": null,
+            "goldenExamplesFolder": null,
+            "implementedItemsFolder": null
+          },
+          "defaultBestOf": 5,
+          "createdBy": "system",
+          "createdDate": "2025-01-01"
+        }
+      ]
+    },
+    {
+      "id": "seek",
+      "label": "Seek",
+      "description": "Search chat history for evidence",
+      "modes": [
+        {
+          "id": "use_case",
+          "name": "Use Case",
+          "description": "Find chat history evidence for use cases",
+          "icon": "🔍",
+          "color": "inspiration-seek",
+          "promptTemplate": null,
+          "settings": {
+            "temperature": null,
+            "minSimilarity": 0.0,
+            "goldenExamplesFolder": null,
+            "implementedItemsFolder": null
+          },
+          "defaultBestOf": 10,
+          "createdBy": "system",
+          "createdDate": "2025-01-01"
+        }
+      ]
+    }
+  ]
+}
+

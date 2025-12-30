@@ -1,17 +1,67 @@
 "use client";
 
-import { useState, memo } from "react";
-import { GenerateResult, TOOL_CONFIG } from "@/lib/types";
+import { useState, memo, useMemo } from "react";
+import { GenerateResult, TOOL_CONFIG, RankedItem } from "@/lib/types";
 import { copyToClipboard, downloadFile } from "@/lib/utils";
 import { MarkdownContent } from "./MarkdownContent";
+import { parseRankedItems, extractEstimatedCost } from "@/lib/resultParser";
 
 export const ResultsPanel = memo(function ResultsPanel({ result }: { result: GenerateResult }) {
   const [showRaw, setShowRaw] = useState(false);
 
-  const downloadResult = (content: string) => {
-    const timestamp = new Date().toISOString().split("T")[0];
-    const filename = `${result.tool}_${timestamp}.md`;
-    downloadFile(content, filename);
+  // Parse ranked items from content
+  const rankedItems = useMemo(() => {
+    if (result.items) {
+      return result.items; // Already parsed
+    }
+    if (result.content) {
+      return parseRankedItems(result.content, result.tool);
+    }
+    return [];
+  }, [result.items, result.content, result.tool]);
+
+  // Get estimated cost
+  const estimatedCost = useMemo(() => {
+    if (result.estimatedCost !== undefined) {
+      return result.estimatedCost;
+    }
+    if (result.content) {
+      return extractEstimatedCost(result.content, result.stats.candidatesGenerated);
+    }
+    return result.stats.candidatesGenerated * 0.023 + 0.025; // Fallback estimate
+  }, [result.estimatedCost, result.content, result.stats.candidatesGenerated]);
+
+  const downloadResult = async (content: string) => {
+    // Show file picker dialog
+    if (typeof window !== "undefined" && "showSaveFilePicker" in window) {
+      try {
+        const timestamp = new Date().toISOString().split("T")[0];
+        const filename = `${result.tool}_${timestamp}.md`;
+        
+        // @ts-ignore - showSaveFilePicker is available in modern browsers
+        const fileHandle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{
+            description: "Markdown files",
+            accept: { "text/markdown": [".md"] },
+          }],
+        });
+        
+        const writable = await fileHandle.createWritable();
+        await writable.write(content);
+        await writable.close();
+      } catch (err) {
+        // User cancelled or error - fallback to download
+        const timestamp = new Date().toISOString().split("T")[0];
+        const filename = `${result.tool}_${timestamp}.md`;
+        downloadFile(content, filename);
+      }
+    } else {
+      // Fallback for browsers without File System Access API
+      const timestamp = new Date().toISOString().split("T")[0];
+      const filename = `${result.tool}_${timestamp}.md`;
+      downloadFile(content, filename);
+    }
   };
 
   if (!result.success) {
@@ -32,8 +82,10 @@ export const ResultsPanel = memo(function ResultsPanel({ result }: { result: Gen
           <h2 className="text-lg font-medium text-inspiration-ideas flex items-center gap-2">
             ✅ Generated {TOOL_CONFIG[result.tool].label}
           </h2>
-          {result.outputFile && (
-            <span className="font-mono text-xs text-adobe-gray-400">{result.outputFile}</span>
+          {estimatedCost > 0 && (
+            <span className="text-xs text-adobe-gray-400">
+              Estimated cost: ${estimatedCost.toFixed(3)}
+            </span>
           )}
         </div>
 
@@ -101,7 +153,67 @@ export const ResultsPanel = memo(function ResultsPanel({ result }: { result: Gen
         </div>
       </div>
 
-      {result.content && (
+      {/* Ranked Items Display */}
+      {rankedItems.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-adobe-gray-300">
+              Generated Items ({rankedItems.length})
+            </h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => result.content && downloadResult(result.content)}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                aria-label="Save result to file"
+              >
+                <span aria-hidden="true">💾</span> Save
+              </button>
+              <button
+                onClick={() => result.content && copyToClipboard(result.content)}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                aria-label="Copy result to clipboard"
+              >
+                <span aria-hidden="true">📋</span> Copy
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {rankedItems.map((item) => (
+              <div
+                key={item.id}
+                className={`bg-black/30 rounded-xl p-4 border-2 transition-all ${
+                  item.isBest
+                    ? "border-inspiration-ideas bg-inspiration-ideas/10"
+                    : "border-white/10"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs font-mono text-adobe-gray-400">
+                        #{item.rank}
+                      </span>
+                      {item.isBest && (
+                        <span className="text-xs bg-inspiration-ideas/20 text-inspiration-ideas px-2 py-0.5 rounded-full">
+                          ⭐ Best
+                        </span>
+                      )}
+                      <h4 className="font-semibold text-white">{item.name}</h4>
+                    </div>
+                    <div className="text-sm text-adobe-gray-300">
+                      <MarkdownContent content={item.rawMarkdown} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Fallback: Show raw content if no items parsed */}
+      {result.content && rankedItems.length === 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4" role="tablist" aria-label="View mode">
@@ -132,9 +244,9 @@ export const ResultsPanel = memo(function ResultsPanel({ result }: { result: Gen
               <button
                 onClick={() => result.content && downloadResult(result.content)}
                 className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
-                aria-label="Download result as markdown"
+                aria-label="Save result to file"
               >
-                <span aria-hidden="true">📥</span> Export
+                <span aria-hidden="true">💾</span> Save
               </button>
               <button
                 onClick={() => result.content && copyToClipboard(result.content)}

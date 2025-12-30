@@ -282,3 +282,98 @@ def get_message_count(client: Optional[Client] = None) -> int:
     except Exception:
         return 0
 
+
+def get_conversations_from_vector_db(
+    start_date: datetime.date,
+    end_date: datetime.date,
+    workspace_paths: Optional[list[str]] = None,
+) -> list[dict]:
+    """
+    Retrieve conversations from Vector DB by date range.
+    
+    Groups messages by chat_id to reconstruct conversations.
+    
+    Args:
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        workspace_paths: Optional list of workspace paths to filter by
+    
+    Returns:
+        List of conversation dicts in the same format as get_conversations_for_date:
+        [
+            {
+                "chat_id": "...",
+                "chat_type": "composer" | "chat",
+                "workspace": "...",
+                "messages": [
+                    {"type": "user" | "assistant", "text": "...", "timestamp": ...},
+                    ...
+                ]
+            },
+            ...
+        ]
+    """
+    client = get_supabase_client()
+    if not client:
+        return []
+    
+    # Calculate timestamp range
+    start_datetime = datetime.combine(start_date, datetime.min.time())
+    end_datetime = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+    start_ts = int(start_datetime.timestamp() * 1000)
+    end_ts = int(end_datetime.timestamp() * 1000)
+    
+    try:
+        # Query messages in date range
+        query_builder = client.table("cursor_messages").select("*")
+        
+        # Apply timestamp filters
+        query_builder = query_builder.gte("timestamp", start_ts)
+        query_builder = query_builder.lt("timestamp", end_ts)
+        
+        # Apply workspace filter if provided
+        if workspace_paths:
+            query_builder = query_builder.in_("workspace", workspace_paths)
+        
+        # Fetch all messages (no limit - we want all conversations)
+        result = query_builder.execute()
+        messages = result.data if result.data else []
+        
+        # Group messages by chat_id and workspace
+        conversations_dict: dict[str, dict] = {}
+        
+        for msg in messages:
+            chat_id = msg.get("chat_id", "unknown")
+            workspace = msg.get("workspace", "Unknown")
+            chat_type = msg.get("chat_type", "unknown")
+            
+            # Create unique key for conversation
+            conv_key = f"{workspace}:{chat_id}"
+            
+            if conv_key not in conversations_dict:
+                conversations_dict[conv_key] = {
+                    "chat_id": chat_id,
+                    "chat_type": chat_type,
+                    "workspace": workspace,
+                    "messages": [],
+                }
+            
+            # Add message to conversation
+            conversations_dict[conv_key]["messages"].append({
+                "type": msg.get("message_type", "user"),
+                "text": msg.get("text", ""),
+                "timestamp": msg.get("timestamp", 0),
+            })
+        
+        # Sort messages within each conversation by timestamp
+        conversations = list(conversations_dict.values())
+        for conv in conversations:
+            conv["messages"].sort(key=lambda m: m.get("timestamp", 0))
+        
+        return conversations
+        
+    except Exception as e:
+        import sys
+        print(f"⚠️  Failed to retrieve conversations from Vector DB: {e}", file=sys.stderr)
+        return []
+
