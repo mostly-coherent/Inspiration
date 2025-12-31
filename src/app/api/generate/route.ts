@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { spawn } from "child_process";
 import { readFile } from "fs/promises";
 import path from "path";
 import { GenerateRequest, GenerateResult, TOOL_CONFIG, PRESET_MODES, getToolPath, ThemeType, ModeType, ToolType } from "@/lib/types";
 import { logger } from "@/lib/logger";
 import { parseRankedItems, extractEstimatedCost } from "@/lib/resultParser";
 import { resolveThemeModeFromTool, validateThemeMode, getModeSettings } from "@/lib/themes";
+import { callPythonEngine } from "@/lib/pythonEngine";
 
 // Performance note: Generation time scales with:
 // - best_of: Each candidate = 1 LLM call (parallelized, but still takes time)
@@ -160,14 +160,28 @@ export async function POST(request: NextRequest) {
       args.push("--dry-run");
     }
 
-    // Get tool path dynamically
-    const toolPath = getToolPath(resolvedTool);
+    // Build request body for Python engine
+    const engineBody: any = {
+      mode: resolvedMode === "idea" ? "ideas" : resolvedMode === "insight" ? "insights" : resolvedMode,
+    };
     
-    logger.log(`[Inspiration] Running: python3 ${toolConfig.script} ${args.join(" ")}`);
-    logger.log(`[Inspiration] Working directory: ${toolPath}`);
+    if (mode !== "custom" && modeConfig) {
+      engineBody.preset = mode;
+    } else {
+      if (fromDate && toDate) {
+        engineBody.fromDate = fromDate;
+        engineBody.toDate = toDate;
+      } else if (days) {
+        engineBody.days = days;
+      }
+    }
+    
+    engineBody.bestOf = effectiveBestOf;
+    engineBody.temperature = effectiveTemperature;
+    if (dryRun) engineBody.dryRun = true;
 
-    // Execute Python script with abort signal support
-    const result = await runPythonScript(toolPath, toolConfig.script, args, signal);
+    // Execute Python script via HTTP or local spawn
+    const result = await callPythonEngine("generate", engineBody, signal);
 
     // Check for script errors
     if (result.exitCode !== 0) {
@@ -245,29 +259,46 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse output to find generated file
-    // Matches both daily (output/2025-12-19.judge.md) and aggregated (output/sprint_2025-12-05_to_2025-12-19.judge.md)
-    const outputFileMatch = result.stdout.match(/output\/(?:[\w]+_)?[\d-]+(?:_to_[\d-]+)?\.judge(?:-no-(?:idea|post))?\.md/);
-    const outputFile = outputFileMatch ? outputFileMatch[0] : undefined;
-
-    // Read the generated file content if available
+    // If HTTP response, try to get content directly from response
     let content: string | undefined;
     let judgeContent: string | undefined;
-    if (outputFile) {
-      // Output files are now in data/ directory
-      const fullPath = path.join(toolPath, '..', 'data', outputFile.replace('output/', ''));
-      try {
-        content = await readFile(fullPath, "utf-8");
-        judgeContent = content; // Judge file is the main output now
-      } catch {
-        // Try legacy path for backwards compatibility
-        const legacyPath = path.join(toolPath, outputFile);
+    let outputFile: string | undefined;
+    
+    if (!process.env.PYTHON_ENGINE_URL) {
+      // Local mode: parse output file from stdout and read from disk
+      const outputFileMatch = result.stdout.match(/output\/(?:[\w]+_)?[\d-]+(?:_to_[\d-]+)?\.judge(?:-no-(?:idea|post))?\.md/);
+      outputFile = outputFileMatch ? outputFileMatch[0] : undefined;
+      
+      if (outputFile) {
+        const toolPath = getToolPath(resolvedTool);
+        const fullPath = path.join(toolPath, '..', 'data', outputFile.replace('output/', ''));
         try {
-          content = await readFile(legacyPath, "utf-8");
+          content = await readFile(fullPath, "utf-8");
           judgeContent = content;
         } catch {
-          logger.log(`Could not read output file: ${fullPath}`);
+          const legacyPath = path.join(toolPath, outputFile);
+          try {
+            content = await readFile(legacyPath, "utf-8");
+            judgeContent = content;
+          } catch {
+            logger.log(`Could not read output file: ${fullPath}`);
+          }
         }
+      }
+    } else {
+      // HTTP mode: content should be in response, try to parse from stdout (JSON)
+      try {
+        const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const httpResponse = JSON.parse(jsonMatch[0]);
+          content = httpResponse.content || httpResponse.judgeContent;
+          judgeContent = content;
+          outputFile = httpResponse.outputFile;
+        }
+      } catch {
+        // Fallback: try to extract from stdout
+        const outputFileMatch = result.stdout.match(/output\/(?:[\w]+_)?[\d-]+(?:_to_[\d-]+)?\.judge(?:-no-(?:idea|post))?\.md/);
+        outputFile = outputFileMatch ? outputFileMatch[0] : undefined;
       }
     }
 
@@ -315,87 +346,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-interface ScriptResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}
-
-async function runPythonScript(
-  cwd: string,
-  script: string,
-  args: string[],
-  signal?: AbortSignal
-): Promise<ScriptResult> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn("python3", [script, ...args], {
-      cwd,
-      env: {
-        ...process.env,
-        PYTHONUNBUFFERED: "1",
-      },
-    });
-
-    let stdout = "";
-    let stderr = "";
-    let isAborted = false;
-
-    // Handle abort signal
-    if (signal) {
-      signal.addEventListener("abort", () => {
-        isAborted = true;
-        logger.log("[Inspiration] Request aborted, killing Python process...");
-        try {
-          proc.kill("SIGTERM");
-          // Force kill after 2 seconds if still running
-          setTimeout(() => {
-            if (!proc.killed) {
-              proc.kill("SIGKILL");
-            }
-          }, 2000);
-        } catch (err) {
-          logger.error("[Inspiration] Error killing process:", err);
-        }
-        resolve({
-          stdout,
-          stderr,
-          exitCode: 130, // SIGTERM exit code
-        });
-      });
-    }
-
-    proc.stdout.on("data", (data) => {
-      if (!isAborted) {
-        stdout += data.toString();
-        logger.log(`[stdout] ${data.toString().trim()}`);
-      }
-    });
-
-    proc.stderr.on("data", (data) => {
-      if (!isAborted) {
-        stderr += data.toString();
-        logger.error(`[stderr] ${data.toString().trim()}`);
-      }
-    });
-
-    proc.on("close", (code) => {
-      if (!isAborted) {
-        resolve({
-          stdout,
-          stderr,
-          exitCode: code ?? 0,
-        });
-      }
-    });
-
-    proc.on("error", (err) => {
-      if (!isAborted) {
-        reject(err);
-      }
-    });
-  });
 }
 
 function parseStats(stdout: string): GenerateResult["stats"] {
