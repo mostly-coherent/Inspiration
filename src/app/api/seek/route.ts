@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { spawn } from "child_process";
-import path from "path";
 import { logger } from "@/lib/logger";
+import { callPythonEngine } from "@/lib/pythonEngine";
 
 export const maxDuration = 300; // 5 minutes for semantic search (embedding generation can take time)
 
@@ -69,15 +68,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get engine path
-    const enginePath = path.resolve(process.cwd(), "engine");
-    const scriptPath = path.join(enginePath, "seek.py");
+    // Build request body for Python engine
+    const engineBody: any = {
+      query,
+      daysBack: effectiveDaysBack,
+      topK,
+      minSimilarity,
+      workspaces,
+    };
 
-    logger.log(`[Inspiration] Running: python3 seek.py ${args.join(" ")}`);
-    logger.log(`[Inspiration] Working directory: ${enginePath}`);
-
-    // Execute Python script with abort signal support
-    const result = await runPythonScript(enginePath, scriptPath, args, signal);
+    // Execute Python script via HTTP or local spawn
+    const result = await callPythonEngine("seek", engineBody, signal);
 
     // Check for script errors
     if (result.exitCode !== 0) {
@@ -114,12 +115,21 @@ export async function POST(request: NextRequest) {
 
     // Parse JSON output
     try {
-      // Find JSON in stdout (may have stderr messages before it)
-      const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("No JSON found in script output");
+      let output: any;
+      
+      if (process.env.PYTHON_ENGINE_URL) {
+        // HTTP mode: stdout is JSON string
+        output = JSON.parse(result.stdout);
+      } else {
+        // Local mode: find JSON in stdout (may have stderr messages before it)
+        const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new Error("No JSON found in script output");
+        }
+        output = JSON.parse(jsonMatch[0]);
       }
-      const output = JSON.parse(jsonMatch[0]) as {
+      
+      const typedOutput = output as {
         query: string;
         content?: string;
         items?: Array<{
@@ -140,13 +150,13 @@ export async function POST(request: NextRequest) {
       };
       
       const seekResult: SeekResult = {
-        success: !output.error,
-        query: output.query,
-        content: output.content,
-        items: output.items,
-        stats: output.stats,
-        outputFile: output.outputFile,
-        error: output.error,
+        success: !typedOutput.error,
+        query: typedOutput.query,
+        content: typedOutput.content,
+        items: typedOutput.items,
+        stats: typedOutput.stats,
+        outputFile: typedOutput.outputFile,
+        error: typedOutput.error,
       };
       
       return NextResponse.json(seekResult);
@@ -184,84 +194,4 @@ export async function POST(request: NextRequest) {
   }
 }
 
-interface ScriptResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}
-
-async function runPythonScript(
-  cwd: string,
-  script: string,
-  args: string[],
-  signal?: AbortSignal
-): Promise<ScriptResult> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn("python3", [script, ...args], {
-      cwd,
-      env: {
-        ...process.env,
-        PYTHONUNBUFFERED: "1",
-      },
-    });
-
-    let stdout = "";
-    let stderr = "";
-    let isAborted = false;
-
-    // Handle abort signal
-    if (signal) {
-      signal.addEventListener("abort", () => {
-        isAborted = true;
-        logger.log("[Inspiration] Request aborted, killing Python process...");
-        try {
-          proc.kill("SIGTERM");
-          // Force kill after 2 seconds if still running
-          setTimeout(() => {
-            if (!proc.killed) {
-              proc.kill("SIGKILL");
-            }
-          }, 2000);
-        } catch (err) {
-          logger.error("[Inspiration] Error killing process:", err);
-        }
-        resolve({
-          stdout,
-          stderr,
-          exitCode: 130, // SIGTERM exit code
-        });
-      });
-    }
-
-    proc.stdout.on("data", (data) => {
-      if (!isAborted) {
-        stdout += data.toString();
-        logger.log(`[stdout] ${data.toString().trim()}`);
-      }
-    });
-
-    proc.stderr.on("data", (data) => {
-      if (!isAborted) {
-        stderr += data.toString();
-        logger.error(`[stderr] ${data.toString().trim()}`);
-      }
-    });
-
-    proc.on("close", (code) => {
-      if (!isAborted) {
-        resolve({
-          stdout,
-          stderr,
-          exitCode: code ?? 0,
-        });
-      }
-    });
-
-    proc.on("error", (err) => {
-      if (!isAborted) {
-        reject(err);
-      }
-    });
-  });
-}
 

@@ -560,3 +560,69 @@ We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB**
 - Backup files deleted (content preserved in git history)
 
 <!-- Merged from DEBUG_AUDIT_REPORT.md on 2025-01-30 -->
+
+## Progress - 2025-01-30
+
+**Done:**
+- ✅ Fixed TypeScript build error in `ProgressPanel.tsx` (ARIA attributes must be numbers, not strings)
+- ✅ Updated `postinstall` script to check for Python availability before installing dependencies (Vercel-safe)
+- ✅ Verified build succeeds locally
+
+**In Progress:**
+- [ ] Vercel deployment: Python execution limitation
+
+**Next:**
+- [ ] Document Vercel deployment architecture limitation (Python scripts won't work in serverless)
+- [ ] Consider alternatives: convert Python to Node.js, use separate Python service, or deploy to platform with Python support
+
+**Blockers:**
+- ⚠️ **Vercel Deployment Limitation**: API routes (`/api/generate`, `/api/seek`, etc.) spawn Python processes using `child_process.spawn()`, which won't work in Vercel's serverless environment. Vercel doesn't have Python installed by default, and process spawning from Node.js serverless functions isn't supported.
+  - **Workaround options:**
+    1. Convert Python scripts to Node.js/TypeScript
+    2. Deploy Python engine as separate service (Railway, Render, etc.)
+    3. Use Vercel's Python runtime (requires refactoring API routes to Python)
+    4. Deploy to platform with full Python support (Railway, Render, Fly.io)
+
+**Evidence:**
+- Build succeeds: `npm run build` completes without errors
+- TypeScript error fixed: `aria-valuemin` and `aria-valuemax` changed from strings to numbers
+- `postinstall` script updated to gracefully handle missing Python (Vercel build environment)
+
+## Progress - 2025-01-30 (Evening)
+
+**Done:**
+- ✅ Created Flask API wrapper (`engine/api.py`) wrapping generate.py, seek.py, and sync_messages.py
+- ✅ Added Flask and flask-cors to requirements.txt
+- ✅ Created Railway deployment files (Procfile, runtime.txt)
+- ✅ Updated Next.js API routes to use HTTP calls instead of spawn:
+  - `/api/generate` → calls Python engine via HTTP or local spawn
+  - `/api/seek` → calls Python engine via HTTP or local spawn
+  - `/api/sync` → calls Python engine via HTTP or local spawn
+- ✅ Created Python engine HTTP client utility (`src/lib/pythonEngine.ts`) with automatic fallback
+- ✅ Build succeeds: All TypeScript errors resolved
+
+**In Progress:**
+- [ ] Deploy Python engine to Railway/Render
+- [ ] Set PYTHON_ENGINE_URL in Vercel environment variables
+- [ ] Test end-to-end: Vercel frontend → Railway Python service
+
+**Next:**
+- [ ] Deploy Python engine to Railway:
+  1. Push `engine/` directory to Railway
+  2. Set environment variables (ANTHROPIC_API_KEY, SUPABASE_URL, etc.)
+  3. Get deployment URL
+- [ ] Configure Vercel:
+  1. Add `PYTHON_ENGINE_URL` environment variable
+  2. Redeploy Next.js app
+- [ ] Test deployment end-to-end
+
+**Blockers:**
+- None (ready for deployment)
+
+**Evidence:**
+- Flask API wrapper created: `engine/api.py` (400+ lines)
+- Railway config files: `engine/Procfile`, `engine/runtime.txt`
+- HTTP client utility: `src/lib/pythonEngine.ts` with automatic local/HTTP fallback
+- All API routes updated: `src/app/api/generate/route.ts`, `src/app/api/seek/route.ts`, `src/app/api/sync/route.ts`
+- Build succeeds: `npm run build` completes without errors
+- Documentation: `VERCEL_DEPLOYMENT.md` created with deployment instructions

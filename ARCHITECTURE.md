@@ -18,6 +18,8 @@ See PLAN.md for detailed use case descriptions.
 
 ## System Overview
 
+### Application Architecture
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              INSPIRATION                                     │
@@ -42,6 +44,72 @@ See PLAN.md for detailed use case descriptions.
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Deployment Architecture (Production)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         PRODUCTION DEPLOYMENT                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌──────────────────────┐              ┌──────────────────────┐            │
+│  │   Vercel (Frontend)  │              │  Railway (Backend)   │            │
+│  │                      │              │                      │            │
+│  │  ┌──────────────┐    │    HTTP      │  ┌──────────────┐    │            │
+│  │  │  Next.js UI  │    │◀─────────────▶│  │ Flask API    │    │            │
+│  │  │  (React)     │    │   Requests   │  │ (Python)     │    │            │
+│  │  └──────────────┘    │              │  └──────────────┘    │            │
+│  │        │             │              │        │             │            │
+│  │  ┌──────────────┐    │              │  ┌──────────────┐    │            │
+│  │  │ API Routes   │────┼──────────────┼─▶│ generate.py  │    │            │
+│  │  │ (Node.js)    │    │              │  │ seek.py      │    │            │
+│  │  └──────────────┘    │              │  │ sync_messages│    │            │
+│  │                      │              │  └──────────────┘    │            │
+│  │  Edge Network        │              │  Python Runtime      │            │
+│  │  Auto-optimized     │              │  Long-running tasks  │            │
+│  └──────────────────────┘              └──────────────────────┘            │
+│                                                                             │
+│  Environment: PYTHON_ENGINE_URL=https://...railway.app                    │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Local Development Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        LOCAL DEVELOPMENT                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌──────────────────────────────────────────────────────────────┐           │
+│  │              Local Machine (Single Process)                  │           │
+│  │                                                              │           │
+│  │  ┌──────────────┐         ┌──────────────┐                  │           │
+│  │  │  Next.js UI  │────────▶│ API Routes   │                  │           │
+│  │  │  (React)     │◀────────│ (Node.js)    │                  │           │
+│  │  └──────────────┘         └──────────────┘                  │           │
+│  │         │                        │                           │           │
+│  │         │                        │ spawn()                    │           │
+│  │         │                        ▼                           │           │
+│  │         │                 ┌──────────────┐                  │           │
+│  │         │                 │ Python Engine │                  │           │
+│  │         │                 │ (subprocess)  │                  │           │
+│  │         │                 └──────────────┘                  │           │
+│  │         │                        │                           │           │
+│  │         └────────────────────────┴─────────────────────────│           │
+│  │                                                              │           │
+│  │  Environment: PYTHON_ENGINE_URL not set                     │           │
+│  │  → Automatic fallback to local spawn()                      │           │
+│  └──────────────────────────────────────────────────────────────┘           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Points:**
+- **Production:** Hybrid deployment - Vercel hosts frontend, Railway hosts Python backend
+- **Local:** Single-process development - Node.js spawns Python directly
+- **Automatic:** Code detects environment and routes accordingly (no config needed)
+- **Rationale:** Vercel can't spawn processes, Railway can't match Vercel's frontend optimizations
 
 ---
 
@@ -843,5 +911,124 @@ Generation Request
 - Consistent behavior across modes
 - Easier to maintain and extend
 - Use cases become reusable assets in bank
+
+**Last Updated:** 2025-01-30
+
+---
+
+## Deployment Architecture
+
+### Overview
+
+Inspiration uses a **hybrid deployment architecture**:
+- **Vercel:** Hosts Next.js frontend (edge network, automatic optimizations)
+- **Railway:** Hosts Python engine (Flask API wrapping existing scripts)
+
+This architecture was chosen because Vercel serverless functions cannot spawn child processes, but Railway provides full Python runtime support.
+
+### Communication Flow
+
+**Production (Vercel → Railway):**
+```
+User Action (e.g., "Generate Ideas")
+    ↓
+Next.js Frontend (Vercel)
+    ↓
+API Route (/api/generate) - Node.js
+    ↓
+HTTP Request → Railway Flask API
+    ↓
+Python Script Execution (generate.py)
+    ↓
+HTTP Response ← Railway Flask API
+    ↓
+API Route processes response
+    ↓
+Frontend displays results
+```
+
+**Local Development:**
+```
+User Action
+    ↓
+Next.js Frontend (localhost:3000)
+    ↓
+API Route (/api/generate) - Node.js
+    ↓
+spawn("python3", "generate.py") - Direct subprocess
+    ↓
+Python Script Execution
+    ↓
+stdout/stderr captured
+    ↓
+API Route processes output
+    ↓
+Frontend displays results
+```
+
+### Environment Detection
+
+The `src/lib/pythonEngine.ts` utility automatically detects the environment:
+
+```typescript
+const PYTHON_ENGINE_URL = process.env.PYTHON_ENGINE_URL;
+const USE_LOCAL_PYTHON = !PYTHON_ENGINE_URL;
+
+if (USE_LOCAL_PYTHON) {
+  // Local: Use spawn()
+  return callPythonEngineLocal(endpoint, body, signal);
+} else {
+  // Production: Use HTTP
+  return callPythonEngineHTTP(endpoint, body, signal);
+}
+```
+
+**Benefits:**
+- Zero configuration for local development
+- Seamless production deployment (just set env var)
+- No code changes needed when switching environments
+
+### Railway Deployment
+
+**Components:**
+- `engine/api.py` - Flask API wrapper (exposes `/generate`, `/seek`, `/sync`, `/health`)
+- `engine/Procfile` - Railway startup command (`web: python api.py`)
+- `engine/requirements.txt` - Python dependencies (includes Flask)
+- `engine/runtime.txt` - Python version (3.11)
+
+**Environment Variables (Railway):**
+- `ANTHROPIC_API_KEY` - LLM API key
+- `OPENAI_API_KEY` - Optional, for embeddings
+- `SUPABASE_URL` - Vector database URL
+- `SUPABASE_ANON_KEY` - Vector database key
+- `PORT` - Auto-set by Railway
+
+**Deployment URL:** `https://inspiration-production-6eaf.up.railway.app`
+
+### Vercel Deployment
+
+**Components:**
+- Next.js app (all of `src/`)
+- API routes (`src/app/api/*`) - Proxy to Railway when `PYTHON_ENGINE_URL` is set
+- Static assets, edge functions
+
+**Environment Variables (Vercel):**
+- `PYTHON_ENGINE_URL` - Railway deployment URL (production only)
+- Other env vars handled by Railway (not needed in Vercel)
+
+### Why Not Vercel Python?
+
+While Vercel supports Python serverless functions, converting would require:
+1. Refactoring all Node.js API routes to Python
+2. Rewriting spawn logic to import modules directly
+3. Significant code changes and testing
+
+Railway approach:
+- Minimal changes (just wrap existing scripts)
+- Preserves existing Python codebase
+- Faster deployment (15 minutes vs days)
+- Better for long-running tasks
+
+See `PIVOTS.md` for detailed decision rationale.
 
 **Last Updated:** 2025-01-30
