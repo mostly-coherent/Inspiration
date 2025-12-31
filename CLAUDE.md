@@ -255,3 +255,299 @@ APP_PASSWORD=your-secure-password
 5. **Folder-Based Tracking:** Items can be marked as "implemented" by scanning folders and matching via cosine similarity (configured per mode in `themes.json`).
 6. **Backward Compatibility:** v0 API calls with `tool` parameter still work - automatically mapped to `theme`/`modeId`.
 7. **Date Range:** No 90-day limit in v1 - Vector DB enables unlimited date ranges.
+8. **Deployment:** Hybrid architecture - Vercel hosts Next.js frontend, Railway hosts Python engine. See `ARCHITECTURE.md` for details.
+
+---
+
+## Supabase Setup
+
+### Create RPC Function for Table Size
+
+To get actual table size (instead of estimating), create an RPC function in Supabase:
+
+1. **Go to Supabase Dashboard:** https://supabase.com/dashboard
+2. **Select your project**
+3. **Click "SQL Editor"** → **"New query"**
+4. **Run this SQL:**
+
+```sql
+-- Create RPC function to get table size (for API access)
+CREATE OR REPLACE FUNCTION get_table_size(table_name text)
+RETURNS json AS $$
+DECLARE
+    result json;
+BEGIN
+    SELECT json_build_object(
+        'total_size_bytes', pg_total_relation_size(table_name::regclass),
+        'table_size_bytes', pg_relation_size(table_name::regclass),
+        'indexes_size_bytes', pg_indexes_size(table_name::regclass),
+        'total_size', pg_size_pretty(pg_total_relation_size(table_name::regclass)),
+        'table_size', pg_size_pretty(pg_relation_size(table_name::regclass)),
+        'indexes_size', pg_size_pretty(pg_indexes_size(table_name::regclass))
+    ) INTO result;
+    RETURN result;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Grant permissions
+GRANT EXECUTE ON FUNCTION get_table_size(text) TO anon;
+GRANT EXECUTE ON FUNCTION get_table_size(text) TO authenticated;
+```
+
+5. **Test it:**
+
+```sql
+SELECT get_table_size('cursor_messages');
+```
+
+**Verify from app:**
+```bash
+cd engine
+python3 scripts/test_rpc_function.py
+```
+
+### Troubleshooting RPC Function
+
+If RPC function not found:
+
+1. **Verify function exists:**
+```sql
+SELECT proname as function_name, pg_get_function_arguments(oid) as arguments
+FROM pg_proc WHERE proname = 'get_table_size';
+```
+
+2. **Recreate if needed:**
+```sql
+DROP FUNCTION IF EXISTS get_table_size(text);
+-- Then run creation SQL above
+```
+
+3. **Grant all permissions:**
+```sql
+GRANT EXECUTE ON FUNCTION get_table_size(text) TO anon;
+GRANT EXECUTE ON FUNCTION get_table_size(text) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_table_size(text) TO service_role;
+```
+
+4. **Refresh schema cache:** Wait 1-2 minutes after creating function
+
+<!-- Merged from CREATE_RPC_FUNCTION.md and SUPABASE_SETUP_INSTRUCTIONS.md and TROUBLESHOOT_RPC_FUNCTION.md on 2025-01-30 -->
+
+---
+
+## Vector DB Sync
+
+### How "Refresh Brain" Works
+
+The "Refresh Brain" feature syncs your local Cursor chat history to the cloud Vector DB, making it searchable for AI-powered insights and ideas.
+
+**Two Ways to Trigger:**
+
+1. **Automatic (On First Load):**
+   - App loads for the first time
+   - Automatically runs sync in the background
+   - Shows "Syncing..." then updates to show results
+   - ✅ Local app only | ❌ Vercel (shows "Cloud Mode")
+
+2. **Manual (Click Button):**
+   - User clicks "🔄 Refresh Brain" button
+   - Immediately starts sync
+   - Shows "Syncing..." then updates to show results
+   - ✅ Local app only | ❌ Vercel (shows "Cloud Mode")
+
+**Detection Logic:**
+
+1. API tries to run sync script
+2. Script tries to find Cursor database
+3. If database not found → Returns "Cannot sync from cloud environment"
+4. Frontend shows: "☁️ Cloud Mode (Read-only)"
+
+**What Happens During Sync:**
+
+1. Reads local database (SQLite file)
+2. Finds new messages (since last sync timestamp)
+3. Checks Vector DB for duplicates
+4. Processes only new messages:
+   - Creates embeddings (AI search format)
+   - Indexes into Vector DB
+5. Updates sync state (saves latest timestamp)
+6. Refreshes brain size display
+
+**Status Messages:**
+- "Syncing..." - Currently syncing
+- "✓ Synced X new items" - Successfully added new messages
+- "✓ Synced X new items (Y already indexed)" - Some were duplicates
+- "✓ Brain up to date" - Everything is synced
+- "☁️ Cloud Mode (Read-only)" - Running on Vercel, can't sync
+
+<!-- Merged from HOW_REFRESH_BRAIN_WORKS.md on 2025-01-30 -->
+
+### Monitor Sync Progress
+
+**Real-Time Monitoring:**
+
+```bash
+# Watch log file (recommended)
+tail -f /tmp/sync_progress.log
+
+# Check last 30 lines
+tail -30 /tmp/sync_progress.log
+
+# See only important progress messages
+tail -100 /tmp/sync_progress.log | grep -E "(🚀|📅|📚|📊|🔍|Already|Need to|Processing batch|Indexed|✅|complete)"
+```
+
+**Check if Script is Running:**
+```bash
+ps aux | grep index_all_messages.py | grep -v grep
+```
+
+**Progress Indicators:**
+
+- **Loading Phase:** `📚 Loading conversations from LOCAL Cursor database (SQLite)...`
+- **Deduplication Phase:** `🔍 Checking which messages already exist in Vector DB...`
+- **Indexing Phase:** `📝 Processing X new messages... Processing batch 1/X...`
+- **Completion:** `✅ Indexing complete!`
+
+**Estimated Time:**
+- Loading: 5-15 minutes
+- Deduplication: 1-2 minutes
+- Indexing: 30-60 minutes
+- **Total:** ~45-75 minutes for full sync
+
+**Troubleshooting:**
+
+If script seems stuck:
+```bash
+# Check if running
+ps aux | grep index_all_messages.py
+
+# Stop and restart (will skip already-indexed messages)
+pkill -f index_all_messages.py
+cd engine
+python3 scripts/index_all_messages.py
+```
+
+<!-- Merged from MONITOR_SYNC_PROGRESS.md on 2025-01-30 -->
+
+### Missing Messages Explanation
+
+**Issue:** July-September 2025 messages missing from Vector DB (only October+ present)
+
+**Root Cause:** The `index_all_messages.py` script was using `get_conversations_for_range()`, which queries **Vector DB** instead of the **local SQLite database**. This created a circular dependency:
+
+1. Script tries to index messages → queries Vector DB
+2. Vector DB only has October+ messages → misses July-September
+3. July-September messages never get indexed
+
+**Solution:** Updated `index_all_messages.py` to:
+1. Read directly from **local SQLite database** using `_get_conversations_for_date_sqlite()`
+2. Start from **July 1, 2025** (when you started using Cursor)
+3. Process day-by-day to ensure all messages are captured
+
+**To Sync Missing Messages:**
+
+```bash
+cd engine
+python3 scripts/index_all_messages.py
+```
+
+**Note:** This will process ALL messages from July 2025 to now, may take 30-60 minutes.
+
+**Dry run test:**
+```bash
+python3 scripts/index_all_messages.py --dry-run
+```
+
+<!-- Merged from MISSING_MESSAGES_EXPLANATION.md on 2025-01-30 -->
+
+### Unknown Workspace Confirmation
+
+**Verification:** The Inspiration app **does NOT filter out or ignore** messages with `workspace = "Unknown"`. These messages are fully included in all searches and analysis.
+
+**Code Evidence:**
+
+1. **Vector DB Search (`vector_db.py`):**
+   - Workspace filter only applied if `workspace_paths` is explicitly provided
+   - If `workspace_paths` is `None`: ALL messages included, including "Unknown"
+
+2. **Generate Script (`generate.py`):**
+   - All calls pass `workspace_paths=None`
+   - This means **all workspaces are included**, including "Unknown"
+
+3. **Sync Script (`sync_messages.py`):**
+   - `workspace_paths=None` - syncs ALL messages, including "Unknown"
+
+**Why "Unknown" Exists:**
+
+Messages get `workspace = "Unknown"` when:
+1. Workspace was deleted/moved (workspaceStorage entry no longer exists)
+2. Workspace hash doesn't match current workspaceStorage mapping
+3. Chat data doesn't contain workspace hash information
+
+This is **expected behavior** for historical/deleted workspaces and does **NOT** affect searchability.
+
+**Conclusion:**
+✅ Your "Unknown" workspace messages ARE being mined for insights, ideas, and use cases
+✅ No code changes needed - the app already includes them
+✅ All "Unknown" messages are searchable and analyzable
+
+<!-- Merged from UNKNOWN_WORKSPACE_CONFIRMATION.md on 2025-01-30 -->
+
+---
+
+## Deployment
+
+### Railway Deployment Steps
+
+**Prerequisites:**
+- Railway CLI installed: `npm install -g @railway/cli`
+- Flask API wrapper created (`engine/api.py`)
+- Procfile created (`engine/Procfile`)
+
+**Steps:**
+
+1. **Login to Railway:**
+```bash
+cd engine
+railway login
+```
+
+2. **Initialize Railway Project:**
+```bash
+railway init
+# When prompted: Create new project, name it (e.g., "inspiration-engine")
+```
+
+3. **Set Environment Variables (via Railway Dashboard):**
+   - `ANTHROPIC_API_KEY`
+   - `OPENAI_API_KEY` (optional)
+   - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY`
+
+4. **Deploy:**
+```bash
+railway up
+```
+
+5. **Get Deployment URL:**
+```bash
+railway domain
+# Example: https://inspiration-production-6eaf.up.railway.app
+```
+
+6. **Configure Vercel:**
+   - Add `PYTHON_ENGINE_URL=https://your-railway-url.railway.app` to Vercel environment variables
+   - Redeploy Vercel app
+
+**Check Logs:**
+```bash
+railway logs
+```
+
+**Test Health Endpoint:**
+```bash
+curl https://your-railway-url.railway.app/health
+```
+
+<!-- Merged from RAILWAY_DEPLOYMENT_STEPS.md on 2025-01-30 -->

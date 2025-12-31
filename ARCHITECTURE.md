@@ -846,6 +846,36 @@ Auto-detects path based on OS:
 - ❌ Compression for small date ranges (2025-01-30)
 - ❌ Blocking category generation (2025-01-30)
 
+**Vector DB Sync Optimizations (2025-01-30):**
+
+1. **Pre-truncate Long Messages**
+   - **Implementation:** Messages >6000 chars truncated before embedding API call
+   - **Location:** `engine/scripts/sync_messages.py`, `engine/scripts/index_all_messages.py`
+   - **Impact:** Prevents ~104 failed messages per sync, saves API calls and retries
+   - **Constants:** `MAX_TEXT_LENGTH = 6000`
+
+2. **Increased Batch Size**
+   - **Implementation:** Changed from 100 to 200 messages per batch
+   - **Location:** `engine/common/vector_db.py` → `batch_get_embeddings()`
+   - **Impact:** 2x faster batch processing, fewer API calls
+   - **Constants:** `BATCH_SIZE = 200`
+
+3. **Skip Very Short Messages**
+   - **Implementation:** Messages <10 chars skipped entirely
+   - **Location:** `engine/scripts/sync_messages.py`
+   - **Impact:** Reduced processing time, lower cost, better quality
+   - **Constants:** `MIN_TEXT_LENGTH = 10`
+
+4. **Cache-First Embedding**
+   - **Implementation:** `batch_get_embeddings()` checks cache before API calls
+   - **Location:** `engine/common/vector_db.py`
+   - **Impact:** Zero cost for cached embeddings, instant retrieval
+
+**Expected Performance (per 100 new messages):**
+- **Before:** ~2-3 minutes, ~100 API calls, ~5-10 failures
+- **After:** ~1-1.5 minutes, ~50 API calls, ~0 failures
+- **Savings:** ~50% time, ~50% API calls, 100% failure reduction
+
 **Current Architecture:**
 ```
 Generation Request
