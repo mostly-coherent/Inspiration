@@ -56,5 +56,9 @@ data/insight_bank.json
 # Keep config.json example if needed, but user config is private usually. 
 # For now, ignoring banks and caches.
 
+# Test Results (may contain personal paths)
+playwright-report/
+test-results/
+
 # AI Documentation (Mode A - canonical docs are now published to GitHub)
 # Canonical docs (README.md, CLAUDE.md, Plan.md, BUILD_LOG.md, PIVOTS.md, ARCHITECTURE.md) are tracked
