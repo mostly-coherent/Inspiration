@@ -14,7 +14,7 @@
     "test:unit": "vitest",
     "test:unit:ui": "vitest --ui",
     "test:unit:coverage": "vitest --coverage",
-    "postinstall": "pip3 install -r engine/requirements.txt || echo 'Skipping pip install (optional)'"
+    "postinstall": "command -v pip3 >/dev/null 2>&1 && pip3 install -r engine/requirements.txt || echo 'Skipping pip install (Python not available - expected on Vercel)'"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.89.0",
