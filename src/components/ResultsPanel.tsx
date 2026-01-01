@@ -26,9 +26,9 @@ export const ResultsPanel = memo(function ResultsPanel({ result }: { result: Gen
       return result.estimatedCost;
     }
     if (result.content) {
-      return extractEstimatedCost(result.content, result.stats.candidatesGenerated);
+      return extractEstimatedCost(result.content, result.stats.candidatesGenerated ?? 1);
     }
-    return result.stats.candidatesGenerated * 0.023 + 0.025; // Fallback estimate
+    return (result.stats.candidatesGenerated ?? 1) * 0.023 + 0.025; // Fallback estimate
   }, [result.estimatedCost, result.content, result.stats.candidatesGenerated]);
 
   const downloadResult = async (content: string) => {

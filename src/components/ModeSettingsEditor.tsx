@@ -18,6 +18,7 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
   const [implementedItemsFolder, setImplementedItemsFolder] = useState("");
   const [temperature, setTemperature] = useState<number | null>(null);
   const [minSimilarity, setMinSimilarity] = useState<number | null>(null);
+  const [deduplicationThreshold, setDeduplicationThreshold] = useState<number | null>(null);
   const [semanticSearchQueries, setSemanticSearchQueries] = useState<string[]>([]);
 
   useEffect(() => {
@@ -34,6 +35,7 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
         setImplementedItemsFolder(modeData.settings.implementedItemsFolder || "");
         setTemperature(modeData.settings.temperature);
         setMinSimilarity(modeData.settings.minSimilarity);
+        setDeduplicationThreshold(modeData.settings.deduplicationThreshold ?? 0.85);
         setSemanticSearchQueries(modeData.settings.semanticSearchQueries || []);
       }
     } catch (error) {
@@ -55,6 +57,7 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
           implementedItemsFolder: implementedItemsFolder || null,
           temperature: temperature,
           minSimilarity: minSimilarity,
+          deduplicationThreshold: deduplicationThreshold,
           semanticSearchQueries: semanticSearchQueries.length > 0 ? semanticSearchQueries : null,
         },
       };
@@ -140,6 +143,30 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
           />
         </div>
       )}
+
+      {/* Deduplication Threshold (v2) */}
+      <div>
+        <label className="block text-sm text-adobe-gray-400 mb-1">
+          Deduplication Threshold
+        </label>
+        <div className="flex items-center gap-4">
+          <input
+            type="range"
+            min="0.5"
+            max="0.99"
+            step="0.01"
+            value={deduplicationThreshold ?? 0.85}
+            onChange={(e) => setDeduplicationThreshold(parseFloat(e.target.value))}
+            className="flex-1 h-2 bg-black/30 rounded-lg appearance-none cursor-pointer"
+          />
+          <span className="text-sm font-mono text-white w-12">
+            {(deduplicationThreshold ?? 0.85).toFixed(2)}
+          </span>
+        </div>
+        <p className="text-xs text-adobe-gray-500 mt-1">
+          Items with similarity above this threshold are deduplicated. Higher = stricter (fewer duplicates removed). Default: 0.85
+        </p>
+      </div>
 
       {/* Golden Examples Folder */}
       <div>

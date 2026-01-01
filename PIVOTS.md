@@ -495,3 +495,237 @@
 
 ---
 
+## Pivot: Item-Centric Architecture Simplification - 2026-01-01
+
+**Original:** "Candidate" = a set of items (e.g., 3 ideas), "bestOf" generates multiple candidates → Judge picks best candidate → Parse items from winner.
+
+**New:** "Item" = single idea/insight/use case. User specifies item count → AI generates N items directly → Deduplicate among generated items + existing bank → Rank → Return to user → Harmonize to bank.
+
+**Trigger:** User identified that the Candidate-based architecture is over-engineered and confusing. The mental model should be simpler: "I want 10 ideas" → get 10 ideas.
+
+**Key Changes:**
+
+1. **Terminology:** Rename "Candidate" to "Item" everywhere. Remove "Candidate" from codebase.
+
+2. **Generation Flow:**
+   - Old: `bestOf=5` → 5 candidates (each with ~3 items) → Judge picks 1 candidate → ~3 items returned
+   - New: `itemCount=10` → Generate 10-15 items → Deduplicate → Rank → Return top 10
+
+3. **Deduplication:**
+   - Old: After harmonization (against bank only)
+   - New: Before returning (among generated items + existing bank items)
+
+4. **Ranking:**
+   - Old: Judge ranks candidate sets
+   - New: Judge ranks individual items by quality/relevance
+
+5. **Three Banks (clarified):**
+   - **Ideas Bank** 💡: Generated ideas; tracks "Implemented" status by scanning Cursor workspaces
+   - **Insights Bank** ✨: Generated insights; tracks "Shared" status by scanning LinkedIn posts folder
+   - **Use Cases Bank** 🔍: Stores user query (the idea/insight seeking evidence) + found evidence from chat history
+
+6. **Configurable Settings (expose in UI):**
+   - `itemCount`: How many items user wants (default: 10)
+   - `deduplicationThreshold`: Similarity for duplicate detection (default: 0.85)
+   - `temperature`: Creativity for Generate mode
+   - `minSimilarity`: Threshold for Seek mode
+
+**User Flow (New):**
+```
+User Input:
+├─ Mode: [Idea | Insight | Use Case]
+├─ Item Count: N
+├─ Date Range: [Preset | Custom]
+└─ Temperature (Generate) | Similarity (Seek)
+        ↓
+AI Generation/Seek:
+├─ Search Vector DB for relevant conversations
+├─ Generate/Find up to N items
+        ↓
+If Items = 0:
+├─ Explain why (# conversations analyzed, date range, nothing found)
+        ↓
+If Items > 0:
+├─ Deduplicate (merge similar items)
+├─ Rank/Judge (most compelling first)
+├─ Return sorted list
+        ↓
+Harmonize to Bank:
+├─ Add new items
+├─ Increment hits on existing items
+├─ Show: new added, existing updated, implemented/shared status
+```
+
+**Alternatives Considered:**
+- Keep Candidate-based architecture: Rejected (confusing UX, wasted LLM calls)
+- Generate exactly N items (no overshoot): Rejected (deduplication may reduce count)
+
+**Status:** ✅ Implemented (2025-01-01) | **DRI:** AI Assistant
+
+**Impact:**
+- **Scope:** Major refactor of generate.py, seek.py, items_bank.py, frontend
+- **Timeline:** Completed in ~2 hours
+- **Architecture:** Simpler mental model, fewer wasted LLM calls, better UX
+- **Cost:** ~80% reduction (single LLM call vs parallel candidates)
+
+**Implementation Details:**
+- Added `generate_items()` function in `generate.py` (line 246)
+- Added `_parse_items_from_output()` for structured item extraction
+- Added `_deduplicate_items()` for pre-return deduplication
+- Added `_rank_items()` for individual item ranking
+- Updated prompts with `{item_count}` placeholder
+- Created `item_ranker.md` prompt for ranking
+- Updated themes.json: `defaultItemCount`, `deduplicationThreshold`
+- Updated frontend: `itemCount` slider replaces `bestOf`
+- Updated API: `--item-count` and `--dedup-threshold` args
+
+---
+
+## Implementation: v2 Item-Centric Architecture - 2025-01-01
+
+**Files Changed:**
+
+**Python Engine:**
+- `engine/generate.py` - Added `generate_items()`, `_parse_items_from_output()`, `_deduplicate_items()`, `_rank_items()`, `items_to_markdown()`
+- `engine/prompts/ideas_synthesize.md` - Added `{item_count}` placeholder
+- `engine/prompts/insights_synthesize.md` - Added `{item_count}` placeholder
+- `engine/prompts/use_case_synthesize.md` - Added `{item_count}` placeholder
+- `engine/prompts/item_ranker.md` - New ranking prompt
+
+**Configuration:**
+- `data/themes.json` - Added `defaultItemCount`, `deduplicationThreshold` per mode
+
+**Frontend:**
+- `src/lib/types.ts` - Added `itemCount`, `deduplicationThreshold` types
+- `src/app/page.tsx` - Replaced `bestOf` with `itemCount`, updated progress phases
+- `src/components/AdvancedSettings.tsx` - Replaced `bestOf` slider with `itemCount`
+- `src/components/ExpectedOutput.tsx` - Updated labels for items
+
+**API:**
+- `src/app/api/generate/route.ts` - Added `itemCount`, `deduplicationThreshold` handling
+
+**Documentation:**
+- `FLOW_ANALYSIS.md` - Updated with v2 architecture details
+
+**E2E Tests:**
+- `e2e/inspiration.spec.ts` - Updated for v2 architecture (12 tests passing)
+
+---
+
+## Decision: User-Controlled Variety via Multiple Runs - 2026-01-01
+
+**Context:** The v2 architecture removed the "generate N candidate sets, judge best" flow in favor of direct item generation.
+
+**Decision:** Users who want diverse outputs should run the same query multiple times with varying temperature/similarity settings. The bank naturally deduplicates across runs.
+
+**Rationale:**
+- **Simplicity:** No complex bestOf/judging logic needed
+- **User control:** Users decide how much variety they want
+- **Natural aggregation:** Bank deduplication handles overlap automatically
+- **Transparent cost:** Each run has predictable cost
+
+**Example Workflow:**
+```
+Run 1: Generate 5 ideas at temperature 0.2 (conservative) → Bank deduplicates
+Run 2: Generate 5 ideas at temperature 0.8 (creative) → Bank deduplicates
+Result: Bank contains unique ideas from both runs
+```
+
+**Status:** Documented | **DRI:** User
+
+---
+
+## Decision: Brain Refresh Fixes & Performance - 2025-01-30
+
+**Context:** Multiple issues identified with Vector DB sync, including cloud mode UI, duplicate detection clarity, timestamp fields, brain size estimation, and batch insert performance.
+
+**Decisions:**
+
+1. **Cloud Mode Persistence:** Updated error detection to check for both "Cannot sync from cloud" and "cloud environment" strings. Cloud mode status now persists permanently (not cleared after 5 seconds).
+
+2. **Duplicate Detection Clarification:** Duplicates identified by `message_id` hash = `SHA256(workspace:chat_id:timestamp:text[:50])[:16]`. This ensures uniqueness even if workspace/chat_id format changes.
+
+3. **Timestamp Fields:** 
+   - `timestamp` (BIGINT): When the chat message occurred (from Cursor DB)
+   - `indexed_at` (TIMESTAMP): When indexed into Vector DB
+   - `created_at` / `updated_at`: Auto-set by PostgreSQL
+
+4. **Brain Size Estimation:** Removed hardcoded 244MB value. Now uses RPC function first, falls back to conservative estimate (8KB per message) only if RPC fails.
+
+5. **Batch Inserts:** Added `index_messages_batch()` for 10-50x faster database writes (1 API call per batch vs 200).
+
+**Impact:**
+- **Performance:** ~3-5x faster sync times
+- **Reliability:** Zero hardcoded values
+- **UX:** Cloud mode shows and persists correctly
+
+**Status:** Implemented | **DRI:** AI
+
+<!-- Merged from BRAIN_REFRESH_FIXES.md on 2026-01-01 -->
+
+---
+
+## Decision: Compression vs Truncation (Hybrid) - 2025-01-30
+
+**Context:** Long messages (>6000 chars) need to fit in embedding context window. Truncation loses information, compression preserves it but costs money.
+
+**Decision:** Hybrid approach:
+- **Very long messages (>8000 chars):** Compress using GPT-3.5-turbo (~$0.001/msg)
+- **Moderately long (6000-8000 chars):** Truncate (free, instant)
+- **Normal (<6000 chars):** No processing needed
+
+**Rationale:**
+- Very long messages (1% of total) contain critical info worth preserving
+- Moderately long messages (5%) preserve most info with truncation
+- Cost-effective: ~$0.01-0.02 per 1000 messages
+
+**Implementation:**
+```python
+if len(msg_text) > 8000:  # Compress (preserves info)
+    msg_text = compress_single_message(msg_text, max_chars=6000)
+elif len(msg_text) > 6000:  # Truncate (fast, free)
+    msg_text = truncate_text_for_embedding(msg_text)
+```
+
+**Constants:**
+- `MAX_TEXT_LENGTH = 6000` (target for embeddings)
+- `COMPRESSION_THRESHOLD = 8000` (when to compress)
+
+**Status:** Implemented | **DRI:** AI
+
+<!-- Merged from COMPRESSION_VS_TRUNCATION.md on 2026-01-01 -->
+
+---
+
+## Decision: Refresh Brain Optimizations - 2025-01-30
+
+**Context:** Vector DB sync needed performance improvements.
+
+**Optimizations Implemented:**
+
+1. **Pre-truncate Long Messages:** Messages >6000 chars truncated before embedding API call (prevents ~104 failed messages per sync)
+
+2. **Increased Batch Size:** 100 → 200 messages per batch (2x faster, fewer API calls)
+
+3. **Skip Short Messages:** Messages <10 chars skipped (saves cost, better quality)
+
+4. **Cache-First Embedding:** `batch_get_embeddings()` checks cache before API calls
+
+**Performance Impact (per 100 new messages):**
+- **Before:** ~2-3 minutes, ~100 API calls, ~5-10 failures
+- **After:** ~1-1.5 minutes, ~50 API calls, ~0 failures
+- **Savings:** ~50% time, ~50% API calls, 100% failure reduction
+
+**Constants:**
+```python
+MAX_TEXT_LENGTH = 6000   # Truncate longer messages
+MIN_TEXT_LENGTH = 10     # Skip shorter messages
+BATCH_SIZE = 200         # Messages per batch
+```
+
+**Status:** Implemented | **DRI:** AI
+
+<!-- Merged from REFRESH_BRAIN_OPTIMIZATIONS.md on 2026-01-01 -->
+
+---
+

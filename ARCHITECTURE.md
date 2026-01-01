@@ -1061,4 +1061,65 @@ Railway approach:
 
 See `PIVOTS.md` for detailed decision rationale.
 
-**Last Updated:** 2025-01-30
+---
+
+## v2 Item-Centric Flow Analysis (2026-01-01)
+
+### Key Changes from v1
+
+| Aspect | v1 (Candidate-Based) | v2 (Item-Centric) |
+|--------|---------------------|-------------------|
+| **Generation** | Multiple parallel LLM calls (1 per candidate) | Single LLM call generates all items |
+| **Unit of Work** | "Candidate" = set of items | "Item" = single idea/insight/use case |
+| **Parameter** | `bestOf` (candidates to generate) | `itemCount` (items to generate) |
+| **Deduplication** | Only at bank harmonization | BEFORE returning to user |
+| **Ranking** | Pick best candidate (set) | Rank individual items |
+| **Latency** | ~20-25s × bestOf (parallel) | ~30-60s single call |
+| **Cost** | $0.023 × bestOf + $0.025 judge | ~$0.02 generation + $0.003 ranking |
+
+### v2 Flow Overview
+
+```
+User clicks Generate (itemCount=10, temp=0.3, dedupThreshold=0.85)
+↓
+Single LLM call generates 15 items (overshoot 50%)
+↓
+Batch embedding generation (parallelized via batch_get_embeddings)
+↓
+Deduplicate: 15 → 11 items (remove items with similarity > 0.85)
+↓
+Rank individual items by quality (single judge call)
+↓
+Return top 10 items (sorted by rank)
+↓
+Harmonize deduplicated items to bank
+```
+
+### Configurable Parameters
+
+| Parameter | Default | Location | Description |
+|-----------|---------|----------|-------------|
+| `itemCount` | 10 | themes.json `defaultItemCount` | Number of items to generate |
+| `deduplicationThreshold` | 0.85 | themes.json `settings.deduplicationThreshold` | Cosine similarity threshold for dedup |
+| `temperature` | 0.2-0.5 | themes.json `settings.temperature` | LLM creativity (higher = more varied) |
+
+### Cost Comparison (v2 vs v1)
+
+| Scenario | v1 Cost | v2 Cost | Savings |
+|----------|---------|---------|---------|
+| Generate (bestOf=5 / itemCount=10) | ~$0.16-0.18 | ~$0.03-0.04 | **~80%** |
+| Seek (bestOf=1 / itemCount=5) | ~$0.04-0.05 | ~$0.03-0.04 | **~20%** |
+
+### Remaining Bottlenecks
+
+1. **O(n) Deduplication Scan** - `_find_similar_item()` iterates through ALL items (Priority: MEDIUM)
+2. **File I/O Blocking** - `save()` blocks until file write completes (Priority: MEDIUM)
+3. **Progress Simulation** - Client-side estimation, not streamed from backend (Priority: LOW)
+
+### User Strategy for Variety
+
+Users wanting diverse outputs should run multiple queries with different temperature/similarity settings. The bank naturally deduplicates across runs.
+
+<!-- Merged from FLOW_ANALYSIS.md on 2026-01-01 - see PIVOTS.md for full decision rationale -->
+
+**Last Updated:** 2026-01-01

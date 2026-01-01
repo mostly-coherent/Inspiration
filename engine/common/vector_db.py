@@ -98,9 +98,9 @@ def index_message(
     
     Args:
         client: Supabase client
-        message_id: Unique message identifier
+        message_id: Unique message identifier (hash of workspace:chat_id:timestamp:text[:50])
         text: Message text
-        timestamp: Message timestamp (milliseconds)
+        timestamp: Message timestamp in milliseconds (when the chat actually occurred)
         workspace: Workspace path
         chat_id: Chat/conversation ID
         chat_type: Type of chat (composer/chat)
@@ -109,6 +109,12 @@ def index_message(
     
     Returns:
         True if indexed successfully
+    
+    Note:
+        - `timestamp`: When the chat message actually occurred (from Cursor DB)
+        - `indexed_at`: When this message was indexed into the Vector DB (set here)
+        - `created_at`: When the DB row was created (auto-set by PostgreSQL)
+        - `updated_at`: When the DB row was last updated (auto-set by trigger)
     """
     if not text.strip():
         return False
@@ -122,21 +128,88 @@ def index_message(
     
     try:
         # Insert or update message in vector DB
+        # timestamp = chat message timestamp (when chat occurred)
+        # indexed_at = when we indexed it (now)
         result = client.table("cursor_messages").upsert({
             "message_id": message_id,
             "text": text,
             "embedding": embedding,
-            "timestamp": timestamp,
+            "timestamp": timestamp,  # Chat timestamp (when message was sent/received)
             "workspace": workspace,
             "chat_id": chat_id,
             "chat_type": chat_type,
             "message_type": message_type,
-            "indexed_at": datetime.now().isoformat(),
+            "indexed_at": datetime.now().isoformat(),  # DB entry timestamp (when indexed)
         }).execute()
         
         return len(result.data) > 0
     except Exception:
         return False
+
+
+def index_messages_batch(
+    client: Client,
+    messages: list[dict],
+) -> tuple[int, int]:
+    """
+    Index multiple messages in a single batch operation (much faster than individual inserts).
+    
+    Args:
+        client: Supabase client
+        messages: List of message dicts, each containing:
+            - message_id: str
+            - text: str
+            - timestamp: int (chat timestamp)
+            - workspace: str
+            - chat_id: str
+            - chat_type: str
+            - message_type: str
+            - embedding: list[float]
+    
+    Returns:
+        Tuple of (successful_count, failed_count)
+    
+    Note:
+        - Uses bulk upsert for better performance (10-50x faster than individual inserts)
+        - `timestamp`: When the chat message actually occurred (from Cursor DB)
+        - `indexed_at`: When messages were indexed (set to now for all)
+    """
+    if not messages:
+        return 0, 0
+    
+    indexed_at = datetime.now().isoformat()
+    
+    # Prepare batch data
+    batch_data = []
+    for msg in messages:
+        if not msg.get("text", "").strip():
+            continue
+        
+        batch_data.append({
+            "message_id": msg["message_id"],
+            "text": msg["text"],
+            "embedding": msg.get("embedding"),
+            "timestamp": msg["timestamp"],  # Chat timestamp (when message occurred)
+            "workspace": msg["workspace"],
+            "chat_id": msg["chat_id"],
+            "chat_type": msg["chat_type"],
+            "message_type": msg["message_type"],
+            "indexed_at": indexed_at,  # DB entry timestamp (when indexed)
+        })
+    
+    if not batch_data:
+        return 0, 0
+    
+    try:
+        # Bulk upsert (Supabase handles this efficiently)
+        result = client.table("cursor_messages").upsert(batch_data).execute()
+        successful = len(result.data) if result.data else 0
+        failed = len(batch_data) - successful
+        return successful, failed
+    except Exception as e:
+        import sys
+        print(f"⚠️  Batch insert failed: {e}", file=sys.stderr)
+        return 0, len(batch_data)
 
 
 def search_messages_vector_db(
