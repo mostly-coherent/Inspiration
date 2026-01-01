@@ -53,11 +53,13 @@ export async function GET() {
               vectorSize: stats.vectorSize,
               localSizeBytes: stats.localSizeBytes,
               vectorSizeBytes: stats.vectorSizeBytes,
+              earliestDate: stats.earliestDate,
+              latestDate: stats.latestDate,
             }));
           } catch (parseError) {
             console.error("Failed to parse brain stats:", parseError);
             resolve(NextResponse.json(
-              { success: false, error: "Failed to parse stats", localSize: null, vectorSize: null },
+              { success: false, error: "Failed to parse stats", localSize: null, vectorSize: null, earliestDate: null, latestDate: null },
               { status: 500 }
             ));
           }

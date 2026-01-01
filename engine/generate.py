@@ -1645,6 +1645,7 @@ def process_aggregated_range(
     dedup_threshold: float = 0.85,
     best_of: int = 1,  # Deprecated
     rerank: bool = True,  # Deprecated
+    timestamp_range: tuple[int, int] | None = None,  # Optional (start_ts, end_ts) for precise time-based ranges
 ) -> dict:
     """Process a date range with aggregated output."""
     # OPTIMIZATION: Search entire date range at once instead of per-date
@@ -1662,7 +1663,14 @@ def process_aggregated_range(
     start_date = dates[0]
     end_date = dates[-1]
     
-    print(f"📥 Collecting relevant conversations from {len(dates)} days ({start_date} to {end_date})...")
+    # Display appropriate message based on date vs timestamp range
+    if timestamp_range:
+        from_dt = datetime.fromtimestamp(timestamp_range[0] / 1000)
+        to_dt = datetime.fromtimestamp(timestamp_range[1] / 1000)
+        hours_back = (to_dt - from_dt).total_seconds() / 3600
+        print(f"📥 Collecting relevant conversations from last {int(hours_back)} hours ({from_dt.strftime('%m-%d %H:%M')} to {to_dt.strftime('%m-%d %H:%M')})...")
+    else:
+        print(f"📥 Collecting relevant conversations from {len(dates)} days ({start_date} to {end_date})...")
     print(f"🔍 Searching entire date range at once (optimized)...", file=sys.stderr)
     
     try:
@@ -1671,10 +1679,14 @@ def process_aggregated_range(
         
         # Search entire date range at once (much faster!)
         if get_supabase_client():
-            start_datetime = datetime.combine(start_date, datetime.min.time())
-            end_datetime = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
-            start_ts = int(start_datetime.timestamp() * 1000)
-            end_ts = int(end_datetime.timestamp() * 1000)
+            # Use timestamp_range if provided, otherwise calculate from dates
+            if timestamp_range:
+                start_ts, end_ts = timestamp_range
+            else:
+                start_datetime = datetime.combine(start_date, datetime.min.time())
+                end_datetime = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+                start_ts = int(start_datetime.timestamp() * 1000)
+                end_ts = int(end_datetime.timestamp() * 1000)
             
             # Load search queries from mode settings (configurable per mode)
             from common.mode_settings import get_mode_setting
@@ -1938,6 +1950,7 @@ def main():
     
     parser.add_argument("--date", type=str, help="Single date (YYYY-MM-DD)")
     parser.add_argument("--days", type=int, help="Process last N days")
+    parser.add_argument("--hours", type=int, help="Process last N hours (timestamp-based, more precise than --days)")
     parser.add_argument("--dry-run", action="store_true", help="Extract chats but don't generate")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     parser.add_argument("--temperature", type=float, default=None)
@@ -1955,12 +1968,13 @@ def main():
     mode: Literal["insights", "ideas"] = args.mode
     
     # v2: item_count replaces best_of
-    # MODE_PRESETS: (days, item_count, temperature)
+    # MODE_PRESETS: (days_or_hours, item_count, temperature, is_hours)
+    # Note: "daily" now uses hours=24 for true "last 24 hours" behavior
     MODE_PRESETS = {
-        "daily": (1, 5, 0.3),
-        "sprint": (14, 10, 0.4),
-        "month": (28, 15, 0.5),
-        "quarter": (42, 20, 0.5),
+        "daily": (24, 5, 0.3, True),   # 24 hours (not 1 day)
+        "sprint": (14, 10, 0.4, False),  # 14 days
+        "month": (28, 15, 0.5, False),   # 28 days
+        "quarter": (42, 20, 0.5, False), # 42 days
     }
     
     mode_days, mode_item_count, mode_temperature = None, 10, DEFAULT_TEMPERATURE
@@ -1968,18 +1982,27 @@ def main():
     use_aggregated = False
     
     if args.daily:
-        mode_days, mode_item_count, mode_temperature = MODE_PRESETS["daily"]
+        hours_or_days, mode_item_count, mode_temperature, is_hours = MODE_PRESETS["daily"]
+        if is_hours:
+            args.hours = hours_or_days  # Use hours-based processing
+            mode_days = None
+        else:
+            mode_days = hours_or_days
         mode_name = "daily"
+        use_aggregated = True  # Use aggregated range for 24-hour window
     elif args.sprint:
-        mode_days, mode_item_count, mode_temperature = MODE_PRESETS["sprint"]
+        days_or_hours, mode_item_count, mode_temperature, is_hours = MODE_PRESETS["sprint"]
+        mode_days = days_or_hours if not is_hours else None
         mode_name = "sprint"
         use_aggregated = True
     elif args.month:
-        mode_days, mode_item_count, mode_temperature = MODE_PRESETS["month"]
+        days_or_hours, mode_item_count, mode_temperature, is_hours = MODE_PRESETS["month"]
+        mode_days = days_or_hours if not is_hours else None
         mode_name = "month"
         use_aggregated = True
     elif args.quarter:
-        mode_days, mode_item_count, mode_temperature = MODE_PRESETS["quarter"]
+        days_or_hours, mode_item_count, mode_temperature, is_hours = MODE_PRESETS["quarter"]
+        mode_days = days_or_hours if not is_hours else None
         mode_name = "quarter"
         use_aggregated = True
     
@@ -1995,24 +2018,36 @@ def main():
         args.temperature = mode_temperature
     
     today = datetime.now().date()
+    now = datetime.now()
     dates_to_process = []
+    timestamp_range: tuple[int, int] | None = None  # For hours-based processing
     
-    effective_days = args.days if args.days else mode_days
-    
-    if effective_days:
-        for i in range(effective_days):
-            dates_to_process.append(today - timedelta(days=i))
-        dates_to_process.reverse()
-    elif args.date:
-        try:
-            dates_to_process = [datetime.strptime(args.date, "%Y-%m-%d").date()]
-        except ValueError:
-            print(f"Error: Invalid date format '{args.date}'")
-            return 1
+    # Priority: --hours > --days > mode default
+    if args.hours:
+        # Use timestamp-based range for precise hour-based processing
+        end_ts = int(now.timestamp() * 1000)
+        start_ts = int((now - timedelta(hours=args.hours)).timestamp() * 1000)
+        timestamp_range = (start_ts, end_ts)
+        # Still create dates_to_process for display purposes (covers the hours window)
+        dates_to_process = [today - timedelta(days=1), today]  # Yesterday and today
+        print(f"📅 Processing: Last {args.hours} hours ({mode} mode)")
     else:
-        dates_to_process = [today]
-    
-    print(f"📅 Processing: {dates_to_process[0]} to {dates_to_process[-1]} ({mode} mode)")
+        effective_days = args.days if args.days else mode_days
+        
+        if effective_days:
+            for i in range(effective_days):
+                dates_to_process.append(today - timedelta(days=i))
+            dates_to_process.reverse()
+        elif args.date:
+            try:
+                dates_to_process = [datetime.strptime(args.date, "%Y-%m-%d").date()]
+            except ValueError:
+                print(f"Error: Invalid date format '{args.date}'")
+                return 1
+        else:
+            dates_to_process = [today]
+        
+        print(f"📅 Processing: {dates_to_process[0]} to {dates_to_process[-1]} ({mode} mode)")
     
     llm_config = get_llm_config()
     llm = create_llm(llm_config)
@@ -2030,6 +2065,7 @@ def main():
             temperature=args.temperature,
             item_count=args.item_count,
             dedup_threshold=args.dedup_threshold,
+            timestamp_range=timestamp_range,  # For hours-based processing
         )
         
         has_output_key = "has_posts" if mode == "insights" else "has_ideas"

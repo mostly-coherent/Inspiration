@@ -7,6 +7,7 @@ export interface ModeConfig {
   label: string;
   description: string;
   days: number;
+  hours?: number; // For time-based windows (e.g., last 24 hours)
   itemCount: number; // v2: Number of items to generate (replaces bestOf)
   bestOf?: number; // Deprecated: kept for backward compatibility
   temperature: number;
@@ -22,6 +23,7 @@ export interface GenerateRequest {
   modeId?: ModeType; // User-defined mode ID (e.g., "idea", "insight", "use_case")
   // Custom overrides
   days?: number;
+  hours?: number; // For time-based windows (e.g., last 24 hours)
   itemCount?: number; // v2: Number of items to generate
   bestOf?: number; // Deprecated: use itemCount instead
   temperature?: number;
@@ -82,9 +84,10 @@ export interface RunHistoryItem {
 export const PRESET_MODES: ModeConfig[] = [
   {
     id: "daily",
-    label: "Today",
-    description: "Today's activity",
-    days: 1,
+    label: "Last 24 hours",
+    description: "Last 24 hours of activity",
+    days: 0, // Not used when hours is set
+    hours: 24,
     itemCount: 5,
     temperature: 0.3,
     icon: "⚡",
