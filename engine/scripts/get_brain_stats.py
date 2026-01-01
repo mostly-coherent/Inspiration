@@ -46,6 +46,42 @@ def get_local_chat_size() -> tuple[int, str]:
         return 0, None
 
 
+def get_vector_db_date_range() -> tuple[str | None, str | None]:
+    """Get date range (earliest to latest) of messages in Vector DB."""
+    client = get_supabase_client()
+    if not client:
+        return None, None
+    
+    try:
+        # Get earliest timestamp
+        earliest_result = client.table("cursor_messages").select("timestamp").order("timestamp", desc=False).limit(1).execute()
+        # Get latest timestamp
+        latest_result = client.table("cursor_messages").select("timestamp").order("timestamp", desc=True).limit(1).execute()
+        
+        earliest_ts = None
+        latest_ts = None
+        
+        if earliest_result.data and len(earliest_result.data) > 0:
+            earliest_ts = earliest_result.data[0].get("timestamp")
+        if latest_result.data and len(latest_result.data) > 0:
+            latest_ts = latest_result.data[0].get("timestamp")
+        
+        # Convert timestamps to dates (MM-DD-YYYY format)
+        from datetime import datetime
+        earliest_date = None
+        latest_date = None
+        
+        if earliest_ts:
+            # Timestamps are in milliseconds
+            earliest_date = datetime.fromtimestamp(earliest_ts / 1000).strftime("%m-%d-%Y")
+        if latest_ts:
+            latest_date = datetime.fromtimestamp(latest_ts / 1000).strftime("%m-%d-%Y")
+        
+        return earliest_date, latest_date
+    except Exception:
+        return None, None
+
+
 def get_vector_db_size() -> tuple[int, str]:
     """Get vector database size (actual or estimated)."""
     client = get_supabase_client()
@@ -112,12 +148,15 @@ def main():
     """Get and return brain statistics."""
     local_size_bytes, local_size = get_local_chat_size()
     vector_size_bytes, vector_size = get_vector_db_size()
+    earliest_date, latest_date = get_vector_db_date_range()
     
     stats = {
         "localSizeBytes": local_size_bytes,
         "localSize": local_size,
         "vectorSizeBytes": vector_size_bytes,
         "vectorSize": vector_size,
+        "earliestDate": earliest_date,
+        "latestDate": latest_date,
     }
     
     print(json.dumps(stats))
