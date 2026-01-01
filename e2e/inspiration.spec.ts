@@ -15,7 +15,7 @@ test.describe('Inspiration E2E Tests (v2)', () => {
     
     // Presets
     await expect(page.getByRole('heading', { name: 'Time period & depth' })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Today mode/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Last 24 hours mode/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /Last 14 days mode/i })).toBeVisible();
     
     // Bank section
@@ -52,7 +52,7 @@ test.describe('Inspiration E2E Tests (v2)', () => {
     
     // Click each preset and verify the UI updates
     const presets = [
-      { name: /Today mode/i },
+      { name: /Last 24 hours mode/i },
       { name: /Last 14 days mode/i },
       { name: /Last 30 days mode/i },
       { name: /Last 90 days mode/i },

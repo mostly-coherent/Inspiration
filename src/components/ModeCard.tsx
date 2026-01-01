@@ -7,10 +7,15 @@ interface ModeCardProps {
 }
 
 export function ModeCard({ mode, isSelected, onClick }: ModeCardProps) {
+  // Build time range description
+  const timeDescription = mode.hours 
+    ? `${mode.hours} hours` 
+    : `${mode.days} day${mode.days !== 1 ? "s" : ""}`;
+  
   return (
     <button
       onClick={onClick}
-      aria-label={`${mode.label} mode: ${mode.description}. ${mode.days} days, ${mode.itemCount} items.`}
+      aria-label={`${mode.label} mode: ${mode.description}. ${timeDescription}, ${mode.itemCount} items.`}
       aria-pressed={isSelected}
       className={`mode-card ${isSelected ? "selected" : ""}`}
     >

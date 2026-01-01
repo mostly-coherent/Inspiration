@@ -65,7 +65,7 @@ Each mode serves a distinct purpose:
 | C4 | **Idea Bank** | Harmonize ideas into a deduplicated bank with occurrence tracking | ✅ Done |
 | C5 | **Insight Bank** | Harmonize insights into a deduplicated bank with occurrence tracking | ✅ Done |
 | C6 | **Setup Wizard** | First-run + anytime configuration of workspaces, API keys, features | ✅ Done |
-| C7 | **Preset Modes** | Daily/Sprint/Month/Quarter presets with sensible defaults | ✅ Done |
+| C7 | **Preset Modes** | Last 24h/14d/30d/90d presets with sensible defaults | ✅ Done |
 | C8 | **Advanced Mode** | Custom days, date range, candidates, temperature | ✅ Done |
 | C9 | **Progress UI** | Real-time progress, elapsed time, stop button | ✅ Done |
 | C10 | **Results Display** | Rendered markdown output with formatted/raw toggle | ✅ Done |
@@ -239,21 +239,51 @@ inspiration/
 
 ---
 
-## 🎯 NEXT FOCUS
+## v2 Item-Centric Architecture (2026-01-01)
 
-**Priority:** Maintain stability & monitor Vector DB syncing.
+**v2 Goal:** Simplify the generation flow by unifying "Candidate" and "Item" into a single concept, with direct N-item generation and configurable deduplication.
 
-**Current Status:**
-- v1 implementation complete (all phases done)
-- Vector DB architecture implemented and indexing
-- Critical NFRs (caching, parallel processing) active
-- v0 → v1 migration complete
+**Key Changes:**
+- **Unified Item Concept:** No more "candidates" — user requests N items, AI generates N items
+- **Direct Generation:** Single LLM call generates requested number of items (not sets of candidates)
+- **Pre-return Deduplication:** Items are deduplicated and ranked BEFORE returning to user
+- **Configurable Dedup Threshold:** Per-mode `deduplicationThreshold` setting (0.0-1.0 cosine similarity)
+- **True 24-Hour Window:** "Last 24 hours" preset uses timestamp-based filtering (not calendar date)
+- **Brain Status Date Range:** Shows earliest → latest chat date (MM-DD-YYYY format)
 
-**Next Steps:**
-1. ✅ Monitor the initial indexing of the 2.1GB dataset
-2. ✅ Verify incremental sync works for daily updates
-3. Continue v1 feature development and polish
+**v2 Features:**
+
+| ID | Feature | Description | Status |
+|----|---------|-------------|--------|
+| V2-1 | **Item-Centric Flow** | Replace `bestOf` candidates with direct `itemCount` generation | ✅ Done |
+| V2-2 | **Configurable Dedup** | Per-mode `deduplicationThreshold` in Mode Settings UI | ✅ Done |
+| V2-3 | **Last 24 Hours Preset** | True timestamp-based 24h window (not "today's date") | ✅ Done |
+| V2-4 | **Brain Status Date Range** | Show earliest → latest indexed chat date | ✅ Done |
+| V2-5 | **Hours-based CLI** | `--hours N` argument for precise time windows | ✅ Done |
+
+**v2 Rationale:**
+- Users think in terms of "I want 10 ideas" not "I want 3 sets of candidates"
+- Deduplication happens automatically; users run multiple queries with varied settings to get variety
+- The Bank becomes the natural aggregation point for all generated items
 
 ---
 
-**Last Updated:** 2025-12-29
+## 🎯 NEXT FOCUS
+
+**Priority:** Maintain stability; app is feature-complete.
+
+**Current Status:**
+- ✅ v1 implementation complete (all phases done)
+- ✅ v2 Item-Centric Architecture complete
+- ✅ Vector DB architecture stable (2.1GB indexed)
+- ✅ All E2E tests passing (12/12)
+
+**Potential Enhancements (Not Required):**
+- More time presets (6h, 12h options)
+- Bank search/filtering
+- Batch export
+- Auto-refresh brain scheduling
+
+---
+
+**Last Updated:** 2026-01-01

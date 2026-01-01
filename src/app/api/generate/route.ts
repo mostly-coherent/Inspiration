@@ -17,7 +17,7 @@ export const maxDuration = 300; // 5 minutes (reduced from 10 - v2 is faster)
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateRequest = await request.json();
-    const { tool, theme, modeId, mode, days, itemCount, bestOf, temperature, deduplicationThreshold, fromDate, toDate, dryRun } = body;
+    const { tool, theme, modeId, mode, days, hours, itemCount, bestOf, temperature, deduplicationThreshold, fromDate, toDate, dryRun } = body;
     
     // Get abort signal from request
     const signal = request.signal;

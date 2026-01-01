@@ -3,6 +3,7 @@ import { ToolType } from "@/lib/types";
 interface ExpectedOutputProps {
   tool: ToolType;
   days: number;
+  hours?: number; // For time-based windows (e.g., last 24 hours)
   itemCount: number;
   temperature: number;
   estimatedCost: number;
@@ -11,11 +12,16 @@ interface ExpectedOutputProps {
 export function ExpectedOutput({
   tool,
   days,
+  hours,
   itemCount,
   temperature,
   estimatedCost,
 }: ExpectedOutputProps) {
   const toolLabel = tool === "ideas" ? "ideas" : "insights";
+  
+  // Determine time display - hours takes precedence over days
+  const timeValue = hours ?? days;
+  const timeLabel = hours ? (hours === 1 ? "hour" : "hours") : (days === 1 ? "day" : "days");
   
   return (
     <div className="mt-4 p-4 bg-gradient-to-r from-white/5 to-white/10 rounded-xl border border-white/10">
@@ -28,11 +34,11 @@ export function ExpectedOutput({
           </div>
         </div>
         
-        {/* Days Analyzed */}
+        {/* Time Range Analyzed */}
         <div className="space-y-1">
-          <div className="text-2xl font-bold text-white">{days || "—"}</div>
+          <div className="text-2xl font-bold text-white">{timeValue || "—"}</div>
           <div className="text-xs text-adobe-gray-400">
-            {days === 1 ? "day" : "days"}
+            {timeLabel}
           </div>
         </div>
 

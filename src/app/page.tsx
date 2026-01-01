@@ -56,7 +56,9 @@ export default function Home() {
   const [brainStats, setBrainStats] = useState<{
     localSize: string | null;
     vectorSize: string | null;
-  }>({ localSize: null, vectorSize: null });
+    earliestDate: string | null;
+    latestDate: string | null;
+  }>({ localSize: null, vectorSize: null, earliestDate: null, latestDate: null });
 
   // Progress tracking
   const [progress, setProgress] = useState(0);
@@ -152,6 +154,8 @@ export default function Home() {
         setBrainStats({
           localSize: data.localSize,
           vectorSize: data.vectorSize,
+          earliestDate: data.earliestDate,
+          latestDate: data.latestDate,
         });
       }
     } catch (e) {
@@ -414,6 +418,14 @@ export default function Home() {
                   {brainStats.vectorSize && (
                     <span className="text-slate-300">{brainStats.vectorSize}</span>
                   )}
+                  {brainStats.earliestDate && brainStats.latestDate && (
+                    <>
+                      <span className="text-slate-600">|</span>
+                      <span className="text-slate-400" title="Date range of indexed chats">
+                        {brainStats.earliestDate} → {brainStats.latestDate}
+                      </span>
+                    </>
+                  )}
                 </div>
               )}
               
@@ -523,6 +535,7 @@ export default function Home() {
             <ExpectedOutput
               tool={displayTool}
               days={showAdvanced ? (useCustomDates ? calculateDateRangeDays(fromDate, toDate) : customDays) : (currentModeConfig?.days ?? 14)}
+              hours={!showAdvanced ? currentModeConfig?.hours : undefined}
               itemCount={getCurrentItemCount()}
               temperature={showAdvanced ? customTemperature : (currentModeConfig?.temperature ?? 0.4)}
               estimatedCost={estimateCost(getCurrentItemCount())}
