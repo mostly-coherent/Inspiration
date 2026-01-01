@@ -22,6 +22,7 @@ from common.vector_db import (
     get_last_sync_timestamp,
     save_sync_state,
     index_message,
+    index_messages_batch,
     get_existing_message_ids,
 )
 from common.semantic_search import batch_get_embeddings
@@ -207,30 +208,55 @@ def sync_new_messages(
             failed_count += len(batch)
             continue
         
-        # Index each message
-        print(f"    → Indexing messages to Supabase...", flush=True)
-        for j, (msg, embedding) in enumerate(zip(batch, embeddings)):
-            try:
-                success = index_message(
-                    client,
-                    msg["message_id"],
-                    msg["text"],
-                    msg["timestamp"],
-                    msg["workspace"],
-                    msg["chat_id"],
-                    msg["chat_type"],
-                    msg["message_type"],
-                    embedding=embedding,
-                )
-                
-                if success:
-                    indexed_count += 1
-                    max_timestamp = max(max_timestamp, msg["timestamp"])
-                else:
+        # Prepare batch data with embeddings
+        batch_data = []
+        for msg, embedding in zip(batch, embeddings):
+            batch_data.append({
+                "message_id": msg["message_id"],
+                "text": msg["text"],
+                "timestamp": msg["timestamp"],
+                "workspace": msg["workspace"],
+                "chat_id": msg["chat_id"],
+                "chat_type": msg["chat_type"],
+                "message_type": msg["message_type"],
+                "embedding": embedding,
+            })
+        
+        # Index messages in batch (much faster than individual inserts)
+        print(f"    → Indexing {len(batch_data)} messages to Supabase (batch insert)...", flush=True)
+        try:
+            batch_successful, batch_failed = index_messages_batch(client, batch_data)
+            indexed_count += batch_successful
+            failed_count += batch_failed
+            
+            # Update max timestamp
+            for msg in batch:
+                max_timestamp = max(max_timestamp, msg["timestamp"])
+        except Exception as e:
+            print(f"  ⚠️  Batch insert failed, falling back to individual inserts: {e}", flush=True)
+            # Fallback to individual inserts if batch fails
+            for j, (msg, embedding) in enumerate(zip(batch, embeddings)):
+                try:
+                    success = index_message(
+                        client,
+                        msg["message_id"],
+                        msg["text"],
+                        msg["timestamp"],
+                        msg["workspace"],
+                        msg["chat_id"],
+                        msg["chat_type"],
+                        msg["message_type"],
+                        embedding=embedding,
+                    )
+                    
+                    if success:
+                        indexed_count += 1
+                        max_timestamp = max(max_timestamp, msg["timestamp"])
+                    else:
+                        failed_count += 1
+                except Exception as e2:
+                    print(f"  ⚠️  Failed to index message {j+1}/{len(batch)}: {e2}", flush=True)
                     failed_count += 1
-            except Exception as e:
-                print(f"  ⚠️  Failed to index message {j+1}/{len(batch)}: {e}", flush=True)
-                failed_count += 1
         
         print(f"  ✓ Batch {batch_num}/{total_batches} complete ({indexed_count} indexed, {failed_count} failed)", flush=True)
     

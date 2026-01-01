@@ -172,13 +172,23 @@ async function saveConfig(config: AppConfig): Promise<boolean> {
 
     // Save to local file (Localhost development)
     try {
-      // Ensure data directory exists
-      const dataDir = path.dirname(CONFIG_PATH);
-      if (!existsSync(dataDir)) {
-        await mkdir(dataDir, { recursive: true });
+      // Safety check: prevent creating files in wrong directory
+      const cwd = process.cwd();
+      if (cwd.includes("MyPrivateTools") || cwd.includes("OtherBuilders")) {
+        console.error("[Config] ERROR: Running from invalid directory:", cwd);
+        if (!supabase) {
+          return false;
+        }
+        // If Supabase succeeded, we can continue
+      } else {
+        // Ensure data directory exists
+        const dataDir = path.dirname(CONFIG_PATH);
+        if (!existsSync(dataDir)) {
+          await mkdir(dataDir, { recursive: true });
+        }
+        await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
+        success = true;
       }
-      await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
-      success = true;
     } catch (fsError) {
       // Ignore FS errors if Supabase succeeded (likely Vercel environment)
       if (!supabase) {

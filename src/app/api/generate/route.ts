@@ -1,23 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
+import { spawn } from "child_process";
 import { readFile } from "fs/promises";
 import path from "path";
 import { GenerateRequest, GenerateResult, TOOL_CONFIG, PRESET_MODES, getToolPath, ThemeType, ModeType, ToolType } from "@/lib/types";
 import { logger } from "@/lib/logger";
 import { parseRankedItems, extractEstimatedCost } from "@/lib/resultParser";
-import { resolveThemeModeFromTool, validateThemeMode, getModeSettings } from "@/lib/themes";
-import { callPythonEngine } from "@/lib/pythonEngine";
+import { resolveThemeModeFromTool, validateThemeMode, getModeSettings, getMode } from "@/lib/themes";
 
-// Performance note: Generation time scales with:
-// - best_of: Each candidate = 1 LLM call (parallelized, but still takes time)
-// - reranking: 1 additional LLM call if best_of > 1
-// - date range: More dates = more semantic searches (parallelized)
-// Typical times: best_of=1 (~30s), best_of=5 (~3-5min), best_of=10 (~5-8min)
-export const maxDuration = 600; // 10 minutes for long-running generation
+// Performance note (v2 Item-Centric Architecture):
+// - itemCount: Single LLM call generates N items (no more parallel candidate calls)
+// - deduplication: Quick cosine similarity check (batch embeddings)
+// - ranking: Single LLM call to rank items
+// Typical times: itemCount=10 (~30-60s), itemCount=20 (~60-90s)
+export const maxDuration = 300; // 5 minutes (reduced from 10 - v2 is faster)
 
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateRequest = await request.json();
-    const { tool, theme, modeId, mode, days, bestOf, temperature, fromDate, toDate, dryRun } = body;
+    const { tool, theme, modeId, mode, days, itemCount, bestOf, temperature, deduplicationThreshold, fromDate, toDate, dryRun } = body;
     
     // Get abort signal from request
     const signal = request.signal;
@@ -72,6 +72,7 @@ export async function POST(request: NextRequest) {
     
     // Get mode settings from themes.json (v1)
     const modeSettings = getModeSettings(resolvedTheme, resolvedMode);
+    const themeMode = getMode(resolvedTheme, resolvedMode); // v2: For accessing defaultItemCount
     
     // Note: 90-day limit removed in v1 - Vector DB enables unlimited date ranges
     
@@ -150,38 +151,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Override with custom values if provided, or use mode defaults
-    const effectiveBestOf = bestOf ?? modeConfig?.bestOf ?? 5;
+    // v2: itemCount replaces bestOf (backward compatible - bestOf still accepted)
+    const effectiveItemCount = itemCount ?? bestOf ?? themeMode?.defaultItemCount ?? modeConfig?.itemCount ?? 10;
     const effectiveTemperature = temperature ?? modeSettings?.temperature ?? modeConfig?.temperature ?? 0.2;
+    const effectiveDeduplicationThreshold = deduplicationThreshold ?? modeSettings?.deduplicationThreshold ?? 0.85;
     
-    args.push("--best-of", effectiveBestOf.toString());
+    args.push("--item-count", effectiveItemCount.toString());
     args.push("--temperature", effectiveTemperature.toString());
+    args.push("--dedup-threshold", effectiveDeduplicationThreshold.toString());
 
     if (dryRun) {
       args.push("--dry-run");
     }
 
-    // Build request body for Python engine
-    const engineBody: any = {
-      mode: resolvedMode === "idea" ? "ideas" : resolvedMode === "insight" ? "insights" : resolvedMode,
-    };
+    // Get tool path dynamically
+    const toolPath = getToolPath(resolvedTool);
     
-    if (mode !== "custom" && modeConfig) {
-      engineBody.preset = mode;
-    } else {
-      if (fromDate && toDate) {
-        engineBody.fromDate = fromDate;
-        engineBody.toDate = toDate;
-      } else if (days) {
-        engineBody.days = days;
-      }
-    }
-    
-    engineBody.bestOf = effectiveBestOf;
-    engineBody.temperature = effectiveTemperature;
-    if (dryRun) engineBody.dryRun = true;
+    logger.log(`[Inspiration] Running: python3 ${toolConfig.script} ${args.join(" ")}`);
+    logger.log(`[Inspiration] Working directory: ${toolPath}`);
 
-    // Execute Python script via HTTP or local spawn
-    const result = await callPythonEngine("generate", engineBody, signal);
+    // Execute Python script with abort signal support
+    const result = await runPythonScript(toolPath, toolConfig.script, args, signal);
 
     // Check for script errors
     if (result.exitCode !== 0) {
@@ -259,46 +249,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If HTTP response, try to get content directly from response
+    // Parse output to find generated file
+    // Matches both daily (output/2025-12-19.judge.md) and aggregated (output/sprint_2025-12-05_to_2025-12-19.judge.md)
+    const outputFileMatch = result.stdout.match(/output\/(?:[\w]+_)?[\d-]+(?:_to_[\d-]+)?\.judge(?:-no-(?:idea|post))?\.md/);
+    const outputFile = outputFileMatch ? outputFileMatch[0] : undefined;
+
+    // Read the generated file content if available
     let content: string | undefined;
     let judgeContent: string | undefined;
-    let outputFile: string | undefined;
-    
-    if (!process.env.PYTHON_ENGINE_URL) {
-      // Local mode: parse output file from stdout and read from disk
-      const outputFileMatch = result.stdout.match(/output\/(?:[\w]+_)?[\d-]+(?:_to_[\d-]+)?\.judge(?:-no-(?:idea|post))?\.md/);
-      outputFile = outputFileMatch ? outputFileMatch[0] : undefined;
-      
-      if (outputFile) {
-        const toolPath = getToolPath(resolvedTool);
-        const fullPath = path.join(toolPath, '..', 'data', outputFile.replace('output/', ''));
+    if (outputFile) {
+      // Output files are now in data/ directory
+      const fullPath = path.join(toolPath, '..', 'data', outputFile.replace('output/', ''));
+      try {
+        content = await readFile(fullPath, "utf-8");
+        judgeContent = content; // Judge file is the main output now
+      } catch {
+        // Try legacy path for backwards compatibility
+        const legacyPath = path.join(toolPath, outputFile);
         try {
-          content = await readFile(fullPath, "utf-8");
+          content = await readFile(legacyPath, "utf-8");
           judgeContent = content;
         } catch {
-          const legacyPath = path.join(toolPath, outputFile);
-          try {
-            content = await readFile(legacyPath, "utf-8");
-            judgeContent = content;
-          } catch {
-            logger.log(`Could not read output file: ${fullPath}`);
-          }
+          logger.log(`Could not read output file: ${fullPath}`);
         }
-      }
-    } else {
-      // HTTP mode: content should be in response, try to parse from stdout (JSON)
-      try {
-        const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const httpResponse = JSON.parse(jsonMatch[0]);
-          content = httpResponse.content || httpResponse.judgeContent;
-          judgeContent = content;
-          outputFile = httpResponse.outputFile;
-        }
-      } catch {
-        // Fallback: try to extract from stdout
-        const outputFileMatch = result.stdout.match(/output\/(?:[\w]+_)?[\d-]+(?:_to_[\d-]+)?\.judge(?:-no-(?:idea|post))?\.md/);
-        outputFile = outputFileMatch ? outputFileMatch[0] : undefined;
       }
     }
 
@@ -309,7 +282,7 @@ export async function POST(request: NextRequest) {
     const items = content ? parseRankedItems(content, resolvedTool) : undefined;
     
     // Extract estimated cost
-    const estimatedCost = content ? extractEstimatedCost(content, stats.candidatesGenerated) : undefined;
+    const estimatedCost = content ? extractEstimatedCost(content, stats.candidatesGenerated ?? 1) : undefined;
 
     // Determine success: script ran successfully AND content was actually generated
     const hasContent = !!content && content.trim().length > 0;
@@ -329,9 +302,36 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     };
     
-    // If no content generated, add helpful error message
+    // If no content generated, add helpful error message with context
     if (!actuallySuccessful) {
-      response.error = "No output generated. The conversations may have been routine work without notable patterns, or the date range had no relevant activity.";
+      const conversationsCount = stats.conversationsAnalyzed ?? 0;
+      const conversationsText = conversationsCount === 0 
+        ? "No conversations were found" 
+        : `${conversationsCount} conversation${conversationsCount === 1 ? '' : 's'} were analyzed`;
+      
+      const harmonization = stats.harmonization;
+      const itemsProcessed = harmonization?.itemsProcessed ?? 0;
+      const itemsAdded = harmonization?.itemsAdded ?? 0;
+      const itemsDeduplicated = harmonization?.itemsDeduplicated ?? 0;
+      
+      if (hasContent && !hasItems) {
+        // Content exists but couldn't be parsed into items
+        response.error = `Output file was generated but contains no parseable items. ${conversationsText}. The content may not match the expected format, or the LLM may have generated empty results.`;
+      } else if (outputFile && !hasContent && itemsProcessed > 0) {
+        // Output file was generated and harmonized, but all items were deduplicated
+        if (itemsProcessed > 0 && itemsAdded === 0 && itemsDeduplicated > 0) {
+          response.error = `Items were generated but all were duplicates of existing bank items. ${conversationsText}. ${itemsProcessed} item${itemsProcessed === 1 ? '' : 's'} were processed, but ${itemsDeduplicated} were deduplicated (already in bank).`;
+        } else {
+          // Output file path found but file couldn't be read (may have been deleted during harmonization)
+          response.error = `Output file was generated but could not be read (may have been harmonized to bank). ${conversationsText}.`;
+        }
+      } else if (conversationsCount === 0) {
+        // No conversations found - user didn't use Cursor during this period
+        response.error = `No conversations found in the selected date range. This suggests you may not have used Cursor during this period, or the chat history hasn't been synced yet.`;
+      } else {
+        // No output file generated - conversations found but no items generated pre-harmonization
+        response.error = `No output generated. ${conversationsText}, but no ${resolvedTool === "ideas" ? "ideas" : "insights"} were generated. The conversations may have been routine work without notable patterns, or the date range had no relevant activity.`;
+      }
     }
 
     return NextResponse.json(response);
@@ -346,6 +346,87 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+interface ScriptResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+async function runPythonScript(
+  cwd: string,
+  script: string,
+  args: string[],
+  signal?: AbortSignal
+): Promise<ScriptResult> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("python3", [script, ...args], {
+      cwd,
+      env: {
+        ...process.env,
+        PYTHONUNBUFFERED: "1",
+      },
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let isAborted = false;
+
+    // Handle abort signal
+    if (signal) {
+      signal.addEventListener("abort", () => {
+        isAborted = true;
+        logger.log("[Inspiration] Request aborted, killing Python process...");
+        try {
+          proc.kill("SIGTERM");
+          // Force kill after 2 seconds if still running
+          setTimeout(() => {
+            if (!proc.killed) {
+              proc.kill("SIGKILL");
+            }
+          }, 2000);
+        } catch (err) {
+          logger.error("[Inspiration] Error killing process:", err);
+        }
+        resolve({
+          stdout,
+          stderr,
+          exitCode: 130, // SIGTERM exit code
+        });
+      });
+    }
+
+    proc.stdout.on("data", (data) => {
+      if (!isAborted) {
+        stdout += data.toString();
+        logger.log(`[stdout] ${data.toString().trim()}`);
+      }
+    });
+
+    proc.stderr.on("data", (data) => {
+      if (!isAborted) {
+        stderr += data.toString();
+        logger.error(`[stderr] ${data.toString().trim()}`);
+      }
+    });
+
+    proc.on("close", (code) => {
+      if (!isAborted) {
+        resolve({
+          stdout,
+          stderr,
+          exitCode: code ?? 0,
+        });
+      }
+    });
+
+    proc.on("error", (err) => {
+      if (!isAborted) {
+        reject(err);
+      }
+    });
+  });
 }
 
 function parseStats(stdout: string): GenerateResult["stats"] {

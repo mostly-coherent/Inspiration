@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "themes": [
     {
       "id": "generation",
@@ -16,6 +16,7 @@
           "settings": {
             "temperature": 0.2,
             "minSimilarity": null,
+            "deduplicationThreshold": 0.85,
             "goldenExamplesFolder": null,
             "implementedItemsFolder": null,
             "semanticSearchQueries": [
@@ -24,7 +25,7 @@
               "What prototypes could I make?"
             ]
           },
-          "defaultBestOf": 5,
+          "defaultItemCount": 10,
           "createdBy": "system",
           "createdDate": "2025-01-01"
         },
@@ -38,6 +39,7 @@
           "settings": {
             "temperature": 0.2,
             "minSimilarity": null,
+            "deduplicationThreshold": 0.85,
             "goldenExamplesFolder": null,
             "implementedItemsFolder": null,
             "semanticSearchQueries": [
@@ -46,7 +48,7 @@
               "What insights came up?"
             ]
           },
-          "defaultBestOf": 5,
+          "defaultItemCount": 10,
           "createdBy": "system",
           "createdDate": "2025-01-01"
         }
@@ -67,6 +69,7 @@
           "settings": {
             "temperature": null,
             "minSimilarity": 0.0,
+            "deduplicationThreshold": 0.80,
             "goldenExamplesFolder": null,
             "implementedItemsFolder": null,
             "semanticSearchQueries": [
@@ -75,7 +78,7 @@
               "Similar approaches and solutions"
             ]
           },
-          "defaultBestOf": 10,
+          "defaultItemCount": 5,
           "createdBy": "system",
           "createdDate": "2025-01-01"
         }
@@ -83,4 +86,3 @@
     }
   ]
 }
-

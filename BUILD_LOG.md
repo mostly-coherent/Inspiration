@@ -626,3 +626,69 @@ We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB**
 - All API routes updated: `src/app/api/generate/route.ts`, `src/app/api/seek/route.ts`, `src/app/api/sync/route.ts`
 - Build succeeds: `npm run build` completes without errors
 - Documentation: `VERCEL_DEPLOYMENT.md` created with deployment instructions
+
+---
+
+## Progress - 2025-01-04
+
+**Done:**
+- ✅ **Fixed MyPrivateTools/Inspiration Directory Issue**
+  - Problem: `MyPrivateTools/Inspiration/` directory being created repeatedly with `.next/dev` directory when Next.js runs from incorrect working directory
+  - Root Cause: Next.js uses `process.cwd()` for build artifacts; running from wrong directory creates duplicates
+  - Solution: Added safety checks in key files to prevent running from invalid directories:
+    - `src/lib/pythonEngine.ts` - Prevents Python engine from running if `process.cwd()` includes `MyPrivateTools` or `OtherBuilders`
+    - `src/app/api/modes/route.ts` - Prevents theme file creation in wrong directory
+    - `src/app/api/config/route.ts` - Prevents config file creation in wrong directory
+  - Prevention: Always run `npm run dev` from the Inspiration project root directory
+
+**Evidence:**
+- Files modified: `pythonEngine.ts`, `modes/route.ts`, `config/route.ts`
+- If issue recurs: `rm -rf "MyPrivateTools/Inspiration"` and verify running commands from correct directory
+
+<!-- Merged from MYPRIVATETOOLS_FIX.md on 2026-01-01 -->
+
+---
+
+## Progress - 2026-01-01
+
+**Done:**
+- ✅ **v2 Item-Centric Architecture Implementation**
+  - Unified "Candidate" to "Item" terminology across codebase
+  - Replaced `bestOf` with `itemCount` parameter
+  - Refactored generate.py: generate N items directly (not sets)
+  - Added deduplication BEFORE returning to user (not just at bank harmonization)
+  - Added individual item ranking (not set-based)
+  - Added `deduplicationThreshold` to themes.json mode settings
+  - Wired deduplicationThreshold from themes.json to items_bank.py
+  - Added deduplicationThreshold slider to Mode Settings UI (0.5-0.99)
+  - Updated frontend: replaced bestOf slider with itemCount slider
+  - Updated FLOW_ANALYSIS.md with v2 architecture details
+  - Updated E2E tests (12 tests passing)
+  - Updated PIVOTS.md with architectural decisions
+
+**Evidence:**
+- Files modified: generate.py, themes.json, types.ts, generate/route.ts, page.tsx, AdvancedSettings.tsx, ExpectedOutput.tsx, ModeCard.tsx, ModeSettingsEditor.tsx, e2e/inspiration.spec.ts, FLOW_ANALYSIS.md, PIVOTS.md
+- E2E tests: 12/12 passing
+
+---
+
+## Progress - 2026-01-01 (Documentation Cleanup)
+
+**Done:**
+- ✅ **Documentation Consolidation (Cleanup-folder.md)**
+  - Merged BRAIN_REFRESH_FIXES.md → PIVOTS.md (decisions with dates)
+  - Merged COMPRESSION_VS_TRUNCATION.md → PIVOTS.md (architectural decision)
+  - Merged REFRESH_BRAIN_OPTIMIZATIONS.md → PIVOTS.md (optimization decisions)
+  - Merged MYPRIVATETOOLS_FIX.md → BUILD_LOG.md (bug fix with date)
+  - Merged FLOW_ANALYSIS.md → ARCHITECTURE.md (system flow details)
+  - Deleted 12 non-canonical files (7 already merged in CLAUDE.md, 5 newly merged)
+  - Result: Only 6 canonical .md files remain in project root
+
+**Files Deleted:**
+- Already merged in CLAUDE.md: CREATE_RPC_FUNCTION.md, HOW_REFRESH_BRAIN_WORKS.md, MISSING_MESSAGES_EXPLANATION.md, MONITOR_SYNC_PROGRESS.md, SUPABASE_SETUP_INSTRUCTIONS.md, TROUBLESHOOT_RPC_FUNCTION.md, UNKNOWN_WORKSPACE_CONFIRMATION.md
+- Newly merged: BRAIN_REFRESH_FIXES.md, COMPRESSION_VS_TRUNCATION.md, REFRESH_BRAIN_OPTIMIZATIONS.md, MYPRIVATETOOLS_FIX.md, FLOW_ANALYSIS.md
+
+**Evidence:**
+- PIVOTS.md updated with 3 merged decision entries
+- BUILD_LOG.md updated with 2 merged progress entries
+- ARCHITECTURE.md updated with flow analysis content

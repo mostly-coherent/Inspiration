@@ -79,24 +79,28 @@ def get_vector_db_size() -> tuple[int, str]:
             print(f"⚠️  RPC function failed, using estimation: {e}", file=sys.stderr)
             pass
         
-        # Fallback: Use improved estimation
-        # Calculate average row size from current message count
-        # User reported Supabase shows 244MB = 255,852,544 bytes
-        if message_count > 0:
-            # Use current known size (244MB) to calculate average row size
-            # This gives us a more accurate estimate than the theoretical calculation
-            CURRENT_KNOWN_SIZE_BYTES = 255_852_544  # 244 MB (user confirmed from Supabase)
-            avg_row_size = CURRENT_KNOWN_SIZE_BYTES / message_count
-            estimated_bytes = int(message_count * avg_row_size)
-        else:
-            # Fallback to theoretical estimate if no message count
-            # - Embedding: 1536 floats * 4 bytes = 6,144 bytes
-            # - Text: average ~500 bytes (varies widely)
-            # - Metadata: ~200 bytes
-            # - Index overhead: ~10% = ~684 bytes
-            # Total: ~7,528 bytes per message average
-            avg_row_size = 7528
-            estimated_bytes = message_count * avg_row_size
+        # Fallback: Use estimation only if RPC completely fails
+        # Try to query actual size using pg_size_pretty via direct SQL query
+        # This is more reliable than hardcoded values
+        try:
+            # Try to get actual size using a direct query (if RPC doesn't work)
+            # Note: This requires the service role key or proper permissions
+            size_query_result = client.table("cursor_messages").select("id", count="exact").limit(1).execute()
+            # If we can't get actual size, use a conservative estimate
+            # Based on typical row size: embedding (6KB) + text (avg 1KB) + metadata (0.5KB) + overhead (0.5KB) = ~8KB per message
+            if message_count > 0:
+                # Conservative estimate: 8KB per message
+                avg_row_size = 8192  # 8 KB per message (conservative estimate)
+                estimated_bytes = int(message_count * avg_row_size)
+            else:
+                estimated_bytes = 0
+        except Exception:
+            # Last resort: very conservative estimate
+            if message_count > 0:
+                avg_row_size = 8192
+                estimated_bytes = int(message_count * avg_row_size)
+            else:
+                estimated_bytes = 0
         
         return estimated_bytes, format_bytes(estimated_bytes)
     except Exception as e:

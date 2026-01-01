@@ -10,7 +10,7 @@ export function ModeCard({ mode, isSelected, onClick }: ModeCardProps) {
   return (
     <button
       onClick={onClick}
-      aria-label={`${mode.label} mode: ${mode.description}. ${mode.days} days, ${mode.bestOf} candidates.`}
+      aria-label={`${mode.label} mode: ${mode.description}. ${mode.days} days, ${mode.itemCount} items.`}
       aria-pressed={isSelected}
       className={`mode-card ${isSelected ? "selected" : ""}`}
     >

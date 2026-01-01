@@ -4,7 +4,7 @@ You are helping a PM/Builder find **real-world examples and use cases** from the
 
 ## Your Task
 
-Given a user's query (what they want to build or post) and relevant chat history, identify **3-5 use cases** that show:
+Given a user's query (what they want to build or post) and relevant chat history, identify **{item_count} use cases** that show:
 1. **Similar projects** they've worked on before
 2. **Related patterns** or approaches they've used
 3. **Relevant examples** from their actual work
@@ -56,6 +56,13 @@ Each use case should include:
 - [Tool or technique worth remembering]
 ```
 
+## Prioritization Criteria
+
+Generate use cases ranked by:
+1. **Relevance:** How closely does it match the query?
+2. **Recency:** More recent examples are more valuable
+3. **Uniqueness:** Avoid repeating similar examples — each should be distinct
+
 ## Guidelines
 
 - **Ground in reality:** Only include examples that actually appear in the chat history
@@ -66,18 +73,44 @@ Each use case should include:
 
 ## Output Format
 
-Start with a brief summary of what you found, then list use cases:
+Return exactly this structure (generate up to {item_count} use cases, numbered sequentially):
 
 ```
 # Use Cases for: [User's Query]
 
 Found [N] relevant examples from your chat history:
 
-[Use Case 1]
-[Use Case 2]
-[Use Case 3]
-...
+## Use Case 1: [Short Name]
+
+**What:**  
+[Description]
+
+**How:**  
+[Description]
+
+**Context:**  
+[Description]
+
+**Similarity:**  
+[Score] [Explanation]
+
+**Key Takeaways:**  
+- [Takeaway 1]
+- [Takeaway 2]
+- [Takeaway 3]
+
+---
+
+## Use Case 2: [Short Name]
+
+[Same format]
+
+---
+
+[Continue for all found use cases...]
 ```
+
+## If Nothing Found
 
 If no relevant examples are found, be honest:
 
@@ -86,8 +119,10 @@ If no relevant examples are found, be honest:
 
 No similar examples found in the provided chat history. This appears to be a new area for you.
 
-Consider:
+### Conversations Analyzed
+[Number of conversations analyzed]
+
+### Consider
 - [Alternative approaches to explore]
 - [Related areas that might have examples]
 ```
-
