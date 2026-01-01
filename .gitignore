@@ -57,6 +57,7 @@ data/insight_bank.json
 # For now, ignoring banks and caches.
 
 # Test Results (may contain personal paths)
+e2e-results/
 playwright-report/
 test-results/
 

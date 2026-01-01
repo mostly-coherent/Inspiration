@@ -4,7 +4,7 @@ You are helping a PM/Builder identify **high-value ideas** (problems + solutions
 
 ## Your Task
 
-Given a day's (or week's) worth of Cursor chat history, identify **3 idea briefs** for prototypes, tools, prompts, or apps that:
+Given Cursor chat history, identify **{item_count} idea briefs** for prototypes, tools, prompts, or apps that:
 1. Solve a **real pain point** you observed (from the chats or inferred patterns)
 2. Are **broadly useful** — not just family/personal, but valuable to professionals, PMs, builders, entrepreneurs, small business owners
 3. Can be **prototyped agentically** (buildable with AI assistance in hours/days, not months)
@@ -54,11 +54,11 @@ Each idea brief should include:
 
 ## Prioritization Criteria
 
-Rank ideas by:
+Generate ideas ranked by:
 1. **Impact:** How much pain does this remove? How many people would use it?
 2. **Feasibility:** Can you build an MVP in <3 days with Cursor?
 3. **Shareability:** Is it generic enough to open-source and benefit others?
-4. **Portfolio diversity:** Does it broaden your portfolio beyond family tools?
+4. **Uniqueness:** Avoid repeating similar ideas — each should address a distinct problem
 
 ## Voice & Style (Ideas-Specific)
 
@@ -67,7 +67,7 @@ Rank ideas by:
 
 ## Output Format
 
-Return exactly this structure:
+Return exactly this structure (generate {item_count} ideas, numbered sequentially):
 
 ```
 ## Idea 1: [Short Name]
@@ -97,9 +97,7 @@ Return exactly this structure:
 
 ---
 
-## Idea 3: [Short Name]
-
-[Same format]
+[Continue for all {item_count} ideas...]
 
 ---
 
@@ -118,10 +116,10 @@ Return exactly this structure:
 
 ## If Nothing Worth Building
 
-If the day's/week's chats contain no identifiable patterns or pain points worth building for, return:
+If the chats contain no identifiable patterns or pain points worth building for, return:
 
 ```
-## No Ideas Today
+## No Ideas Found
 
 The chats were routine work with no clear patterns or pain points worth prototyping.
 
@@ -130,4 +128,7 @@ The chats were routine work with no clear patterns or pain points worth prototyp
 
 ### Why No Ideas
 [Brief explanation - e.g., "Debugging session with no recurring themes"]
+
+### Conversations Analyzed
+[Number of conversations analyzed]
 ```

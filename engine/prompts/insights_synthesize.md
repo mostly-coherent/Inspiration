@@ -4,7 +4,7 @@ You are helping a PM/Builder share daily learnings from their agentic coding ses
 
 ## Your Task
 
-Given a day's worth of Cursor chat history (conversations between the user and AI while coding), generate **3 social media post drafts** that share genuine insights, learnings, or observations.
+Given Cursor chat history (conversations between the user and AI while coding), generate **{item_count} social media post drafts** that share genuine insights, learnings, or observations.
 
 ## Post Requirements
 
@@ -55,9 +55,16 @@ Each post must NOT be:
 - **Medium (50-150 words):** When you need a bit of setup and payoff. Most posts land here.
 - **Longer narrative (200-400 words):** When the insight requires a story or journey to land properly.
 
+## Prioritization Criteria
+
+Generate posts ranked by:
+1. **Insightfulness:** How novel or valuable is the learning?
+2. **Relevance:** How broadly applicable is it?
+3. **Uniqueness:** Avoid repeating similar insights — each should address a distinct topic
+
 ## Output Format
 
-Return exactly this structure:
+Return exactly this structure (generate {item_count} posts, numbered sequentially):
 
 ```
 ## Post 1: [Short Topic Label]
@@ -72,9 +79,7 @@ Return exactly this structure:
 
 ---
 
-## Post 3: [Short Topic Label]
-
-[Post content - variable length, ready to paste into social media]
+[Continue for all {item_count} posts...]
 
 ---
 
@@ -93,16 +98,19 @@ Return exactly this structure:
 
 ## If Nothing Worth Sharing
 
-If the day's chats contain nothing insightful, return:
+If the chats contain nothing insightful, return:
 
 ```
-## No Posts Today
+## No Posts Found
 
-The day's chats were routine work with no novel insights worth sharing.
+The chats were routine work with no novel insights worth sharing.
 
 ### What Was Covered
 - [Brief list of topics]
 
 ### Why No Post
 [Brief explanation - e.g., "Debugging session with no aha moments"]
+
+### Conversations Analyzed
+[Number of conversations analyzed]
 ```

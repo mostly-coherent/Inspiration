@@ -2,7 +2,7 @@
 -- Run this in Supabase SQL Editor to enable fast vector search
 
 CREATE OR REPLACE FUNCTION search_cursor_messages(
-    query_embedding vector(1536),
+    query_embedding extensions.vector(1536),
     match_threshold float DEFAULT 0.0,
     match_count int DEFAULT 10,
     start_ts bigint DEFAULT NULL,
@@ -20,6 +20,8 @@ RETURNS TABLE (
     similarity float
 )
 LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
 AS $$
 BEGIN
     RETURN QUERY

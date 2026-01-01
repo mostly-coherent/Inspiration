@@ -7,7 +7,8 @@ export interface ModeConfig {
   label: string;
   description: string;
   days: number;
-  bestOf: number;
+  itemCount: number; // v2: Number of items to generate (replaces bestOf)
+  bestOf?: number; // Deprecated: kept for backward compatibility
   temperature: number;
   icon: string;
 }
@@ -21,8 +22,10 @@ export interface GenerateRequest {
   modeId?: ModeType; // User-defined mode ID (e.g., "idea", "insight", "use_case")
   // Custom overrides
   days?: number;
-  bestOf?: number;
+  itemCount?: number; // v2: Number of items to generate
+  bestOf?: number; // Deprecated: use itemCount instead
   temperature?: number;
+  deduplicationThreshold?: number; // v2: Similarity threshold for deduplication (0.0-1.0)
   fromDate?: string;
   toDate?: string;
   dryRun?: boolean;
@@ -45,13 +48,16 @@ export interface GenerateResult {
   outputFile?: string; // Deprecated - kept for backward compatibility
   content?: string;
   judgeContent?: string;
-  items?: RankedItem[]; // v1: Ranked items (best first)
+  items?: RankedItem[]; // v2: Ranked items (best first)
   estimatedCost?: number; // Estimated LLM cost
   stats: {
     daysProcessed: number;
     daysWithActivity: number;
     daysWithOutput: number;
-    candidatesGenerated: number;
+    candidatesGenerated?: number; // Deprecated: v1 candidate-based
+    itemsGenerated?: number; // v2: Items generated before dedup
+    itemsAfterDedup?: number; // v2: Items after deduplication
+    itemsReturned?: number; // v2: Final items returned
     conversationsAnalyzed?: number;
     harmonization?: {
       itemsProcessed: number;
@@ -79,7 +85,7 @@ export const PRESET_MODES: ModeConfig[] = [
     label: "Today",
     description: "Today's activity",
     days: 1,
-    bestOf: 3,
+    itemCount: 5,
     temperature: 0.3,
     icon: "⚡",
   },
@@ -88,7 +94,7 @@ export const PRESET_MODES: ModeConfig[] = [
     label: "Last 14 days",
     description: "2-week patterns",
     days: 14,
-    bestOf: 5,
+    itemCount: 10,
     temperature: 0.4,
     icon: "🏃",
   },
@@ -97,7 +103,7 @@ export const PRESET_MODES: ModeConfig[] = [
     label: "Last 30 days",
     description: "Monthly patterns",
     days: 30,
-    bestOf: 10,
+    itemCount: 15,
     temperature: 0.5,
     icon: "📅",
   },
@@ -106,7 +112,7 @@ export const PRESET_MODES: ModeConfig[] = [
     label: "Last 90 days",
     description: "Full history",
     days: 90,
-    bestOf: 15,
+    itemCount: 20,
     temperature: 0.5,
     icon: "🎯",
   },
@@ -249,6 +255,7 @@ export interface ItemsBankStats {
 export interface ModeSettings {
   temperature: number | null;
   minSimilarity: number | null;
+  deduplicationThreshold: number | null; // v2: Similarity threshold for item deduplication (0.0-1.0)
   goldenExamplesFolder: string | null;
   implementedItemsFolder: string | null;
   semanticSearchQueries: string[] | null; // Semantic search queries for finding relevant conversations
@@ -262,7 +269,8 @@ export interface Mode {
   color: string;
   promptTemplate: string | null;
   settings: ModeSettings;
-  defaultBestOf: number;
+  defaultItemCount: number; // v2: Default number of items to generate
+  defaultBestOf?: number; // Deprecated: kept for backward compatibility
   createdBy: "system" | "user";
   createdDate: string;
 }

@@ -230,7 +230,447 @@ def get_author_context() -> tuple[str, str]:
 
 
 # =============================================================================
-# Content Generation
+# Content Generation (v2 - Item-Centric Architecture)
+# =============================================================================
+
+def generate_items(
+    conversations_text: str,
+    mode: Literal["insights", "ideas", "use_case"],
+    *,
+    llm: LLMProvider,
+    item_count: int = 10,
+    temperature: float = DEFAULT_TEMPERATURE,
+    deduplicate: bool = True,
+    deduplication_threshold: float = 0.85,
+    rank: bool = True,
+) -> tuple[list[dict], dict]:
+    """
+    Generate items (ideas, insights, or use cases) from conversation text.
+    
+    v2 Item-Centric Architecture:
+    - Generates item_count items in a SINGLE LLM call
+    - Deduplicates among generated items (before returning)
+    - Ranks individual items (not sets)
+    - Returns structured items ready for bank harmonization
+    
+    Args:
+        conversations_text: Formatted conversation history
+        mode: Generation mode ("insights", "ideas", or "use_case")
+        llm: LLM provider instance
+        item_count: Number of items to generate (default: 10)
+        temperature: Sampling temperature (higher = more creative)
+        deduplicate: Whether to deduplicate generated items
+        deduplication_threshold: Similarity threshold for deduplication (0.0-1.0)
+        rank: Whether to rank items by quality
+    
+    Returns:
+        Tuple of (items_list, stats_dict)
+        where items_list is [{"id": "Item 1", "title": "...", "content": {...}, "score": 18}, ...]
+        and stats_dict contains generation metadata
+    """
+    from common.semantic_search import get_embedding, cosine_similarity, batch_get_embeddings
+    
+    # Overshoot by 50% to account for deduplication
+    overshoot_count = int(item_count * 1.5) if deduplicate else item_count
+    
+    # Load and prepare prompt with item_count
+    base_prompt = load_synthesize_prompt(mode)
+    system_prompt = base_prompt.replace("{item_count}", str(overshoot_count))
+    
+    # Add mode-specific enhancements (only for insights)
+    if mode == "insights":
+        author_name, author_context = get_author_context()
+        if author_name or author_context:
+            context_section = "\n\n## Author Context\n\n"
+            if author_name:
+                context_section += f"**Author:** {author_name}\n"
+            if author_context:
+                context_section += f"**About:** {author_context}\n"
+            system_prompt += context_section
+        
+        voice_guide = load_voice_guide()
+        if voice_guide:
+            system_prompt += f"\n\n## Voice & Style Guide\n\n{voice_guide}"
+        
+        golden = load_golden_posts()
+        if golden:
+            system_prompt += f"\n\n## Reference Posts (Study Voice & Style)\n\nThese are actual posts from the author. Study the voice, depth, introspection, and value-add patterns:\n\n{golden}"
+    
+    user_content = f"Here are the Cursor chat conversations:\n\n{conversations_text}"
+    
+    # Calculate max tokens based on item count (more items = more tokens needed)
+    # Rough estimate: ~300 tokens per item
+    max_tokens = min(4000, 500 + overshoot_count * 300)
+    
+    print(f"🧠 Generating {overshoot_count} {mode} items (temp={temperature})...", file=sys.stderr)
+    
+    # Single LLM call to generate all items
+    try:
+        raw_output = llm.generate(
+            user_content,
+            system_prompt=system_prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        raise RuntimeError(
+            f"Failed to generate items: {e}\n\n"
+            f"Traceback:\n{error_details}\n\n"
+            "Common causes:\n"
+            "  - Rate limits (prompt too large)\n"
+            "  - API key issues\n"
+            "  - Network issues\n"
+            "Try reducing the date range or item count."
+        ) from e
+    
+    # Parse items from raw output
+    items = _parse_items_from_output(raw_output, mode)
+    
+    if not items:
+        return [], {
+            "raw_output": raw_output,
+            "items_generated": 0,
+            "items_after_dedup": 0,
+            "items_returned": 0,
+        }
+    
+    print(f"✅ Parsed {len(items)} items from LLM output", file=sys.stderr)
+    
+    # Generate embeddings for deduplication/ranking (batch call - much faster)
+    if deduplicate or rank:
+        texts = [_item_to_text_for_embedding(item, mode) for item in items]
+        embeddings = batch_get_embeddings(texts)
+        for i, item in enumerate(items):
+            item["_embedding"] = embeddings[i]
+    
+    items_before_dedup = len(items)
+    
+    # Deduplicate among generated items
+    if deduplicate and len(items) > 1:
+        items = _deduplicate_items(items, threshold=deduplication_threshold)
+        print(f"🔍 Deduplicated: {items_before_dedup} → {len(items)} items (threshold={deduplication_threshold})", file=sys.stderr)
+    
+    # Rank items
+    if rank and len(items) > 1:
+        items = _rank_items(items, mode, llm)
+        print(f"⚖️  Ranked {len(items)} items by quality", file=sys.stderr)
+    
+    # Return top item_count items
+    final_items = items[:item_count]
+    
+    # Clean up internal fields before returning
+    for item in final_items:
+        item.pop("_embedding", None)
+    
+    stats = {
+        "raw_output": raw_output,
+        "items_generated": items_before_dedup,
+        "items_after_dedup": len(items),
+        "items_returned": len(final_items),
+    }
+    
+    print(f"📦 Returning {len(final_items)} items", file=sys.stderr)
+    
+    return final_items, stats
+
+
+def _item_to_text_for_embedding(item: dict, mode: str) -> str:
+    """Convert item to text for embedding generation."""
+    parts = []
+    
+    if mode == "ideas":
+        parts.append(item.get("title", ""))
+        parts.append(item.get("problem", ""))
+        parts.append(item.get("solution", ""))
+    elif mode == "insights":
+        parts.append(item.get("title", ""))
+        parts.append(item.get("content", "")[:500])  # First 500 chars
+    elif mode == "use_case":
+        parts.append(item.get("title", ""))
+        parts.append(item.get("what", ""))
+        parts.append(item.get("how", ""))
+    
+    return " ".join(p for p in parts if p)
+
+
+def _parse_items_from_output(raw_output: str, mode: str) -> list[dict]:
+    """Parse individual items from LLM output."""
+    items = []
+    
+    if not raw_output or not raw_output.strip():
+        return items
+    
+    # Clean markdown code fences
+    content = raw_output.strip()
+    if content.startswith("```"):
+        lines = content.split("\n")
+        if lines[0].strip() in ["```", "```markdown", "```md"]:
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        content = "\n".join(lines)
+    
+    if mode == "ideas":
+        # Pattern: ## Idea N: Title
+        pattern = r'^## Idea \d+:\s*(.+?)(?=^## Idea \d+:|\Z|^## Source|^## Skipped|^## No Ideas)'
+        for i, match in enumerate(re.finditer(pattern, content, re.MULTILINE | re.DOTALL)):
+            full_match = match.group(0)
+            title_line = match.group(1).strip().split('\n')[0]
+            
+            item = {
+                "id": f"Item {i+1}",
+                "title": title_line,
+            }
+            
+            # Extract fields
+            field_patterns = {
+                "problem": r'\*\*Problem:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                "solution": r'\*\*Solution:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                "why_it_matters": r'\*\*Why It Matters:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                "build_complexity": r'\*\*Build Complexity:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                "audience": r'\*\*Audience:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+            }
+            
+            for key, field_pattern in field_patterns.items():
+                field_match = re.search(field_pattern, full_match, re.DOTALL | re.IGNORECASE)
+                if field_match:
+                    item[key] = field_match.group(1).strip()
+            
+            if item.get("title"):
+                items.append(item)
+    
+    elif mode == "insights":
+        # Pattern: ## Post N: Title
+        pattern = r'^## Post \d+:\s*(.+?)(?=^## Post \d+:|\Z|^## Source|^## Skipped|^## No Posts)'
+        for i, match in enumerate(re.finditer(pattern, content, re.MULTILINE | re.DOTALL)):
+            full_match = match.group(0)
+            title_line = match.group(1).strip().split('\n')[0]
+            
+            # Extract post content (everything after title line)
+            lines = full_match.split('\n')
+            content_lines = []
+            for line in lines[1:]:  # Skip title line
+                if line.startswith('---'):
+                    break
+                content_lines.append(line)
+            post_content = '\n'.join(content_lines).strip()
+            
+            item = {
+                "id": f"Item {i+1}",
+                "title": title_line,
+                "content": post_content,
+            }
+            
+            if item.get("title"):
+                items.append(item)
+    
+    elif mode == "use_case":
+        # Pattern: ## Use Case N: Title
+        pattern = r'^## Use Case \d+:\s*(.+?)(?=^## Use Case \d+:|\Z|^## Consider|^# Use Cases)'
+        for i, match in enumerate(re.finditer(pattern, content, re.MULTILINE | re.DOTALL)):
+            full_match = match.group(0)
+            title_line = match.group(1).strip().split('\n')[0]
+            
+            item = {
+                "id": f"Item {i+1}",
+                "title": title_line,
+            }
+            
+            # Extract fields
+            field_patterns = {
+                "what": r'\*\*What:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                "how": r'\*\*How:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                "context": r'\*\*Context:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                "similarity": r'\*\*Similarity:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+            }
+            
+            for key, field_pattern in field_patterns.items():
+                field_match = re.search(field_pattern, full_match, re.DOTALL | re.IGNORECASE)
+                if field_match:
+                    item[key] = field_match.group(1).strip()
+            
+            if item.get("title"):
+                items.append(item)
+    
+    return items
+
+
+def _deduplicate_items(items: list[dict], threshold: float = 0.85) -> list[dict]:
+    """Deduplicate items by cosine similarity of embeddings."""
+    from common.semantic_search import cosine_similarity
+    
+    if len(items) <= 1:
+        return items
+    
+    unique_items = []
+    
+    for item in items:
+        is_duplicate = False
+        item_embedding = item.get("_embedding", [])
+        
+        if not item_embedding:
+            unique_items.append(item)
+            continue
+        
+        for existing in unique_items:
+            existing_embedding = existing.get("_embedding", [])
+            if not existing_embedding:
+                continue
+            
+            similarity = cosine_similarity(item_embedding, existing_embedding)
+            if similarity >= threshold:
+                # Found duplicate - keep the one with more content
+                is_duplicate = True
+                # Optionally: merge or update the existing item
+                break
+        
+        if not is_duplicate:
+            unique_items.append(item)
+    
+    return unique_items
+
+
+def _rank_items(items: list[dict], mode: str, llm: LLMProvider) -> list[dict]:
+    """Rank items by quality using LLM judge."""
+    if len(items) <= 1:
+        return items
+    
+    # Load ranking prompt
+    ranker_prompt_path = PROMPTS_DIR / "item_ranker.md"
+    if ranker_prompt_path.exists():
+        ranker_prompt = ranker_prompt_path.read_text()
+    else:
+        ranker_prompt = "Rank these items by quality. Return JSON with 'rankings' array sorted best to worst."
+    
+    # Prepare items for ranking (truncate for efficiency)
+    MAX_ITEM_CHARS = 500
+    items_text = []
+    for item in items:
+        item_summary = f"**{item['id']}: {item.get('title', 'Untitled')}**\n"
+        if mode == "ideas":
+            item_summary += f"Problem: {item.get('problem', '')[:200]}\n"
+            item_summary += f"Solution: {item.get('solution', '')[:200]}\n"
+        elif mode == "insights":
+            item_summary += f"Content: {item.get('content', '')[:300]}\n"
+        elif mode == "use_case":
+            item_summary += f"What: {item.get('what', '')[:200]}\n"
+            item_summary += f"How: {item.get('how', '')[:200]}\n"
+        
+        items_text.append(item_summary[:MAX_ITEM_CHARS])
+    
+    user_content = f"Rank these {len(items)} items:\n\n" + "\n---\n".join(items_text)
+    
+    # Use cheaper judge model
+    judge_llm = llm.get_judge_llm()
+    if judge_llm != llm:
+        print(f"💰 Using {judge_llm.provider}/{judge_llm.model} for ranking", file=sys.stderr)
+    
+    try:
+        response = judge_llm.generate(
+            user_content,
+            system_prompt=ranker_prompt,
+            max_tokens=500,
+            temperature=0.0,
+        )
+        
+        # Parse ranking response
+        rankings = _safe_parse_judge_json(response)
+        
+        if rankings and "rankings" in rankings:
+            # Create ID to score mapping
+            id_to_score = {}
+            for rank_info in rankings["rankings"]:
+                item_id = rank_info.get("id", "")
+                score = rank_info.get("total", 0)
+                id_to_score[item_id] = score
+            
+            # Sort items by score (highest first)
+            items.sort(key=lambda x: id_to_score.get(x["id"], 0), reverse=True)
+            
+            # Add scores to items
+            for item in items:
+                item["_score"] = id_to_score.get(item["id"], 0)
+        
+    except Exception as e:
+        print(f"⚠️  Ranking failed, returning items in original order: {e}", file=sys.stderr)
+    
+    return items
+
+
+def items_to_markdown(items: list[dict], mode: str) -> str:
+    """Convert structured items to markdown output."""
+    if not items:
+        if mode == "ideas":
+            return "## No Ideas Found\n\nNo ideas could be generated from the conversations."
+        elif mode == "insights":
+            return "## No Posts Found\n\nNo insights could be generated from the conversations."
+        else:
+            return "## No Use Cases Found\n\nNo use cases could be found from the conversations."
+    
+    lines = []
+    
+    for i, item in enumerate(items, 1):
+        if mode == "ideas":
+            lines.append(f"## Idea {i}: {item.get('title', 'Untitled')}")
+            lines.append("")
+            if item.get("problem"):
+                lines.append(f"**Problem:**  ")
+                lines.append(item["problem"])
+                lines.append("")
+            if item.get("solution"):
+                lines.append(f"**Solution:**  ")
+                lines.append(item["solution"])
+                lines.append("")
+            if item.get("why_it_matters"):
+                lines.append(f"**Why It Matters:**  ")
+                lines.append(item["why_it_matters"])
+                lines.append("")
+            if item.get("build_complexity"):
+                lines.append(f"**Build Complexity:** {item['build_complexity']}")
+            if item.get("audience"):
+                lines.append(f"**Audience:** {item['audience']}")
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+        
+        elif mode == "insights":
+            lines.append(f"## Post {i}: {item.get('title', 'Untitled')}")
+            lines.append("")
+            if item.get("content"):
+                lines.append(item["content"])
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+        
+        elif mode == "use_case":
+            lines.append(f"## Use Case {i}: {item.get('title', 'Untitled')}")
+            lines.append("")
+            if item.get("what"):
+                lines.append(f"**What:**  ")
+                lines.append(item["what"])
+                lines.append("")
+            if item.get("how"):
+                lines.append(f"**How:**  ")
+                lines.append(item["how"])
+                lines.append("")
+            if item.get("context"):
+                lines.append(f"**Context:**  ")
+                lines.append(item["context"])
+                lines.append("")
+            if item.get("similarity"):
+                lines.append(f"**Similarity:**  ")
+                lines.append(item["similarity"])
+                lines.append("")
+            lines.append("---")
+            lines.append("")
+    
+    return "\n".join(lines)
+
+
+# =============================================================================
+# Content Generation (v1 - Legacy Candidate-Based - DEPRECATED)
 # =============================================================================
 
 def generate_content(
@@ -634,7 +1074,9 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
     print(f"\n📦 Harmonizing {total_files} output file(s) into {config['aggregated_title']} Bank...")
     
     processed = 0
-    items_added_count = 0
+    total_items_processed = 0
+    total_items_added = 0
+    total_items_updated = 0
     
     for i in range(0, total_files, batch_size):
         batch = output_files[i:i + batch_size]
@@ -661,6 +1103,13 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
             # Use v1 ItemsBank system
             bank = ItemsBank()
             
+            # Get existing item IDs before processing (to detect new vs updated)
+            existing_ids_before = {item["id"] for item in bank._bank["items"]}
+            
+            batch_items_processed = 0
+            batch_items_added = 0
+            batch_items_updated = 0
+            
             for item in items:
                 # Convert item format to ItemsBank format
                 content_dict = {}
@@ -679,15 +1128,33 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
                         "context": item.get("context", ""),
                     }
                 
-                bank.add_item(
+                # Track if item was new or updated
+                returned_id = bank.add_item(
                     mode=mode_id,
                     theme=theme_id,
                     content=content_dict,
                 )
-                items_added_count += 1
+                
+                batch_items_processed += 1
+                total_items_processed += 1
+                
+                # If returned_id was already in bank before, it was an update; otherwise new
+                if returned_id in existing_ids_before:
+                    batch_items_updated += 1
+                    total_items_updated += 1
+                else:
+                    batch_items_added += 1
+                    total_items_added += 1
+                    existing_ids_before.add(returned_id)  # Track for next iteration
             
             bank.save()
-            print(f"📊 Added {len(items)} item(s) to unified Items Bank")
+            
+            # Print harmonization stats in format parseable by API route
+            print(f"📊 Harmonization Stats: {batch_items_processed} processed, {batch_items_added} added, {batch_items_updated} updated, {batch_items_updated} deduplicated")
+            if batch_items_added > 0:
+                print(f"   ✅ Added {batch_items_added} new item(s) to unified Items Bank")
+            if batch_items_updated > 0:
+                print(f"   🔄 Updated {batch_items_updated} existing item(s) (duplicates)")
         
         for f in batch:
             f.unlink()
@@ -697,7 +1164,7 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
     # OPTIMIZATION: Generate categories asynchronously (non-blocking)
     # Category generation takes 15-30 seconds but doesn't need to block the response
     # User gets results immediately; categories update in background
-    if items_added_count > 0:
+    if total_items_added > 0:
         print(f"\n📂 Generating categories for {mode_id} mode (non-blocking)...", file=sys.stderr)
         try:
             import threading
@@ -828,26 +1295,27 @@ def _parse_output(content: str, mode: Literal["insights", "ideas"]) -> list[dict
                 candidate_id = match.group(1)
                 candidate_text = match.group(2).strip()
                 
-                # Parse candidate text for ideas
-                for idea_match in re.finditer(idea_pattern, candidate_text, re.MULTILINE | re.DOTALL):
-                    item = {}
-                    item["title"] = idea_match.group(1).strip().split('\n')[0]
-                    item["candidate_id"] = candidate_id
-                    
-                    idea_content = idea_match.group(0)
-                    patterns = {
-                        "problem": r'\*\*Problem:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                        "solution": r'\*\*Solution:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                        "context": r'\*\*Why It Matters:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                    }
-                    
-                    for key, pattern in patterns.items():
-                        pattern_match = re.search(pattern, idea_content, re.DOTALL | re.IGNORECASE)
-                        if pattern_match:
-                            item[key] = pattern_match.group(1).strip()
-                    
-                    if item.get("title"):
-                        items.append(item)
+                # Parse candidate text for ideas (try each pattern)
+                for idea_pattern in idea_patterns:
+                    for idea_match in re.finditer(idea_pattern, candidate_text, re.MULTILINE | re.DOTALL):
+                        item = {}
+                        item["title"] = idea_match.group(1).strip().split('\n')[0]
+                        item["candidate_id"] = candidate_id
+                        
+                        idea_content = idea_match.group(0)
+                        patterns = {
+                            "problem": r'\*\*Problem:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                            "solution": r'\*\*Solution:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                            "context": r'\*\*Why It Matters:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                        }
+                        
+                        for key, pattern in patterns.items():
+                            pattern_match = re.search(pattern, idea_content, re.DOTALL | re.IGNORECASE)
+                            if pattern_match:
+                                item[key] = pattern_match.group(1).strip()
+                        
+                        if item.get("title"):
+                            items.append(item)
     
     return items
 
@@ -1062,8 +1530,10 @@ def process_single_date(
     dry_run: bool = False,
     verbose: bool = False,
     temperature: float = DEFAULT_TEMPERATURE,
-    best_of: int = 1,
-    rerank: bool = True,
+    item_count: int = 10,
+    dedup_threshold: float = 0.85,
+    best_of: int = 1,  # Deprecated
+    rerank: bool = True,  # Deprecated
 ) -> dict:
     """Process a single date and return results."""
     # Use semantic search to find relevant conversations
@@ -1134,23 +1604,31 @@ def process_single_date(
     if dry_run:
         return {"date": target_date, "conversations": len(conversations), has_output_key: False, "output_file": None}
     
-    content, all_candidates = generate_content(
+    # v2: Use generate_items() for item-centric generation
+    items, stats = generate_items(
         conversations_text,
         mode,
         llm=llm,
+        item_count=item_count,
         temperature=temperature,
-        best_of=best_of,
-        rerank=rerank,
+        deduplication_threshold=dedup_threshold,
     )
     
-    output_file = save_output(content, target_date, mode, all_candidates)
-    has_output = config["has_output_check"](content)
+    # Convert items to markdown for saving
+    content = items_to_markdown(items, mode)
+    has_output = len(items) > 0
+    
+    # Save with items metadata (no candidates in v2)
+    output_file = save_output(content, target_date, mode, [])
     
     return {
         "date": target_date,
         "conversations": len(conversations),
         has_output_key: has_output,
         "output_file": output_file,
+        "items_generated": stats.get("items_generated", 0),
+        "items_after_dedup": stats.get("items_after_dedup", 0),
+        "items_returned": stats.get("items_returned", 0),
     }
 
 
@@ -1163,8 +1641,10 @@ def process_aggregated_range(
     dry_run: bool = False,
     verbose: bool = False,
     temperature: float = DEFAULT_TEMPERATURE,
-    best_of: int = 1,
-    rerank: bool = True,
+    item_count: int = 10,
+    dedup_threshold: float = 0.85,
+    best_of: int = 1,  # Deprecated
+    rerank: bool = True,  # Deprecated
 ) -> dict:
     """Process a date range with aggregated output."""
     # OPTIMIZATION: Search entire date range at once instead of per-date
@@ -1393,16 +1873,22 @@ def process_aggregated_range(
             "output_file": None,
         }
     
-    print(f"🧠 Generating {mode} (best-of {best_of}, temp {temperature})...")
-    content, all_candidates = generate_content(
+    # v2: Use generate_items() for item-centric generation
+    print(f"🧠 Generating {mode} (item_count={item_count}, temp={temperature}, dedup={dedup_threshold})...")
+    items, stats = generate_items(
         conversations_text,
         mode,
         llm=llm,
+        item_count=item_count,
         temperature=temperature,
-        best_of=best_of,
-        rerank=rerank,
+        deduplication_threshold=dedup_threshold,
     )
     
+    # Convert items to markdown for saving
+    content = items_to_markdown(items, mode)
+    has_output = len(items) > 0
+    
+    # Save with no candidates (v2 architecture)
     output_file = save_aggregated_output(
         content,
         dates[0],
@@ -1410,10 +1896,8 @@ def process_aggregated_range(
         mode,
         mode_name,
         total_conversations=len(all_conversations),
-        all_candidates=all_candidates,
+        all_candidates=[],  # v2: No candidates, just items
     )
-    
-    has_output = config["has_output_check"](content)
     
     return {
         "start_date": dates[0],
@@ -1422,6 +1906,9 @@ def process_aggregated_range(
         "days_with_activity": days_with_activity,
         has_output_key: has_output,
         "output_file": output_file,
+        "items_generated": stats.get("items_generated", 0),
+        "items_after_dedup": stats.get("items_after_dedup", 0),
+        "items_returned": stats.get("items_returned", 0),
     }
 
 
@@ -1454,41 +1941,56 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Extract chats but don't generate")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     parser.add_argument("--temperature", type=float, default=None)
-    parser.add_argument("--best-of", dest="best_of", type=int, default=None)
+    # v2 Item-centric architecture
+    parser.add_argument("--item-count", dest="item_count", type=int, default=None,
+                        help="Number of items to generate (v2 - replaces best-of)")
+    parser.add_argument("--dedup-threshold", dest="dedup_threshold", type=float, default=0.85,
+                        help="Similarity threshold for deduplication (0.0-1.0)")
+    # v1 Legacy (deprecated)
+    parser.add_argument("--best-of", dest="best_of", type=int, default=None,
+                        help="DEPRECATED: Use --item-count instead")
     
     args = parser.parse_args()
     
     mode: Literal["insights", "ideas"] = args.mode
     
+    # v2: item_count replaces best_of
+    # MODE_PRESETS: (days, item_count, temperature)
     MODE_PRESETS = {
-        "daily": (1, 3, 0.3),
-        "sprint": (14, 5, 0.4),
-        "month": (28, 10, 0.5),
-        "quarter": (42, 15, 0.5),
+        "daily": (1, 5, 0.3),
+        "sprint": (14, 10, 0.4),
+        "month": (28, 15, 0.5),
+        "quarter": (42, 20, 0.5),
     }
     
-    mode_days, mode_best_of, mode_temperature = None, 1, DEFAULT_TEMPERATURE
+    mode_days, mode_item_count, mode_temperature = None, 10, DEFAULT_TEMPERATURE
     mode_name = None
     use_aggregated = False
     
     if args.daily:
-        mode_days, mode_best_of, mode_temperature = MODE_PRESETS["daily"]
+        mode_days, mode_item_count, mode_temperature = MODE_PRESETS["daily"]
         mode_name = "daily"
     elif args.sprint:
-        mode_days, mode_best_of, mode_temperature = MODE_PRESETS["sprint"]
+        mode_days, mode_item_count, mode_temperature = MODE_PRESETS["sprint"]
         mode_name = "sprint"
         use_aggregated = True
     elif args.month:
-        mode_days, mode_best_of, mode_temperature = MODE_PRESETS["month"]
+        mode_days, mode_item_count, mode_temperature = MODE_PRESETS["month"]
         mode_name = "month"
         use_aggregated = True
     elif args.quarter:
-        mode_days, mode_best_of, mode_temperature = MODE_PRESETS["quarter"]
+        mode_days, mode_item_count, mode_temperature = MODE_PRESETS["quarter"]
         mode_name = "quarter"
         use_aggregated = True
     
-    if args.best_of is None:
-        args.best_of = mode_best_of
+    # v2: Prefer item_count, fallback to best_of for backward compatibility
+    if args.item_count is None:
+        if args.best_of is not None:
+            # Backward compatibility: treat best_of as item_count
+            args.item_count = args.best_of
+            print("⚠️  --best-of is deprecated, use --item-count instead", file=sys.stderr)
+        else:
+            args.item_count = mode_item_count
     if args.temperature is None:
         args.temperature = mode_temperature
     
@@ -1526,7 +2028,8 @@ def main():
             dry_run=args.dry_run,
             verbose=args.verbose,
             temperature=args.temperature,
-            best_of=args.best_of,
+            item_count=args.item_count,
+            dedup_threshold=args.dedup_threshold,
         )
         
         has_output_key = "has_posts" if mode == "insights" else "has_ideas"
@@ -1553,7 +2056,8 @@ def main():
                 dry_run=args.dry_run,
                 verbose=args.verbose,
                 temperature=args.temperature,
-                best_of=args.best_of,
+                item_count=args.item_count,
+                dedup_threshold=args.dedup_threshold,
             )
             has_output_key = "has_posts" if mode == "insights" else "has_ideas"
             output_icon = "✅" if result[has_output_key] else "❌"

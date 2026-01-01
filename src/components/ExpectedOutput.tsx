@@ -3,7 +3,7 @@ import { ToolType } from "@/lib/types";
 interface ExpectedOutputProps {
   tool: ToolType;
   days: number;
-  bestOf: number;
+  itemCount: number;
   temperature: number;
   estimatedCost: number;
 }
@@ -11,20 +11,20 @@ interface ExpectedOutputProps {
 export function ExpectedOutput({
   tool,
   days,
-  bestOf,
+  itemCount,
   temperature,
   estimatedCost,
 }: ExpectedOutputProps) {
-  const toolLabel = tool === "ideas" ? "idea" : "insight";
+  const toolLabel = tool === "ideas" ? "ideas" : "insights";
   
   return (
     <div className="mt-4 p-4 bg-gradient-to-r from-white/5 to-white/10 rounded-xl border border-white/10">
       <div className="grid grid-cols-3 gap-4 text-center">
-        {/* Candidates Generated */}
+        {/* Items Generated */}
         <div className="space-y-1">
-          <div className="text-2xl font-bold text-inspiration-ideas">{bestOf}</div>
+          <div className="text-2xl font-bold text-inspiration-ideas">{itemCount}</div>
           <div className="text-xs text-adobe-gray-400">
-            {bestOf === 1 ? "candidate" : "candidates"}
+            {itemCount === 1 ? "item" : "items"}
           </div>
         </div>
         
@@ -43,11 +43,12 @@ export function ExpectedOutput({
         </div>
       </div>
       
-      {/* Simplified Explanation */}
+      {/* v2: Simplified Explanation - Item-centric flow */}
       <div className="mt-3 pt-3 border-t border-white/10 text-xs text-adobe-gray-500">
-        <span className="text-adobe-gray-400">Generates {bestOf} {bestOf === 1 ? "candidate" : "candidates"} at temp {temperature.toFixed(1)}, then selects the best {toolLabel}.</span>
+        <span className="text-adobe-gray-400">
+          Generates {itemCount} {toolLabel} at temp {temperature.toFixed(1)}, deduplicates similar ones, then ranks by quality.
+        </span>
       </div>
     </div>
   );
 }
-

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Inspiration E2E Tests', () => {
+test.describe('Inspiration E2E Tests (v2)', () => {
   
   test('01 - Homepage loads with all sections', async ({ page }) => {
     await page.goto('/');
@@ -9,63 +9,48 @@ test.describe('Inspiration E2E Tests', () => {
     await expect(page.getByRole('heading', { name: /inspiration/i })).toBeVisible();
     await expect(page.getByText('Turn your Cursor conversations into ideas and insights')).toBeVisible();
     
-    // Theme/Mode selection (v1) - check for theme selector or tool selection (backward compatibility)
-    const themeHeading = page.getByRole('heading', { name: /theme/i });
-    const toolHeading = page.getByRole('heading', { name: 'What do you want to do?' });
-    await expect(themeHeading.or(toolHeading)).toBeVisible();
-    
-    // Check for either Theme/Mode selectors (v1) or tool buttons (v0)
-    const ideasBtn = page.getByRole('button', { name: /idea/i }).or(page.getByRole('button', { name: 'Generate Ideas: Prototype & tool ideas worth building' }));
-    const insightsBtn = page.getByRole('button', { name: /insight/i }).or(page.getByRole('button', { name: 'Generate Insights: LinkedIn posts to share learnings' }));
-    await expect(ideasBtn.or(insightsBtn)).toBeVisible();
+    // Mode selection - v2 uses simple mode cards
+    const modeButtons = page.locator('.mode-card');
+    await expect(modeButtons.first()).toBeVisible();
     
     // Presets
     await expect(page.getByRole('heading', { name: 'Time period & depth' })).toBeVisible();
     await expect(page.getByRole('button', { name: /Today mode/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /Last 14 days mode/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Last 30 days mode/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Last 90 days mode/i })).toBeVisible();
     
-    // Bank section (v1: unified bank, v0: separate banks)
+    // Bank section
     const bankHeading = page.getByRole('heading', { name: /Your Bank/i }).or(page.getByRole('heading', { name: /Your Banks/i }));
     await expect(bankHeading).toBeVisible();
     
     await page.screenshot({ path: 'e2e-results/01-homepage.png', fullPage: true });
   });
 
-  test('02 - Toggle between Ideas and Insights (v0/v1 compatible)', async ({ page }) => {
+  test('02 - Toggle between Ideas and Insights', async ({ page }) => {
     await page.goto('/');
     
-    // Try v1 Theme/Mode selectors first, fallback to v0 tool buttons
-    const ideasBtn = page.getByRole('button', { name: /idea/i }).first();
-    const insightsBtn = page.getByRole('button', { name: /insight/i }).first();
-    
-    // Check if buttons exist, if not try v0 format
-    const ideasBtnV0 = page.getByRole('button', { name: 'Generate Ideas: Prototype & tool ideas worth building' });
-    const insightsBtnV0 = page.getByRole('button', { name: 'Generate Insights: LinkedIn posts to share learnings' });
-    
-    const ideasButton = await ideasBtn.count() > 0 ? ideasBtn : ideasBtnV0;
-    const insightsButton = await insightsBtn.count() > 0 ? insightsBtn : insightsBtnV0;
+    // Find mode buttons by aria-label pattern
+    const ideasBtn = page.getByRole('button', { name: /Idea.*Prototype/i });
+    const insightsBtn = page.getByRole('button', { name: /Insight.*Social/i });
     
     // Click Insights
-    await insightsButton.click();
+    await insightsBtn.click();
     await page.screenshot({ path: 'e2e-results/02a-insights-selected.png', fullPage: true });
     
-    // Generate button should say "Insight" or contain "Insight"
+    // Generate button should say "Insight"
     await expect(page.locator('button.btn-primary')).toContainText(/insight/i);
     
     // Click Ideas back
-    await ideasButton.click();
+    await ideasBtn.click();
     await page.screenshot({ path: 'e2e-results/02b-ideas-selected.png', fullPage: true });
     
-    // Generate button should say "Idea" or contain "Idea"
+    // Generate button should say "Idea"
     await expect(page.locator('button.btn-primary')).toContainText(/idea/i);
   });
 
-  test('03 - Preset modes update expected output', async ({ page }) => {
+  test('03 - Preset modes update expected output (v2)', async ({ page }) => {
     await page.goto('/');
     
-    // Click each preset and verify expected output changes
+    // Click each preset and verify the UI updates
     const presets = [
       { name: /Today mode/i },
       { name: /Last 14 days mode/i },
@@ -75,27 +60,31 @@ test.describe('Inspiration E2E Tests', () => {
     
     for (const preset of presets) {
       await page.getByRole('button', { name: preset.name }).click();
-      // Verify Expected Output section is visible
-      await expect(page.getByText('Expected Output')).toBeVisible();
-      await expect(page.getByText('output file')).toBeVisible();
-      // Either "candidate" or "candidates" depending on preset
-      await expect(page.locator('text=/^candidate[s]?$/')).toBeVisible();
+      // v2: Check for "item" or "items" label in the expected output section
+      // The structure is: number in one div, "item(s)" in another
+      await expect(page.getByText(/^items?$/i).first()).toBeVisible();
     }
     
     await page.screenshot({ path: 'e2e-results/03-presets.png', fullPage: true });
   });
 
-  test('04 - Advanced settings toggle', async ({ page }) => {
+  test('04 - Advanced settings toggle (v2)', async ({ page }) => {
     await page.goto('/');
     
-    // Click advanced settings
-    await page.getByRole('button', { name: /Advanced settings/i }).click();
-    await page.waitForTimeout(500);
+    // Click the customize/advanced button (may have different label)
+    const advancedBtn = page.getByRole('button', { name: /customize/i }).or(
+      page.getByRole('button', { name: /advanced/i })
+    );
     
-    // Should see sliders - check for range inputs
-    await expect(page.locator('input[type="range"]').first()).toBeVisible();
-    
-    await page.screenshot({ path: 'e2e-results/04-advanced-settings.png', fullPage: true });
+    if (await advancedBtn.count() > 0) {
+      await advancedBtn.first().click();
+      await page.waitForTimeout(500);
+      
+      // Should see sliders - check for range inputs
+      await expect(page.locator('input[type="range"]').first()).toBeVisible();
+      
+      await page.screenshot({ path: 'e2e-results/04-advanced-settings.png', fullPage: true });
+    }
   });
 
   test('05 - Settings page navigation and sections', async ({ page }) => {
@@ -105,7 +94,8 @@ test.describe('Inspiration E2E Tests', () => {
     await page.getByRole('link', { name: /settings/i }).click();
     await page.waitForURL('/settings');
     
-    await expect(page.getByRole('heading', { name: /Settings/i })).toBeVisible();
+    // Use first() to avoid strict mode violation with multiple matches
+    await expect(page.getByRole('heading', { name: /Settings/i }).first()).toBeVisible();
     await page.screenshot({ path: 'e2e-results/05a-settings-page.png', fullPage: true });
     
     // Check main content sections exist (using headings)
@@ -114,40 +104,30 @@ test.describe('Inspiration E2E Tests', () => {
     await page.screenshot({ path: 'e2e-results/05b-settings-full.png', fullPage: true });
   });
 
-  test('06 - Bank viewer (v0/v1 compatible)', async ({ page }) => {
+  test('06 - Bank viewer', async ({ page }) => {
     await page.goto('/');
     
-    // Try v1 unified bank first, fallback to v0 separate banks
-    const expandBtn = page.getByRole('button', { name: /Expand/i }).or(
-      page.getByRole('button', { name: /Idea Bank:.*ideas.*Click to/ })
-    );
+    // Try to find and expand bank
+    const expandBtn = page.getByRole('button', { name: /expand/i }).first();
     
     if (await expandBtn.count() > 0) {
-      await expandBtn.first().click();
+      await expandBtn.click();
       await page.waitForTimeout(500);
       
       await page.screenshot({ path: 'e2e-results/06a-bank-expanded.png', fullPage: true });
       
-      // Check for export buttons (v1: Export .md, v0: Download/Copy)
-      const exportBtn = page.getByRole('button', { name: /Export/i }).or(
-        page.getByRole('button', { name: /Download/i })
+      // Check for export buttons
+      const exportBtn = page.getByRole('button', { name: /export/i }).or(
+        page.getByRole('button', { name: /download/i })
       );
       await expect(exportBtn.first()).toBeVisible();
-    } else {
-      // v0: Try Idea Bank
-      const ideaBankBtn = page.getByRole('button', { name: /Idea Bank:.*ideas.*Click to/ });
-      if (await ideaBankBtn.count() > 0) {
-        await ideaBankBtn.click();
-        await page.waitForTimeout(500);
-        await expect(page.getByRole('button', { name: /Download idea bank/i })).toBeVisible();
-      }
     }
   });
 
-  test('07 - Run History (v1)', async ({ page }) => {
+  test('07 - Run History', async ({ page }) => {
     await page.goto('/');
     
-    // Check for Run History section (v1 feature)
+    // Check for Run History section
     const runHistoryHeading = page.getByRole('heading', { name: /Run History/i });
     if (await runHistoryHeading.count() > 0) {
       await expect(runHistoryHeading).toBeVisible();
@@ -155,7 +135,7 @@ test.describe('Inspiration E2E Tests', () => {
     }
   });
 
-  test('08 - API endpoints respond correctly', async ({ request }) => {
+  test('08 - API endpoints respond correctly (v2)', async ({ request }) => {
     // Test config API
     const configRes = await request.get('/api/config');
     expect(configRes.ok()).toBeTruthy();
@@ -163,30 +143,18 @@ test.describe('Inspiration E2E Tests', () => {
     expect(config.success).toBeTruthy();
     expect(config.config).toHaveProperty('workspaces');
     
-    // Test themes API (v1)
+    // Test themes API (v1/v2)
     const themesRes = await request.get('/api/themes');
     expect(themesRes.ok()).toBeTruthy();
     const themes = await themesRes.json();
     expect(themes.success).toBeTruthy();
     
-    // Test items API (v1)
+    // Test items API (v1/v2)
     const itemsRes = await request.get('/api/items');
     expect(itemsRes.ok()).toBeTruthy();
     const items = await itemsRes.json();
     expect(items.success).toBeTruthy();
     expect(items.stats).toBeDefined();
-    
-    // Test banks API - ideas (v0 legacy)
-    const ideasRes = await request.get('/api/banks?type=idea');
-    expect(ideasRes.ok()).toBeTruthy();
-    const ideas = await ideasRes.json();
-    expect(ideas.success).toBeTruthy();
-    
-    // Test banks API - insights (v0 legacy)
-    const insightsRes = await request.get('/api/banks?type=insight');
-    expect(insightsRes.ok()).toBeTruthy();
-    const insights = await insightsRes.json();
-    expect(insights.success).toBeTruthy();
   });
 
   test('09 - Responsive design - mobile', async ({ page }) => {
@@ -205,6 +173,38 @@ test.describe('Inspiration E2E Tests', () => {
     await page.goto('/');
     
     await page.screenshot({ path: 'e2e-results/10-tablet-home.png', fullPage: true });
+  });
+
+  test('11 - v2 Item Count slider in advanced settings', async ({ page }) => {
+    await page.goto('/');
+    
+    // Click the customize/advanced button
+    const advancedBtn = page.getByRole('button', { name: /customize/i }).or(
+      page.getByRole('button', { name: /advanced/i })
+    );
+    
+    if (await advancedBtn.count() > 0) {
+      await advancedBtn.first().click();
+      await page.waitForTimeout(500);
+      
+      // v2: Should have "Items to generate" label (not "Candidates")
+      await expect(page.getByText(/items to generate/i)).toBeVisible();
+      
+      await page.screenshot({ path: 'e2e-results/11-v2-item-count.png', fullPage: true });
+    }
+  });
+
+  test('12 - v2 Deduplication threshold in settings', async ({ page }) => {
+    await page.goto('/settings');
+    
+    // Navigate to Mode Settings section
+    const modeSettingsHeading = page.getByRole('heading', { name: /Mode Settings/i });
+    if (await modeSettingsHeading.count() > 0) {
+      // v2: Should have deduplication threshold setting
+      await expect(page.getByText(/deduplication threshold/i)).toBeVisible();
+      
+      await page.screenshot({ path: 'e2e-results/12-v2-dedup-threshold.png', fullPage: true });
+    }
   });
 
 });

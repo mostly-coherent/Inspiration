@@ -21,7 +21,6 @@ import { ExpectedOutput } from "@/components/ExpectedOutput";
 import { LogoutButton } from "@/components/LogoutButton";
 import { SimpleModeSelector } from "@/components/SimpleModeSelector";
 import { RunHistory } from "@/components/RunHistory";
-import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { getModeAsync, loadThemesAsync } from "@/lib/themes";
 import { saveRunToHistory } from "@/lib/runHistory";
 
@@ -69,7 +68,7 @@ export default function Home() {
 
   // Advanced settings
   const [customDays, setCustomDays] = useState<number>(14);
-  const [customBestOf, setCustomBestOf] = useState<number>(5);
+  const [customItemCount, setCustomItemCount] = useState<number>(10);
   const [customTemperature, setCustomTemperature] = useState<number>(0.4);
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
@@ -109,27 +108,28 @@ export default function Home() {
   const displayTool: ToolType = selectedModeId === "idea" ? "ideas" : "insights";
   const toolConfig = TOOL_CONFIG[displayTool];
 
-  // Estimate generation time based on candidates (memoized to avoid recreation)
-  const estimateTime = useCallback((bestOf: number): number => {
-    // ~20 seconds per candidate + 15 seconds for judging + 10 seconds overhead
-    return bestOf * 20 + 15 + 10;
+  // v2: Estimate time for item-centric architecture (memoized)
+  const estimateTime = useCallback((itemCount: number): number => {
+    // v2: Single LLM call + batch embeddings + dedup + ranking
+    // Base: 20s for LLM call, +2s per item for processing
+    return 20 + itemCount * 2 + 15;
   }, []);
 
-  // Estimate LLM cost based on candidates (memoized to avoid recreation)
+  // v2: Estimate LLM cost for item-centric architecture (memoized)
   // Claude Sonnet 4: $3/M input, $15/M output
-  // Per candidate: ~4K input + ~750 output = ~$0.023
-  // Judge: ~6K input + ~500 output = ~$0.025
-  const estimateCost = useCallback((bestOf: number): number => {
-    const costPerCandidate = 0.023;
-    const judgeCost = 0.025;
-    return bestOf * costPerCandidate + judgeCost;
+  const estimateCost = useCallback((itemCount: number): number => {
+    // v2: Single generation call + embeddings + ranking call
+    const generationCost = 0.015; // ~15k tokens for generation
+    const embeddingCost = itemCount * 0.0001; // ~100 tokens per item embedding
+    const rankingCost = 0.003; // Ranking call
+    return generationCost + embeddingCost + rankingCost;
   }, []);
 
-  // Get current bestOf value (memoized)
-  const getCurrentBestOf = useCallback((): number => {
-    if (showAdvanced) return customBestOf;
-    return currentModeConfig?.bestOf ?? 5;
-  }, [showAdvanced, customBestOf, currentModeConfig]);
+  // v2: Get current itemCount value (memoized)
+  const getCurrentItemCount = useCallback((): number => {
+    if (showAdvanced) return customItemCount;
+    return currentModeConfig?.itemCount ?? 10;
+  }, [showAdvanced, customItemCount, currentModeConfig]);
 
   // Helper to calculate days from date range (memoized)
   // Note: 90-day limit removed in v1 - Vector DB enables unlimited date ranges
@@ -190,22 +190,38 @@ export default function Home() {
         }
         // Refresh brain stats after sync
         await fetchBrainStats();
+        // Clear success status after 5 seconds
+        setTimeout(() => {
+          setSyncStatus((prev) => {
+            // Only clear if it's still a success message (not changed to error/cloud mode)
+            if (prev && prev.startsWith("✓")) {
+              return null;
+            }
+            return prev;
+          });
+        }, 5000);
       } else {
         // Handle cloud environment limitation gracefully
-        if (data.error && data.error.includes("Cannot sync from cloud")) {
+        if (data.error && (data.error.includes("Cannot sync from cloud") || data.error.includes("cloud environment"))) {
           setSyncStatus("☁️ Cloud Mode (Read-only)");
+          // Don't clear this status - keep it visible permanently
         } else {
           setSyncStatus("⚠️ Sync failed");
           console.error("Sync failed:", data.error);
+          // Clear error status after 5 seconds
+          setTimeout(() => {
+            setSyncStatus((prev) => prev === "⚠️ Sync failed" ? null : prev);
+          }, 5000);
         }
       }
     } catch (e) {
       console.error("Sync error:", e);
       setSyncStatus("⚠️ Connection error");
+      setTimeout(() => {
+        setSyncStatus((prev) => prev === "⚠️ Connection error" ? null : prev);
+      }, 5000);
     } finally {
       setIsSyncing(false);
-      // Clear status after 5 seconds
-      setTimeout(() => setSyncStatus(null), 5000);
     }
   }, [isSyncing, fetchBrainStats]);
 
@@ -217,10 +233,7 @@ export default function Home() {
     // Auto-sync on first load (only works locally)
     handleSync().catch((error) => {
       console.error("Auto-sync failed:", error);
-      // Don't show error if it's just cloud mode - that's expected
-      if (!error?.message?.includes("cloud")) {
-        setSyncStatus("Sync failed. Click 'Refresh Brain' to retry.");
-      }
+      // Error handling is done in handleSync, so we don't need to set status here
     });
   }, []); // Run once on mount
 
@@ -233,11 +246,11 @@ export default function Home() {
     // Create new AbortController for this request
     abortController.current = new AbortController();
     
-    const bestOf = getCurrentBestOf();
-    const totalEstimate = estimateTime(bestOf);
+    const itemCount = getCurrentItemCount();
+    const totalEstimate = estimateTime(itemCount);
     setEstimatedSeconds(totalEstimate);
 
-    // Start progress simulation
+    // Start progress simulation (v2: Item-centric phases)
     const startTime = Date.now();
     progressInterval.current = setInterval(() => {
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
@@ -247,16 +260,19 @@ export default function Home() {
       const rawProgress = Math.min((elapsed / totalEstimate) * 100, 95);
       setProgress(rawProgress);
       
-      // Update phase based on progress
+      // v2: Update phase based on progress (item-centric flow)
       if (rawProgress < 10) {
         setProgressPhase("Reading chat history...");
       } else if (rawProgress < 30) {
         setProgressPhase("Analyzing conversations...");
-      } else if (rawProgress < 80) {
-        const candidateNum = Math.min(Math.floor((rawProgress - 30) / (50 / bestOf)) + 1, bestOf);
-        setProgressPhase(`Generating candidate ${candidateNum} of ${bestOf}...`);
+      } else if (rawProgress < 60) {
+        setProgressPhase(`Generating ${itemCount} items...`);
+      } else if (rawProgress < 75) {
+        setProgressPhase("Deduplicating items...");
+      } else if (rawProgress < 90) {
+        setProgressPhase("Ranking items...");
       } else {
-        setProgressPhase("Judging candidates...");
+        setProgressPhase("Harmonizing to bank...");
       }
     }, 500);
 
@@ -274,7 +290,7 @@ export default function Home() {
         } else {
           body.days = customDays;
         }
-        body.bestOf = customBestOf;
+        body.itemCount = customItemCount;
         body.temperature = customTemperature;
       }
 
@@ -433,7 +449,7 @@ export default function Home() {
             </a>
             <LogoutButton />
           </div>
-          <h1 className="text-5xl font-bold gradient-text">Inspiration</h1>
+          <h1 className="text-5xl font-bold gradient-text mt-48">Inspiration</h1>
           <p className="text-adobe-gray-400 text-lg">
             Turn your Cursor conversations into ideas and insights
           </p>
@@ -490,8 +506,8 @@ export default function Home() {
               <AdvancedSettings
                 customDays={customDays}
                 setCustomDays={setCustomDays}
-                customBestOf={customBestOf}
-                setCustomBestOf={setCustomBestOf}
+                customItemCount={customItemCount}
+                setCustomItemCount={setCustomItemCount}
                 customTemperature={customTemperature}
                 setCustomTemperature={setCustomTemperature}
                 fromDate={fromDate}
@@ -507,9 +523,9 @@ export default function Home() {
             <ExpectedOutput
               tool={displayTool}
               days={showAdvanced ? (useCustomDates ? calculateDateRangeDays(fromDate, toDate) : customDays) : (currentModeConfig?.days ?? 14)}
-              bestOf={getCurrentBestOf()}
+              itemCount={getCurrentItemCount()}
               temperature={showAdvanced ? customTemperature : (currentModeConfig?.temperature ?? 0.4)}
-              estimatedCost={estimateCost(getCurrentBestOf())}
+              estimatedCost={estimateCost(getCurrentItemCount())}
             />
           </div>
         </section>
@@ -530,7 +546,7 @@ export default function Home() {
               <button
                 onClick={handleGenerate}
                 className="btn-primary text-2xl px-16 py-5 font-semibold shadow-lg shadow-inspiration-ideas/20 hover:shadow-inspiration-ideas/30 transition-all"
-                aria-busy={isGenerating ? "true" : "false"}
+                aria-busy={isGenerating}
                 aria-live="polite"
               >
                 <span className="flex items-center gap-3">
@@ -543,28 +559,19 @@ export default function Home() {
         </div>
 
         {/* Results */}
-        {result && (
-          <SectionErrorBoundary sectionName="Results">
-            <ResultsPanel result={result} />
-          </SectionErrorBoundary>
-        )}
+        {result && <ResultsPanel result={result} />}
 
         {/* Banks Overview */}
-        <SectionErrorBoundary sectionName="Banks Overview">
-          <BanksOverview />
-        </SectionErrorBoundary>
+        <BanksOverview />
 
         {/* Run History */}
-        <SectionErrorBoundary sectionName="Run History">
-          <RunHistory />
-        </SectionErrorBoundary>
+        <RunHistory />
           </>
         )}
 
         {/* Seek Section - Only shown when Use Case mode is selected */}
         {showSeek && (
-          <SectionErrorBoundary sectionName="Seek Section">
-            <SeekSection
+          <SeekSection
             showSeek={showSeek}
             setShowSeek={setShowSeek}
             query={reverseQuery}
@@ -581,7 +588,6 @@ export default function Home() {
             setResult={setSeekResult}
             abortController={seekAbortController}
           />
-          </SectionErrorBoundary>
         )}
       </div>
     </main>

@@ -55,6 +55,13 @@ async function loadThemes(): Promise<ThemesConfig> {
 
 async function saveThemes(config: ThemesConfig): Promise<boolean> {
   try {
+    // Safety check: prevent creating files in wrong directory
+    const cwd = process.cwd();
+    if (cwd.includes("MyPrivateTools") || cwd.includes("OtherBuilders")) {
+      console.error("[Modes] ERROR: Running from invalid directory:", cwd);
+      return false;
+    }
+    
     const dataDir = path.dirname(THEMES_PATH);
     if (!existsSync(dataDir)) {
       await mkdir(dataDir, { recursive: true });
