@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { copyToClipboard, downloadFile } from './utils';
 
 describe('utils', () => {
@@ -78,7 +78,7 @@ describe('utils', () => {
         href: '',
         download: '',
         click: clickSpy,
-      } as any;
+      } as unknown as HTMLAnchorElement;
 
       createElementSpy.mockReturnValue(mockAnchor);
 
@@ -103,7 +103,7 @@ describe('utils', () => {
         href: '',
         download: '',
         click: vi.fn(),
-      } as any);
+      } as unknown as HTMLAnchorElement);
 
       downloadFile('content', 'file.txt');
 

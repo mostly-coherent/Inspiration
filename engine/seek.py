@@ -23,7 +23,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from common.cursor_db import format_conversations_for_prompt
 from common.semantic_search import search_messages
-from common.config import load_config, load_env_file, get_llm_config
+from common.config import (
+    load_config,
+    load_env_file,
+    get_llm_config,
+    get_category_similarity_threshold,
+    get_compression_date_threshold,
+)
 from common.llm import create_llm, LLMProvider
 from common.vector_db import get_supabase_client, get_conversations_by_chat_ids
 from common.items_bank import ItemsBank
@@ -211,13 +217,14 @@ def seek_use_case(
         }
     
     # Step 2: Compress conversations if needed (same as generate.py)
-    # OPTIMIZATION: Skip compression for small date ranges (< 7 days)
+    # OPTIMIZATION: Skip compression for small date ranges (configurable threshold)
     # Small date ranges typically have small prompts; compression adds cost/time without much benefit
     compressed_conversations = []
-    skip_compression = days_back < 7  # Skip compression for small ranges
+    compression_date_threshold = get_compression_date_threshold()
+    skip_compression = days_back < compression_date_threshold
     
     if skip_compression:
-        print(f"⏭️  Skipping compression (date range: {days_back} days < 7 days threshold)", file=sys.stderr)
+        print(f"⏭️  Skipping compression (date range: {days_back} days < {compression_date_threshold} days threshold)", file=sys.stderr)
         compressed_conversations = conversations
     else:
         conversations_to_compress = []
@@ -352,10 +359,12 @@ def seek_use_case(
             print(f"\n📂 Generating categories for use_case mode (non-blocking)...", file=sys.stderr)
             try:
                 import threading
+                # Get category similarity threshold from config
+                cat_sim_threshold = get_category_similarity_threshold()
                 def generate_categories_async():
                     try:
                         bank = ItemsBank()
-                        categories = bank.generate_categories(mode="use_case", similarity_threshold=0.75)
+                        categories = bank.generate_categories(mode="use_case", similarity_threshold=cat_sim_threshold)
                         bank.save()
                         print(f"✅ Created/updated {len(categories)} categor{'y' if len(categories) == 1 else 'ies'} (background)", file=sys.stderr)
                     except Exception as e:
@@ -368,7 +377,8 @@ def seek_use_case(
             except Exception as e:
                 # Fallback to synchronous if threading fails
                 print(f"⚠️  Failed to start async category generation, running synchronously: {e}", file=sys.stderr)
-                categories = bank.generate_categories(mode="use_case", similarity_threshold=0.75)
+                cat_sim_threshold = get_category_similarity_threshold()
+                categories = bank.generate_categories(mode="use_case", similarity_threshold=cat_sim_threshold)
                 bank.save()
                 print(f"✅ Created/updated {len(categories)} categor{'y' if len(categories) == 1 else 'ies'}", file=sys.stderr)
     

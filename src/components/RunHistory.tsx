@@ -22,7 +22,8 @@ export const RunHistory = memo(function RunHistory() {
 
   useEffect(() => {
     loadRuns();
-  }, [showAll]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAll]); // loadRuns is stable, only re-run when showAll changes
 
   const loadRuns = () => {
     setLoading(true);

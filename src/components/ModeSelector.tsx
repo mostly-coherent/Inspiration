@@ -67,7 +67,6 @@ export function ModeSelector({ theme, selectedMode, onModeChange, onThemeChange 
           {allModes.map((mode) => {
             const isFromSelectedTheme = mode.themeId === theme;
             const isSelected = selectedMode === mode.id;
-            const isDisabled = !isFromSelectedTheme && !isSelected;
             
             return (
               <button

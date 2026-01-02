@@ -29,7 +29,6 @@ export function parseRankedItems(
   const mainContent = content.split("## All Generated Candidates")[0].split("\n---\n")[0];
   
   const items: RankedItem[] = [];
-  let rank = 1;
 
   if (mode === "insights") {
     // Parse insights format: ## Post 1: Title\n\n**Hook:** ...\n**Insight:** ...

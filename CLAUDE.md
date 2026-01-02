@@ -6,16 +6,33 @@
 
 ## What This Is
 
-A web UI for extracting ideas and insights from Cursor chat history using Claude Sonnet 4. Now powered by **Supabase Vector DB** for massive scale support (>2GB chat history). **v1** introduces a unified Items/Categories system with user-definable Themes and Modes.
+A web UI for extracting ideas and insights from Cursor chat history using Claude Sonnet 4. Now powered by **Supabase Vector DB** for massive scale support (>2GB chat history). **v3** introduces a Library-centric UI where the accumulated items are the core value proposition.
 
-- **Generation Theme** — Generate content from chat history
-  - **Idea Mode** — Prototype and tool ideas worth building
-  - **Insight Mode** — Social media post drafts sharing learnings
-  - **Custom Modes** — User-defined generation modes
-- **Seek Theme** — Search chat history for evidence
-  - **Use Case Mode** — Find chat history evidence for use cases
-- **Unified Bank** — Items and Categories with automatic grouping via cosine similarity
-- **Reverse Match** — Semantic search to find chat history evidence for user-provided insights/ideas
+### Core Concepts
+
+| Term | What It Is | UI Location |
+|------|-----------|-------------|
+| **Memory** | Indexed chat history in Vector DB (formerly "Brain") | Scoreboard Header (left) |
+| **Library** | Accumulated ideas/insights/use cases (formerly "Bank") | Scoreboard Header (right) + Left Panel |
+| **Generate** | Create new items from chat history | Action Panel (right) |
+| **Seek** | Find evidence for user-provided queries | Action Panel (right) |
+
+### Features
+
+- **Generate (Idea Mode)** — Prototype and tool ideas worth building
+- **Generate (Insight Mode)** — Social media post drafts sharing learnings
+- **Generate (Custom Modes)** — User-defined generation modes
+- **Seek (Use Case Mode)** — Find chat history evidence for use cases
+- **Library** — Items and Categories with automatic grouping via cosine similarity
+- **Memory** — Indexed chat history with sync status and date coverage
+
+### User Mental Model
+
+1. **Memory completeness:** "Do I have all my chats indexed?" → Coverage dates + size
+2. **Library growth:** "Is my Library growing?" → Total items + weekly delta
+3. **Analysis assurance:** "Did the app analyze the right chats?" → Messages/dates/workspaces shown
+4. **Easy experimentation:** All parameters exposed in Settings
+5. **Memory jog:** Items link back to source chat dates and workspaces
 
 ---
 
@@ -256,6 +273,8 @@ APP_PASSWORD=your-secure-password
 6. **Backward Compatibility:** v0 API calls with `tool` parameter still work - automatically mapped to `theme`/`modeId`.
 7. **Date Range:** No 90-day limit in v1 - Vector DB enables unlimited date ranges.
 8. **Deployment:** Hybrid architecture - Vercel hosts Next.js frontend, Railway hosts Python engine. See `ARCHITECTURE.md` for details.
+9. **v3 Terminology:** "Brain" → "Memory", "Bank" → "Library". Library is the core value prop (scoreboard), not just storage.
+10. **v3 Configuration:** No hardcoding. All parameters (LLM assignments, thresholds, prompts) exposed in Settings.
 
 ---
 
@@ -485,6 +504,12 @@ Messages get `workspace = "Unknown"` when:
 2. Workspace hash doesn't match current workspaceStorage mapping
 3. Chat data doesn't contain workspace hash information
 
+**How Workspace Mapping Works:**
+1. `get_workspace_mapping()` reads from `workspaceStorage` directory
+2. Each workspace folder contains a `workspace.json` with the folder path
+3. The folder name is the workspace hash
+4. If a hash isn't found in this mapping → "Unknown"
+
 This is **expected behavior** for historical/deleted workspaces and does **NOT** affect searchability.
 
 **Conclusion:**
@@ -493,6 +518,7 @@ This is **expected behavior** for historical/deleted workspaces and does **NOT**
 ✅ All "Unknown" messages are searchable and analyzable
 
 <!-- Merged from UNKNOWN_WORKSPACE_CONFIRMATION.md on 2025-01-30 -->
+<!-- Merged from engine/scripts/EXPLAIN_UNKNOWN_WORKSPACE.md on 2026-01-02 -->
 
 ---
 

@@ -17,7 +17,7 @@ export const maxDuration = 300; // 5 minutes (reduced from 10 - v2 is faster)
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateRequest = await request.json();
-    const { tool, theme, modeId, mode, days, hours, itemCount, bestOf, temperature, deduplicationThreshold, fromDate, toDate, dryRun } = body;
+    const { tool, theme, modeId, mode, days, itemCount, bestOf, temperature, deduplicationThreshold, fromDate, toDate, dryRun } = body;
     
     // Get abort signal from request
     const signal = request.signal;
@@ -250,27 +250,50 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse output to find generated file
-    // Matches both daily (output/2025-12-19.judge.md) and aggregated (output/sprint_2025-12-05_to_2025-12-19.judge.md)
-    const outputFileMatch = result.stdout.match(/output\/(?:[\w]+_)?[\d-]+(?:_to_[\d-]+)?\.judge(?:-no-(?:idea|post))?\.md/);
+    // v2: Matches ideas_output/ or insights_output/ paths
+    // Example: /path/to/data/ideas_output/ideas_2025-12-18_to_2025-12-31.judge.md
+    // Or relative: ideas_output/ideas_2025-12-18_to_2025-12-31.judge.md
+    const outputFileMatch = result.stdout.match(/(?:ideas_output|insights_output|use_cases_output)\/[\w_]+[\d-]+(?:_to_[\d-]+)?\.(?:judge\.md|judge-no-(?:idea|post)\.md|md)/);
     const outputFile = outputFileMatch ? outputFileMatch[0] : undefined;
 
     // Read the generated file content if available
     let content: string | undefined;
     let judgeContent: string | undefined;
     if (outputFile) {
-      // Output files are now in data/ directory
-      const fullPath = path.join(toolPath, '..', 'data', outputFile.replace('output/', ''));
+      // Output files are in data/ directory (e.g., data/ideas_output/ideas_2025-12-18_to_2025-12-31.judge.md)
+      const fullPath = path.join(toolPath, '..', 'data', outputFile);
+      logger.log(`[Generate] Looking for output file at: ${fullPath}`);
       try {
         content = await readFile(fullPath, "utf-8");
         judgeContent = content; // Judge file is the main output now
-      } catch {
-        // Try legacy path for backwards compatibility
-        const legacyPath = path.join(toolPath, outputFile);
+        logger.log(`[Generate] Successfully read output file (${content.length} chars)`);
+      } catch (err) {
+        logger.log(`[Generate] Could not read output file: ${fullPath}`, err);
+        // Try interpreting outputFile as full path (Python may print full path)
+        const fullPathMatch = result.stdout.match(/📄 Output: ([^\n]+)/);
+        if (fullPathMatch) {
+          const absolutePath = fullPathMatch[1].trim();
+          try {
+            content = await readFile(absolutePath, "utf-8");
+            judgeContent = content;
+            logger.log(`[Generate] Read from absolute path: ${absolutePath} (${content.length} chars)`);
+          } catch (err2) {
+            logger.log(`[Generate] Could not read absolute path either: ${absolutePath}`, err2);
+          }
+        }
+      }
+    } else {
+      // Try to extract absolute path directly from "📄 Output:" line
+      const fullPathMatch = result.stdout.match(/📄 Output: ([^\n]+)/);
+      if (fullPathMatch) {
+        const absolutePath = fullPathMatch[1].trim();
+        logger.log(`[Generate] No regex match, trying absolute path: ${absolutePath}`);
         try {
-          content = await readFile(legacyPath, "utf-8");
+          content = await readFile(absolutePath, "utf-8");
           judgeContent = content;
-        } catch {
-          logger.log(`Could not read output file: ${fullPath}`);
+          logger.log(`[Generate] Read from absolute path: ${absolutePath} (${content.length} chars)`);
+        } catch (err) {
+          logger.log(`[Generate] Could not read absolute path: ${absolutePath}`, err);
         }
       }
     }
@@ -284,10 +307,14 @@ export async function POST(request: NextRequest) {
     // Extract estimated cost
     const estimatedCost = content ? extractEstimatedCost(content, stats.candidatesGenerated ?? 1) : undefined;
 
-    // Determine success: script ran successfully AND content was actually generated
+    // Determine success: script ran successfully AND (content generated OR items harmonized to library)
     const hasContent = !!content && content.trim().length > 0;
     const hasItems = !!(items && items.length > 0);
-    const actuallySuccessful = !!(hasContent || hasItems);
+    // v3: Harmonization success counts as success even if file was deleted
+    const harmonizedItems = stats.harmonization?.itemsAdded ?? 0;
+    const actuallySuccessful = !!(hasContent || hasItems || harmonizedItems > 0);
+    
+    logger.log(`[Generate] Success check: hasContent=${hasContent}, hasItems=${hasItems}, harmonizedItems=${harmonizedItems}, success=${actuallySuccessful}`);
     
     const response: GenerateResult = {
       success: actuallySuccessful, // Only true if content was actually generated
@@ -317,14 +344,9 @@ export async function POST(request: NextRequest) {
       if (hasContent && !hasItems) {
         // Content exists but couldn't be parsed into items
         response.error = `Output file was generated but contains no parseable items. ${conversationsText}. The content may not match the expected format, or the LLM may have generated empty results.`;
-      } else if (outputFile && !hasContent && itemsProcessed > 0) {
-        // Output file was generated and harmonized, but all items were deduplicated
-        if (itemsProcessed > 0 && itemsAdded === 0 && itemsDeduplicated > 0) {
-          response.error = `Items were generated but all were duplicates of existing bank items. ${conversationsText}. ${itemsProcessed} item${itemsProcessed === 1 ? '' : 's'} were processed, but ${itemsDeduplicated} were deduplicated (already in bank).`;
-        } else {
-          // Output file path found but file couldn't be read (may have been deleted during harmonization)
-          response.error = `Output file was generated but could not be read (may have been harmonized to bank). ${conversationsText}.`;
-        }
+      } else if (itemsProcessed > 0 && itemsAdded === 0 && itemsDeduplicated > 0) {
+        // All items were duplicates of existing library items
+        response.error = `Items were generated but all were duplicates of existing library items. ${conversationsText}. ${itemsProcessed} item${itemsProcessed === 1 ? '' : 's'} were processed, but ${itemsDeduplicated} were deduplicated (already in library).`;
       } else if (conversationsCount === 0) {
         // No conversations found - user didn't use Cursor during this period
         response.error = `No conversations found in the selected date range. This suggests you may not have used Cursor during this period, or the chat history hasn't been synced yet.`;

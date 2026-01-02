@@ -15,9 +15,12 @@ Object.defineProperty(navigator, 'clipboard', {
 });
 
 // Mock document.execCommand for fallback clipboard
-document.execCommand = vi.fn(() => true) as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(document as any).execCommand = vi.fn(() => true);
 
 // Mock URL.createObjectURL and revokeObjectURL
-global.URL.createObjectURL = vi.fn(() => 'blob:mock-url') as any;
-global.URL.revokeObjectURL = vi.fn() as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(global.URL as any).createObjectURL = vi.fn(() => 'blob:mock-url');
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(global.URL as any).revokeObjectURL = vi.fn();
 
