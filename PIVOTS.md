@@ -7,6 +7,254 @@
 
 ---
 
+## Decision: v3 UX Redesign — Library-Centric Architecture - 2026-01-01
+
+**Decision:** Redesign frontend to center on Library (accumulated items) as core value prop, with full configuration exposure. Rename "Brain" → "Memory" and "Bank" → "Library".
+
+**Rationale:**
+- **User Mental Model:** Users measure success by Library growth, not by generation runs. The Library is the scoreboard.
+- **Public Release:** App is going public; UX must be optimized for new users, not just the original developer.
+- **Configuration Transparency:** Power users need to tune all parameters (temperature, similarity, LLM assignments) without code changes.
+- **Analysis Assurance:** Users need confidence the app analyzed the right data before trusting "0 items found" results.
+- **Memory Jog:** Items should link back to source chat context (dates, workspaces) to help users remember what they were doing.
+
+**Terminology Changes:**
+- "Brain" → "Memory" (clearer: "Your Memory" = indexed AI conversations)
+- "Bank" → "Library" (familiar: like building a personal library of ideas)
+
+**UI Changes:**
+- Scoreboard Header: Always-visible Memory + Library stats
+- Two-Panel Layout: Library (left) + Generate/Seek (right)
+- Analysis Coverage: Show messages/dates/workspaces analyzed before and after generation
+- Library Delta: Show "+N new items" after each run
+- Item Source Context: Link items to source chat dates and workspaces
+
+**Configuration Exposure:**
+- LLM Assignments: generation, judging, embedding, compression (all configurable)
+- Thresholds: temperature, dedup, category similarity, compression (all exposed in Settings)
+- Prompt Templates: view/edit system prompts per mode
+- Reference Paths: voice guide, golden examples, posted/implemented folders
+
+**Alternatives Considered:**
+- Keep current UI (rejected: Bank value is hidden, new users won't understand value prop)
+- Add tabs/navigation (rejected: fragments experience, adds clicks)
+- Focus on generation UI (rejected: inverts the actual user mental model)
+
+**Status:** ✅ Implemented | **DRI:** User + AI Assistant
+
+**Impact:**
+- Scope: Frontend-only changes (backend stable)
+- Timeline: 3 phases (Scoreboard → Layout → Config) - ALL COMPLETE
+- Architecture: No backend changes; frontend componentization
+
+---
+
+## Decision: V3-2 — Two-Panel Layout Implementation - 2026-01-02
+
+**Decision:** Implement side-by-side layout with Library on the left and Generate/Seek actions on the right, completing the final v3 feature.
+
+**Changes Implemented:**
+1. **Two-Panel Grid Layout:**
+   - Desktop: 12-column grid (5 cols Library, 7 cols Action)
+   - Mobile: Stacked layout (Action first, then Library)
+   - Widened container from `max-w-5xl` to `max-w-7xl`
+
+2. **Library Panel (Left):**
+   - Sticky positioning on desktop
+   - Compact stats grid (4 columns: Items, Cats, Done, Active)
+   - Scrollable content area with `max-h-[60vh]`
+   - Mobile collapse toggle (always expanded on desktop)
+
+3. **Action Panel (Right):**
+   - Mode selection, time presets, generate button
+   - Analysis coverage, results, run history
+   - Seek section for Use Case mode
+
+4. **LibrarySearch Compact Mode:**
+   - 2x2 filter grid (Type, Status, Category, Sort)
+   - Smaller search input
+   - Full functionality in narrower space
+
+**Rationale:**
+- **Simultaneous View:** Users see their Library while generating, reinforcing the "grow your Library" mental model
+- **Efficiency:** No scrolling between Library and Actions
+- **Responsive:** Works on both desktop (side-by-side) and mobile (stacked)
+- **v3 Completion:** Final feature to complete the Library-centric UX redesign
+
+**Status:** ✅ Implemented | **DRI:** AI Assistant
+
+---
+
+## Decision: v3 Phase 2 — Rich Library Experience - 2026-01-02
+
+**Decision:** Implement rich ItemCard component with memory jog features and full search/filter capability for the Library.
+
+**Changes Implemented:**
+1. **ItemCard Component** — Shows each item with:
+   - Type emoji (💡/✨/🔍) and recency indicator ("3d ago")
+   - Date range display ("Dec 19 → Jan 1")
+   - Occurrence count ("💬 5x mentioned")
+   - Category badge and status indicator
+   - Expandable description and tags
+
+2. **LibrarySearch Component** — Full-featured filtering:
+   - Full-text search across title, description, tags, content
+   - Type filter (Idea, Insight, Use Case)
+   - Status filter (Active, Built, Posted, Archived)
+   - Category filter with item counts
+   - Sort options (Most Recent, Most Mentioned, A-Z)
+
+3. **BanksOverview Refactor** — Integrated new components:
+   - Replaced inline item rendering with ItemCard
+   - Replaced old filter dropdowns with LibrarySearch
+   - Added filtered count display
+
+**Rationale:**
+- **Memory Jog:** Users need contextual metadata (dates, counts) to reconnect with past thinking
+- **Discoverability:** As Library grows, search and filtering become essential
+- **Progressive Disclosure:** Show less by default, let users expand on demand
+- **Visual Encoding:** Recency coloring (green → gray) enables quick scanning
+
+**Risks Identified:**
+- Client-side filtering may lag for 1000+ items → future server-side pagination
+- Filter state not persisted → consider URL params or localStorage
+- Category lookup creates memory overhead → mitigated with useMemo
+
+**Status:** ✅ Implemented | **DRI:** AI Assistant
+
+**Impact:**
+- Scope: Frontend only (Library section)
+- Timeline: 1 session
+- Architecture: New components (ItemCard, LibrarySearch), refactored BanksOverview
+
+---
+
+## Decision: v3 Phase 3 — Settings Configuration Hub - 2026-01-02
+
+**Decision:** Create a comprehensive Settings Configuration Hub exposing all previously-hardcoded parameters to users.
+
+**Components Implemented:**
+
+1. **AdvancedConfigSection Component** — Collapsible sections for:
+   - LLM Task Assignments (generation, judging, embedding, compression)
+   - Global Thresholds (category similarity, judge temperature, compression thresholds)
+   - Custom Time Presets (6h, 12h, etc.)
+
+2. **PromptTemplateEditor Component** — In-browser prompt editing:
+   - View all prompt templates (base, ideas, insights, use_case, judge)
+   - Edit prompts with automatic backup
+   - File metadata display (size, last modified)
+
+3. **New API Route** — `/api/prompts` for CRUD on prompt templates
+
+4. **New Type Definitions** — `AdvancedLLMConfig`, `GlobalThresholds`, `TimePreset`
+
+**Rationale:**
+- **Power users need control:** Users wanting to experiment with different models, temperatures, and prompts shouldn't need to edit code
+- **No hardcoding principle:** All configuration should be visible and editable
+- **Public release readiness:** Users need to understand and customize the app
+
+**Design Decisions:**
+- **Collapsible sections:** Avoid overwhelming users with all settings at once
+- **Slider UI for thresholds:** More intuitive than text input for numeric ranges
+- **Automatic backups:** Protect users from losing prompt edits
+
+**Status:** ✅ Implemented | **DRI:** AI Assistant
+
+**Impact:**
+- Scope: Settings page + new API route
+- Timeline: 1 session
+- Architecture: New components, new API, extended types
+
+**Next Step:**
+- Wire the new config values to the Python engine (currently UI-only)
+
+---
+
+## Decision: Config-Driven Python Engine (No Hardcoding) - 2026-01-02
+
+**Decision:** Wire all v3 advanced config values from the frontend Settings UI to the Python engine, eliminating hardcoded defaults.
+
+**Changes Made:**
+1. **config.py:** Added `advancedThresholds` to DEFAULT_CONFIG with:
+   - `categorySimilarity`: 0.75
+   - `judgeTemperature`: 0.0
+   - `compressionTokenThreshold`: 10000
+   - `compressionDateThreshold`: 7 days
+2. **Getter Functions:** Added `get_category_similarity_threshold()`, `get_compression_date_threshold()`, etc.
+3. **generate.py:** All hardcoded `0.75` and `< 7 days` replaced with config calls
+4. **seek.py:** Same config-driven approach
+5. **prompt_compression.py:** Token threshold now reads from config
+
+**Rationale:**
+- User explicitly requested no hardcoding
+- Settings UI must actually affect behavior (not be "UI-only")
+- Power users need to experiment with thresholds without code changes
+
+**Status:** ✅ Implemented | **DRI:** AI Assistant
+
+**Impact:**
+- Scope: Engine + frontend config
+- Timeline: Same session as Phase 3
+- Architecture: Single source of truth in config.json
+
+---
+
+## Decision: Settings Page Tab Navigation - 2026-01-02
+
+**Decision:** Add tabbed navigation to Settings page when setup is complete, organizing sections by purpose.
+
+**Tabs:**
+1. **General:** Workspaces, VectorDB, Voice & Style, LLM Settings, Power Features
+2. **Modes:** Mode Settings Manager (create/edit/delete modes)
+3. **Advanced:** LLM Task Assignments, Global Thresholds, Custom Time Presets
+4. **Prompts:** Prompt Template Editor
+
+**Rationale:**
+- Settings page became too long with Phase 3 additions
+- Users don't need to see all settings at once
+- Logical grouping: basic setup vs. power user features
+- Better UX for mobile/smaller screens
+
+**Status:** ✅ Implemented | **DRI:** AI Assistant
+
+**Impact:**
+- Scope: Settings page UI only
+- Timeline: Same session
+- Architecture: No structural changes; conditional rendering based on active tab
+
+---
+
+## Decision: MyPrivateTools Folder Prevention - 2026-01-02
+
+**Decision:** Add multiple safeguards to prevent MyPrivateTools folder creation during development.
+
+**Problem:** The `MyPrivateTools/Inspiration/.next/` folder kept being created during browser testing, even after deletion. This pollutes the workspace with phantom files.
+
+**Root Cause Analysis:**
+- Unknown external trigger (possibly IDE file watcher, browser MCP, or cached path resolution)
+- Next.js dev server creates `.next` folder in whatever directory it's started from
+- If started from wrong directory, artifacts appear in unexpected locations
+
+**Mitigations Applied:**
+1. **next.config.ts** — Added `validateCwd()` function that:
+   - Checks `process.cwd()` at config load time
+   - Exits with error if directory contains "MyPrivateTools" or "OtherBuilders"
+
+2. **package.json** — Added `predev` script that:
+   - Runs before `npm run dev`
+   - Validates current working directory
+   - Exits with clear error message if wrong
+
+**Status:** ✅ Implemented | **DRI:** AI Assistant
+
+**Impact:**
+- Scope: Development environment only
+- Timeline: Immediate
+- Architecture: No runtime changes; development safety checks only
+
+---
+
 ## Decision: Unified Content Generation Script - 2025-01-30
 
 **Decision:** Merged `insights.py` and `ideas.py` into a single `generate.py` script with `--mode` parameter.

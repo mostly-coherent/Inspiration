@@ -14,7 +14,7 @@ except ImportError:
 
 from typing import Optional
 from .llm import LLMProvider
-from .config import load_config
+from .config import load_config, get_compression_token_threshold
 from .cursor_db import format_conversations_for_prompt
 
 
@@ -36,7 +36,7 @@ def estimate_tokens(text: str) -> int:
 def compress_conversations(
     conversations_text: str,
     llm: Optional[LLMProvider] = None,
-    threshold: int = 10000,
+    threshold: Optional[int] = None,
     compression_model: str = "gpt-3.5-turbo",
 ) -> str:
     """
@@ -45,12 +45,15 @@ def compress_conversations(
     Args:
         conversations_text: Full conversation text
         llm: LLM provider (if None, creates one from config)
-        threshold: Token threshold for compression (default: 10000)
+        threshold: Token threshold for compression (default: from config)
         compression_model: Model to use for compression (default: gpt-3.5-turbo)
     
     Returns:
         Compressed conversation text (or original if below threshold)
     """
+    # Get threshold from config if not provided
+    if threshold is None:
+        threshold = get_compression_token_threshold()
     # Estimate tokens
     estimated_tokens = estimate_tokens(conversations_text)
     

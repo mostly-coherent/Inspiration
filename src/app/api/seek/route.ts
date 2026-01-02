@@ -69,7 +69,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Build request body for Python engine
-    const engineBody: any = {
+    const engineBody: {
+      query: string;
+      daysBack: number;
+      topK: number;
+      minSimilarity: number;
+      workspaces: string[] | undefined;
+    } = {
       query,
       daysBack: effectiveDaysBack,
       topK,
@@ -115,7 +121,7 @@ export async function POST(request: NextRequest) {
 
     // Parse JSON output
     try {
-      let output: any;
+      let output: SeekResult;
       
       if (process.env.PYTHON_ENGINE_URL) {
         // HTTP mode: stdout is JSON string

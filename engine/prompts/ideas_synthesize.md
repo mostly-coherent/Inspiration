@@ -27,31 +27,6 @@ Given Cursor chat history, identify **{item_count} idea briefs** for prototypes,
 - **Professional context:** Useful at work, in business, for side projects, or for learning
 - **Shareable:** Can be open-sourced, documented, and used by others
 
-## Idea Brief Format
-
-Each idea brief should include:
-
-```
-## Idea 1: [Short Name]
-
-**Problem:**  
-[2-3 sentences describing the specific pain point or gap you observed]
-
-**Solution:**  
-[2-4 sentences describing what you'd build and how it works]
-
-**Why It Matters:**  
-[1-2 sentences on who benefits and why this is valuable]
-
-**Prototype Scope (MVP):**  
-- [Core feature 1]
-- [Core feature 2]
-- [Core feature 3]
-
-**Build Complexity:** [Simple / Medium / Complex]  
-**Audience:** [PMs / Builders / Developers / Entrepreneurs / Small Business Owners / etc.]
-```
-
 ## Prioritization Criteria
 
 Generate ideas ranked by:
@@ -60,7 +35,7 @@ Generate ideas ranked by:
 3. **Shareability:** Is it generic enough to open-source and benefit others?
 4. **Uniqueness:** Avoid repeating similar ideas — each should address a distinct problem
 
-## Voice & Style (Ideas-Specific)
+## Voice & Style
 
 - Be **concise** (idea briefs, not essays)
 - Be **practical** (focus on buildable ideas, not pie-in-the-sky visions)
@@ -70,30 +45,31 @@ Generate ideas ranked by:
 Return exactly this structure (generate {item_count} ideas, numbered sequentially):
 
 ```
-## Idea 1: [Short Name]
+## Item 1: [Compelling Idea Name - Hook/Attention Grabber]
 
-**Problem:**  
-[Description]
+**Problem:** [2-3 sentences describing the specific pain point or gap you observed]
 
-**Solution:**  
-[Description]
+**Solution:** [2-4 sentences describing what you'd build and how it works]
 
-**Why It Matters:**  
-[Description]
+**Why It Matters:** [1-2 sentences on who benefits and why this is valuable]
 
-**Prototype Scope (MVP):**  
-- [Feature 1]
-- [Feature 2]
-- [Feature 3]
+**Takeaway:** [Key insight or principle that makes this idea worth building]
 
-**Build Complexity:** [Simple / Medium / Complex]  
-**Audience:** [Target users]
+**Tags:** [tag1], [tag2], [tag3]
 
 ---
 
-## Idea 2: [Short Name]
+## Item 2: [Compelling Idea Name - Hook/Attention Grabber]
 
-[Same format]
+**Problem:** [Description]
+
+**Solution:** [Description]
+
+**Why It Matters:** [Description]
+
+**Takeaway:** [Key insight or principle]
+
+**Tags:** [tag1], [tag2], [tag3]
 
 ---
 
@@ -114,19 +90,30 @@ Return exactly this structure (generate {item_count} ideas, numbered sequentiall
 - ...
 ```
 
+## Title Requirements
+
+The title should be:
+- **Compelling** — Makes reader want to know more
+- **Specific** — Not vague or generic
+- **Concise** — 3-8 words
+- **Action-oriented** — Hints at what it does
+
+Good titles: "The Context Window Calculator", "Doc-to-Spec Converter", "Chat History Miner"
+Bad titles: "Productivity Tool", "AI Helper", "New App Idea"
+
 ## If Nothing Worth Building
 
 If the chats contain no identifiable patterns or pain points worth building for, return:
 
 ```
-## No Ideas Found
+## No Items Found
 
 The chats were routine work with no clear patterns or pain points worth prototyping.
 
 ### What Was Covered
 - [Brief list of topics]
 
-### Why No Ideas
+### Why No Items
 [Brief explanation - e.g., "Debugging session with no recurring themes"]
 
 ### Conversations Analyzed

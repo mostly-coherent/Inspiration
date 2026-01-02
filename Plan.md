@@ -268,22 +268,170 @@ inspiration/
 
 ---
 
+## v3 UX Redesign — Library-Centric Architecture (2026-01-01)
+
+**v3 Goal:** Redesign the frontend to center on the Library (accumulated items) as the core value proposition, with full configuration exposure in Settings. Prepare for public release.
+
+**Core Insight:** The Library is the scoreboard—not just storage. Users measure their learning and productivity by whether their Library is growing with high-quality items. Generation/Seek are tools to grow that number.
+
+### Terminology Changes
+
+| Old Term | New Term | Rationale |
+|----------|----------|-----------|
+| Brain | **Memory** | "Your Memory" = all indexed AI conversations |
+| Bank | **Library** | "Your Library" = accumulated ideas/insights, like building a personal library |
+
+### User Mental Model (Guiding Principles)
+
+1. **Memory completeness:** "Do I have all my chats indexed?" → Show coverage dates, size comparison (local vs. vector), workspace count
+2. **Library growth:** "Is my Library growing?" → Show total items, weekly delta, categories, implemented count
+3. **Analysis assurance:** "Did the app analyze the right chats?" → Show messages analyzed, date range, workspaces searched, before AND after generation
+4. **Easy experimentation:** All parameters (temperature, similarity, LLM assignments) exposed and editable in Settings
+5. **Memory jog:** Items link back to source chat dates and workspaces to help users remember context
+
+### v3 Features
+
+| ID | Feature | Description | Status |
+|----|---------|-------------|--------|
+| V3-1 | **Scoreboard Header** | Always-visible Memory + Library stats at top of page | ✅ Done (Phase 1) |
+| V3-2 | **Two-Panel Layout** | Library (left) + Generate/Seek (right) side-by-side | ✅ Done |
+| V3-3 | **Analysis Coverage Panel** | Show what will be/was analyzed (messages, dates, workspaces) | ✅ Done (Phase 1) |
+| V3-4 | **Library Delta Display** | After generation, show: "Library: 247 → 253 (+6 new)" | ✅ Done (Phase 1) |
+| V3-5 | **Rich Item Cards** | Each item shows: recency, date range, occurrence, category, tags | ✅ Done (Phase 2) |
+| V3-5b | **Library Search & Filter** | Search items, filter by type/status/category, sort options | ✅ Done (Phase 2) |
+| V3-6 | **Full Config Exposure** | All parameters in Settings: LLM assignments, thresholds, prompts | ✅ Done (Phase 3) |
+| V3-7 | **Editable System Prompts** | View/edit prompt templates per mode in Settings | ✅ Done (Phase 3) |
+| V3-8 | **LLM Task Assignments** | Configure which LLM for: generation, judging, embedding, compression | ✅ Done (Phase 3) |
+| V3-9 | **Advanced Thresholds** | Expose: category similarity, compression threshold, judge temperature | ✅ Done (Phase 3) |
+| V3-10 | **Custom Time Presets** | Add/edit time presets (6h, 12h, etc.) | ✅ Done (Phase 3) |
+
+### Configuration Exposure (No Hardcoding)
+
+**LLM Assignments (per task):**
+- Generation LLM (default: Claude Sonnet 4)
+- Judge/Ranking LLM (default: GPT-3.5-turbo)
+- Embedding LLM (default: OpenAI text-embedding-3-small)
+- Compression LLM (default: GPT-3.5-turbo)
+
+**Thresholds (Advanced Settings):**
+- Generation temperature (per mode, already in themes.json)
+- Judge temperature (default: 0.0)
+- Deduplication threshold (per mode, already in themes.json)
+- Category similarity threshold (default: 0.75)
+- Seek min similarity (per mode, already in themes.json)
+- Compression token threshold (default: 10000)
+- Compression date threshold (default: 7 days)
+
+**Prompt Templates (per mode):**
+- System prompt file path (editable)
+- Semantic search queries (already in themes.json)
+
+**Reference Paths:**
+- Voice Guide file
+- Golden Examples folder
+- Posted Insights folder (for "shared" status)
+- Implemented Ideas folder (for "implemented" status)
+
+### UI Layout (v3)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  SCOREBOARD HEADER (always visible)                                         │
+│  🧠 MEMORY: 2.1GB | Jul 15 → Jan 1 | 3 workspaces                          │
+│  📚 LIBRARY: 247 items | +12 this week | 14 categories | 8 implemented     │
+└─────────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────┬─────────────────────────────────────────────┐
+│  📚 LIBRARY                   │  ✨ GENERATE / 🔍 SEEK                       │
+│  [Search...] [Filters]        │  [Mode] [Preset] [⚙️ Advanced]              │
+│                               │                                              │
+│  Categories (collapsible)     │  Analysis Coverage:                         │
+│  • AI Agents (12 items)       │  📅 Dec 18 → Jan 1 | 127 conversations     │
+│  • CLI Tools (8 items)        │                                              │
+│  • ...                        │  [Generate 10 Ideas →]                      │
+│                               │                                              │
+│  Recent Items                 │  ─────────────────────────────────────────  │
+│  • Item 1 (Dec 28)           │  RESULTS                                     │
+│  • Item 2 (Dec 27)           │  ✅ Analyzed 127 conversations               │
+│  • ...                        │  📊 10 generated → 6 new in Library         │
+│                               │                                              │
+└───────────────────────────────┴─────────────────────────────────────────────┘
+```
+
+### Implementation Phases
+
+**Phase 1: Scoreboard + Assurance (High Impact)**
+- V3-1: Scoreboard Header
+- V3-3: Analysis Coverage Panel
+- V3-4: Library Delta Display
+
+**Phase 2: Two-Panel Layout**
+- V3-2: Library (left) + Action (right) layout
+- V3-5: Item Source Context
+
+**Phase 3: Full Configuration**
+- V3-6: Full Config Exposure in Settings
+- V3-7: Editable System Prompts
+- V3-8: LLM Task Assignments
+- V3-9: Advanced Thresholds
+- V3-10: Custom Time Presets
+
+---
+
 ## 🎯 NEXT FOCUS
 
-**Priority:** Maintain stability; app is feature-complete.
+**Priority:** Testing v3 implementation and preparing for public release.
 
 **Current Status:**
 - ✅ v1 implementation complete (all phases done)
 - ✅ v2 Item-Centric Architecture complete
 - ✅ Vector DB architecture stable (2.1GB indexed)
 - ✅ All E2E tests passing (12/12)
+- ✅ v3 Phase 1: Scoreboard Header + Analysis Coverage (DONE)
+- ✅ v3 Phase 2: Rich Item Cards + Library Search (DONE)
+- ✅ v3 Phase 3: Settings Configuration Hub (DONE)
+- ✅ V3-2: Two-Panel Layout (DONE)
 
-**Potential Enhancements (Not Required):**
-- More time presets (6h, 12h options)
-- Bank search/filtering
-- Batch export
-- Auto-refresh brain scheduling
+**v3 Complete!** All v3 features are now implemented.
+
+**Immediate Next Steps:**
+1. ✅ Test v3 UI changes (Scoreboard, Library, Settings with tabs)
+2. ✅ Wire advanced config to Python engine (use config values instead of hardcoded)
+3. ✅ Implement V3-2: Two-Panel Layout
+4. E2E test the full generation flow with new settings
+5. Prepare for public release (README updates, documentation)
 
 ---
 
-**Last Updated:** 2026-01-01
+## 🔮 Improvement Backlog (Post-v3)
+
+**Performance:**
+| ID | Improvement | Priority | Effort |
+|----|-------------|----------|--------|
+| IMP-1 | Server-side pagination for Library (1000+ items) | MEDIUM | HIGH |
+| IMP-8 | Bundle size analysis with `@next/bundle-analyzer` | LOW | LOW |
+
+**UX Enhancements:**
+| ID | Improvement | Priority | Effort |
+|----|-------------|----------|--------|
+| IMP-2 | Persist filter state to URL params | LOW | LOW |
+| IMP-3 | Bulk actions (archive, status change multiple items) | LOW | MEDIUM |
+| IMP-4 | Item detail modal with full chat context | MEDIUM | HIGH |
+| IMP-5 | Export only filtered/selected items | LOW | LOW |
+
+**Reliability:**
+| ID | Improvement | Priority | Effort |
+|----|-------------|----------|--------|
+| IMP-6 | Automatic retry logic for failed operations | LOW | MEDIUM |
+| IMP-7 | Save drafts locally (IndexedDB) for offline resilience | LOW | HIGH |
+| IMP-13 | Prompt template validation (syntax check before save) | MEDIUM | MEDIUM |
+
+**Prompt Editing Risk Mitigation:**
+Users can now edit prompt templates directly in the UI. While we create backups before each save, there's no validation to prevent users from breaking prompts with invalid edits. Future work should include:
+- Syntax validation before save
+- Preview of prompt output with sample data
+- One-click restore from backup
+- Version history with diff view
+
+---
+
+**Last Updated:** 2026-01-02

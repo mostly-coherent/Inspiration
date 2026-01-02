@@ -354,6 +354,102 @@ page.tsx (Orchestrator)
 - **State**: `config`, `currentStep`, form state
 - **API**: `/api/config`
 
+---
+
+### v3 UI Architecture (Library-Centric Layout)
+
+**Terminology:**
+- "Brain" → **Memory** (indexed chat history in Vector DB)
+- "Bank" → **Library** (accumulated ideas/insights/use cases)
+
+**Layout Structure:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  SCOREBOARD HEADER (always visible)                                         │
+│  ┌─────────────────────────────┬───────────────────────────────────────────┐│
+│  │ 🧠 MEMORY                   │ 📚 LIBRARY                                ││
+│  │ 2.1GB | Jul 15 → Jan 1     │ 247 items | +12 this week | 14 categories ││
+│  │ 3 workspaces [🔄 Sync]     │ 8 implemented [View All →]                ││
+│  └─────────────────────────────┴───────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────┬─────────────────────────────────────────────┐
+│  📚 LIBRARY PANEL             │  ✨ ACTION PANEL                             │
+│  ─────────────────────────    │  ─────────────────────────────────────────  │
+│  [Search...] [Filters ▼]      │  [Mode: Idea ▼] [Preset: Sprint ▼]         │
+│                               │  [⚙️ Advanced]                              │
+│  CATEGORIES                   │                                              │
+│  ▼ AI Agents (12 items, +3)  │  ANALYSIS COVERAGE                          │
+│    • Semantic Code Review     │  📅 Dec 18 → Jan 1 (14 days)               │
+│    • Prompt Debugger          │  💬 2,847 messages | 127 conversations      │
+│    • ...                      │  📁 3 workspaces                            │
+│  ▶ CLI Tools (8 items)       │                                              │
+│  ▶ API Patterns (15 items)   │  [Generate 10 Ideas →]                      │
+│                               │  Expected: ~45s | ~$0.23                     │
+│  RECENT ITEMS                 │                                              │
+│  • Item Name (Dec 28)        │  ─────────────────────────────────────────  │
+│  • Item Name (Dec 27)        │  RESULTS / PROGRESS                          │
+│  • ...                        │  ✅ Analyzed 127 conversations               │
+│                               │  📊 15 generated → 10 after dedup           │
+│  ACTIVITY                     │  🏦 Library: 247 → 253 (+6 new)            │
+│  • +6 items (Jan 1, 10:30)   │                                              │
+│  • +3 items (Dec 31, 2:15)   │  [Item cards with source context...]        │
+└───────────────────────────────┴─────────────────────────────────────────────┘
+```
+
+**Component Hierarchy (v3):**
+
+```
+page.tsx
+├─→ ScoreboardHeader (new)
+│   ├─→ MemoryStats (size, coverage, workspaces, sync button)
+│   └─→ LibraryStats (total items, weekly delta, categories, implemented)
+│
+├─→ MainLayout (two-panel)
+│   │
+│   ├─→ LibraryPanel (left)
+│   │   ├─→ SearchBar
+│   │   ├─→ FilterControls
+│   │   ├─→ CategoriesList (collapsible)
+│   │   ├─→ RecentItemsList
+│   │   └─→ ActivityFeed
+│   │
+│   └─→ ActionPanel (right)
+│       ├─→ ModeSelector
+│       ├─→ PresetSelector
+│       ├─→ AdvancedSettings (collapsible)
+│       ├─→ AnalysisCoverage (new - shows what will be analyzed)
+│       ├─→ GenerateButton
+│       ├─→ ProgressPanel (during generation)
+│       └─→ ResultsPanel (after generation)
+│           └─→ ItemCard (with source context)
+│               ├─→ ItemContent
+│               ├─→ SourceContext (dates, workspace, related chats)
+│               └─→ ItemActions (copy, export, mark implemented)
+```
+
+**New Bounded Contexts (v3):**
+
+**5. Scoreboard Context** (`ScoreboardHeader`)
+- **Purpose**: Always-visible Memory + Library status
+- **Boundaries**: Display stats → Sync action → Navigate to Library
+- **State**: `memoryStats`, `libraryStats`, `isSyncing`
+- **API**: `/api/brain-stats`, `/api/items`, `/api/sync`
+
+**6. Library Panel Context** (`LibraryPanel`)
+- **Purpose**: Browse and manage Library items
+- **Boundaries**: Search → Filter → Browse categories → View items
+- **State**: `searchQuery`, `filters`, `expandedCategories`, `selectedItem`
+- **API**: `/api/items`
+
+**7. Analysis Coverage Context** (`AnalysisCoverage`)
+- **Purpose**: Show what data will be/was analyzed
+- **Boundaries**: Display coverage before generation → Update after generation
+- **State**: `coverageStats` (messages, dates, workspaces)
+- **API**: Derived from generation request/response
+
+---
+
 ### Design Principles
 
 1. **Single Responsibility**: Each component has one clear purpose
@@ -1122,4 +1218,57 @@ Users wanting diverse outputs should run multiple queries with different tempera
 
 <!-- Merged from FLOW_ANALYSIS.md on 2026-01-01 - see PIVOTS.md for full decision rationale -->
 
-**Last Updated:** 2026-01-01
+---
+
+## Known Risks, Complexity & Future Improvements (2026-01-02)
+
+### v3 Phase 2 Risks & Complexity
+
+**1. Client-Side Filtering (LibrarySearch)**
+- **Risk:** All items are loaded and filtered in the browser. For large libraries (1000+ items), this could cause UI lag.
+- **Mitigation:** Consider server-side pagination with URL params for filter state.
+- **Threshold:** Watch for 500+ item performance.
+- **Priority:** MEDIUM
+
+**2. Category Lookup Memory Overhead (ItemCard)**
+- **Risk:** We create a `Map<itemId, Category>` on every render.
+- **Mitigation:** Cache category map at BanksOverview level, memoize with `useMemo`.
+- **Current Status:** Memoized with `useMemo`, acceptable for current scale.
+- **Priority:** LOW
+
+**3. No Filter Persistence**
+- **Risk:** Filter settings (search query, type, status) reset on page refresh.
+- **Mitigation:** Use URL query params or localStorage to persist filter state.
+- **Priority:** LOW
+
+**4. MyPrivateTools Folder Recreation**
+- **Risk:** The `MyPrivateTools/Inspiration/.next/` folder keeps being created.
+- **Root Cause:** Unknown external trigger (possibly IDE file watcher or browser MCP cache path resolution).
+- **Mitigations Applied:**
+  - `next.config.ts` validates `process.cwd()` at startup, exits if run from wrong directory.
+  - `package.json` `predev` script checks directory before starting dev server.
+- **Status:** Monitoring - added double safeguard in v3 Phase 2.
+- **Priority:** MEDIUM (recurring issue)
+
+### Suggested Improvements (Backlog)
+
+| ID | Improvement | Category | Priority | Effort |
+|----|-------------|----------|----------|--------|
+| IMP-1 | Server-side pagination for Library (1000+ items) | Performance | MEDIUM | HIGH |
+| IMP-2 | Persist filter state to URL params | UX | LOW | LOW |
+| IMP-3 | Bulk actions (archive, status change multiple items) | Feature | LOW | MEDIUM |
+| IMP-4 | Item detail modal with full chat context | Feature | MEDIUM | HIGH |
+| IMP-5 | Export only filtered/selected items | Feature | LOW | LOW |
+| IMP-6 | Automatic retry logic for failed operations | Reliability | LOW | MEDIUM |
+| IMP-7 | Save drafts locally (IndexedDB) for offline resilience | Reliability | LOW | HIGH |
+| IMP-8 | Bundle size analysis with `@next/bundle-analyzer` | Performance | LOW | LOW |
+
+### Technical Debt
+
+| ID | Issue | Impact | Priority |
+|----|-------|--------|----------|
+| TD-1 | `items/route.ts` has TypeScript errors (pre-existing) | Build warnings | MEDIUM |
+| TD-2 | Unused `ReactMarkdown` import in BanksOverview (removed) | Bundle size | DONE |
+| TD-3 | `page.tsx` is 511+ lines (should split into sections) | Maintainability | MEDIUM |
+
+**Last Updated:** 2026-01-02

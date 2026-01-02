@@ -32,6 +32,13 @@ DEFAULT_CONFIG = {
             "threshold": 10000,  # Compress if prompt exceeds this many tokens (estimated)
             "compressionModel": "gpt-3.5-turbo",  # Model to use for compression
         },
+        # v3 LLM Task Assignments (explicit per-task configuration)
+        "generationModel": "claude-sonnet-4-20250514",
+        "generationProvider": "anthropic",
+        "embeddingModel": "text-embedding-3-small",
+        "embeddingProvider": "openai",
+        "compressionModel": "gpt-3.5-turbo",
+        "compressionProvider": "openai",
     },
     "features": {
         "linkedInSync": {
@@ -50,6 +57,15 @@ DEFAULT_CONFIG = {
         "defaultTool": "insights",
         "defaultMode": "sprint",
     },
+    # v3 Advanced Thresholds
+    "advancedThresholds": {
+        "categorySimilarity": 0.75,  # Threshold for grouping items into categories
+        "judgeTemperature": 0.0,  # Temperature for ranking/judging LLM calls
+        "compressionTokenThreshold": 10000,  # Compress conversations exceeding this token count
+        "compressionDateThreshold": 7,  # Skip compression for date ranges < this many days
+    },
+    # v3 Custom Time Presets
+    "customTimePresets": [],
 }
 
 
@@ -218,6 +234,51 @@ def get_llm_config() -> dict[str, Any]:
     """Get LLM configuration."""
     config = load_config()
     return config.get("llm", DEFAULT_CONFIG["llm"])
+
+
+def get_advanced_thresholds() -> dict[str, Any]:
+    """
+    Get advanced threshold configuration (v3).
+    
+    Returns:
+        Dict with keys:
+        - categorySimilarity: float (0.0-1.0)
+        - judgeTemperature: float (0.0-1.0)
+        - compressionTokenThreshold: int
+        - compressionDateThreshold: int (days)
+    """
+    config = load_config()
+    return config.get("advancedThresholds", DEFAULT_CONFIG["advancedThresholds"])
+
+
+def get_category_similarity_threshold() -> float:
+    """Get the category similarity threshold for grouping items."""
+    thresholds = get_advanced_thresholds()
+    return thresholds.get("categorySimilarity", 0.75)
+
+
+def get_judge_temperature() -> float:
+    """Get the temperature for judge/ranking LLM calls."""
+    thresholds = get_advanced_thresholds()
+    return thresholds.get("judgeTemperature", 0.0)
+
+
+def get_compression_token_threshold() -> int:
+    """Get the token threshold for conversation compression."""
+    thresholds = get_advanced_thresholds()
+    return thresholds.get("compressionTokenThreshold", 10000)
+
+
+def get_compression_date_threshold() -> int:
+    """Get the date range threshold for skipping compression (in days)."""
+    thresholds = get_advanced_thresholds()
+    return thresholds.get("compressionDateThreshold", 7)
+
+
+def get_custom_time_presets() -> list[dict[str, Any]]:
+    """Get custom time presets for generation/seek."""
+    config = load_config()
+    return config.get("customTimePresets", [])
 
 
 def is_setup_complete() -> bool:

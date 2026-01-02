@@ -31,6 +31,12 @@ from common import (
     LLMProvider,
     DEFAULT_ANTHROPIC_MODEL,
 )
+from common.config import (
+    get_category_similarity_threshold,
+    get_judge_temperature,
+    get_compression_token_threshold,
+    get_compression_date_threshold,
+)
 
 # Import v1 unified Items system (required - v0 removed)
 from common.items_bank import ItemsBank
@@ -396,7 +402,14 @@ def _item_to_text_for_embedding(item: dict, mode: str) -> str:
 
 
 def _parse_items_from_output(raw_output: str, mode: str) -> list[dict]:
-    """Parse individual items from LLM output."""
+    """
+    Parse LLM output into structured items with unified content format.
+    
+    All item types now use the same structure:
+    - title: Compelling hook/attention grabber
+    - description: Main content (combines problem+solution, post content, or JTBD)
+    - tags: Auto-generated keywords
+    """
     items = []
     
     if not raw_output or not raw_output.strip():
@@ -412,87 +425,62 @@ def _parse_items_from_output(raw_output: str, mode: str) -> list[dict]:
             lines = lines[:-1]
         content = "\n".join(lines)
     
-    if mode == "ideas":
-        # Pattern: ## Idea N: Title
-        pattern = r'^## Idea \d+:\s*(.+?)(?=^## Idea \d+:|\Z|^## Source|^## Skipped|^## No Ideas)'
-        for i, match in enumerate(re.finditer(pattern, content, re.MULTILINE | re.DOTALL)):
-            full_match = match.group(0)
-            title_line = match.group(1).strip().split('\n')[0]
-            
-            item = {
-                "id": f"Item {i+1}",
-                "title": title_line,
-            }
-            
-            # Extract fields
-            field_patterns = {
-                "problem": r'\*\*Problem:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "solution": r'\*\*Solution:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "why_it_matters": r'\*\*Why It Matters:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "build_complexity": r'\*\*Build Complexity:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "audience": r'\*\*Audience:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-            }
-            
-            for key, field_pattern in field_patterns.items():
-                field_match = re.search(field_pattern, full_match, re.DOTALL | re.IGNORECASE)
-                if field_match:
-                    item[key] = field_match.group(1).strip()
-            
-            if item.get("title"):
-                items.append(item)
+    # Universal pattern: ## Item N: Title (works for all modes)
+    # Also matches legacy patterns for backward compatibility
+    patterns = [
+        r'^## Item \d+:\s*(.+?)(?=^## Item \d+:|\Z|^## Source|^## Skipped|^## No Items|^---\s*$)',
+        r'^## Post \d+:\s*(.+?)(?=^## Post \d+:|\Z|^## Source|^## Skipped|^## No Posts|^---\s*$)',
+        r'^## Idea \d+:\s*(.+?)(?=^## Idea \d+:|\Z|^## Source|^## Skipped|^## No Ideas|^---\s*$)',
+        r'^## Use Case \d+:\s*(.+?)(?=^## Use Case \d+:|\Z|^## Consider|^# Use Cases|^---\s*$)',
+    ]
     
-    elif mode == "insights":
-        # Pattern: ## Post N: Title
-        pattern = r'^## Post \d+:\s*(.+?)(?=^## Post \d+:|\Z|^## Source|^## Skipped|^## No Posts)'
+    for pattern in patterns:
         for i, match in enumerate(re.finditer(pattern, content, re.MULTILINE | re.DOTALL)):
             full_match = match.group(0)
             title_line = match.group(1).strip().split('\n')[0]
             
-            # Extract post content (everything after title line)
+            # Build description from the content after title
             lines = full_match.split('\n')
-            content_lines = []
-            for line in lines[1:]:  # Skip title line
-                if line.startswith('---'):
+            description_parts = []
+            tags = []
+            
+            # Skip title line, collect content
+            for line in lines[1:]:
+                line_stripped = line.strip()
+                
+                # Stop at section breaks
+                if line_stripped.startswith('---'):
                     break
-                content_lines.append(line)
-            post_content = '\n'.join(content_lines).strip()
+                
+                # Extract tags
+                if line_stripped.lower().startswith('**tags:**'):
+                    tag_text = line_stripped.replace('**Tags:**', '').replace('**tags:**', '').strip()
+                    tags = [t.strip().strip(',').strip('[').strip(']') for t in tag_text.split(',') if t.strip()]
+                    continue
+                
+                # Skip empty lines at start
+                if not description_parts and not line_stripped:
+                    continue
+                
+                description_parts.append(line)
             
-            item = {
-                "id": f"Item {i+1}",
-                "title": title_line,
-                "content": post_content,
-            }
+            description = '\n'.join(description_parts).strip()
             
-            if item.get("title"):
+            # Clean up description - remove trailing separators
+            description = re.sub(r'\n---\s*$', '', description).strip()
+            
+            if title_line:
+                item = {
+                    "id": f"Item {i+1}",
+                    "title": title_line,
+                    "description": description,
+                    "tags": tags[:10],  # Cap at 10 tags
+                }
                 items.append(item)
-    
-    elif mode == "use_case":
-        # Pattern: ## Use Case N: Title
-        pattern = r'^## Use Case \d+:\s*(.+?)(?=^## Use Case \d+:|\Z|^## Consider|^# Use Cases)'
-        for i, match in enumerate(re.finditer(pattern, content, re.MULTILINE | re.DOTALL)):
-            full_match = match.group(0)
-            title_line = match.group(1).strip().split('\n')[0]
-            
-            item = {
-                "id": f"Item {i+1}",
-                "title": title_line,
-            }
-            
-            # Extract fields
-            field_patterns = {
-                "what": r'\*\*What:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "how": r'\*\*How:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "context": r'\*\*Context:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "similarity": r'\*\*Similarity:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-            }
-            
-            for key, field_pattern in field_patterns.items():
-                field_match = re.search(field_pattern, full_match, re.DOTALL | re.IGNORECASE)
-                if field_match:
-                    item[key] = field_match.group(1).strip()
-            
-            if item.get("title"):
-                items.append(item)
+        
+        # If we found items with this pattern, stop trying others
+        if items:
+            break
     
     return items
 
@@ -1100,7 +1088,7 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
                 print(f"      Content preview: {content_preview}...", file=sys.stderr)
         
         if items:
-            # Use v1 ItemsBank system
+            # Use v2 ItemsBank system with unified content structure
             bank = ItemsBank()
             
             # Get existing item IDs before processing (to detect new vs updated)
@@ -1111,28 +1099,40 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
             batch_items_updated = 0
             
             for item in items:
-                # Convert item format to ItemsBank format
-                content_dict = {}
-                if mode == "insights":
-                    content_dict = {
-                        "title": item.get("title", ""),
-                        "hook": item.get("hook", ""),
-                        "insight": item.get("key_insight", ""),
-                        "takeaway": item.get("takeaway", ""),
-                    }
-                else:  # ideas
-                    content_dict = {
-                        "title": item.get("title", ""),
-                        "problem": item.get("problem", ""),
-                        "solution": item.get("solution", ""),
-                        "context": item.get("context", ""),
-                    }
+                # Use unified content structure (v2)
+                title = item.get("title", "")
+                description = item.get("description", "")
+                tags = item.get("tags", [])
+                
+                # Fallback: build description from legacy fields if description is empty
+                if not description:
+                    if mode == "insights":
+                        parts = []
+                        if item.get("content"):
+                            parts.append(item["content"])
+                        elif item.get("hook"):
+                            parts.append(item["hook"])
+                        if item.get("key_insight"):
+                            parts.append(f"\n\n{item['key_insight']}")
+                        if item.get("takeaway"):
+                            parts.append(f"\n\n**Takeaway:** {item['takeaway']}")
+                        description = "".join(parts).strip()
+                    else:  # ideas
+                        parts = []
+                        if item.get("problem"):
+                            parts.append(f"**Problem:** {item['problem']}")
+                        if item.get("solution"):
+                            parts.append(f"\n\n**Solution:** {item['solution']}")
+                        if item.get("why_it_matters"):
+                            parts.append(f"\n\n**Why It Matters:** {item['why_it_matters']}")
+                        description = "".join(parts).strip()
                 
                 # Track if item was new or updated
                 returned_id = bank.add_item(
-                    mode=mode_id,
-                    theme=theme_id,
-                    content=content_dict,
+                    item_type=mode_id,
+                    title=title,
+                    description=description,
+                    tags=tags,
                 )
                 
                 batch_items_processed += 1
@@ -1168,10 +1168,12 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
         print(f"\n📂 Generating categories for {mode_id} mode (non-blocking)...", file=sys.stderr)
         try:
             import threading
+            # Get category similarity threshold from config
+            cat_sim_threshold = get_category_similarity_threshold()
             def generate_categories_async():
                 try:
                     bank = ItemsBank()
-                    categories = bank.generate_categories(mode=mode_id, similarity_threshold=0.75)
+                    categories = bank.generate_categories(item_type=mode_id, similarity_threshold=cat_sim_threshold)
                     bank.save()
                     print(f"✅ Created/updated {len(categories)} categor{'y' if len(categories) == 1 else 'ies'} (background)", file=sys.stderr)
                 except Exception as e:
@@ -1185,7 +1187,8 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
             # Fallback to synchronous if threading fails
             print(f"⚠️  Failed to start async category generation, running synchronously: {e}", file=sys.stderr)
             bank = ItemsBank()
-            categories = bank.generate_categories(mode=mode_id, similarity_threshold=0.75)
+            cat_sim_threshold = get_category_similarity_threshold()
+            categories = bank.generate_categories(item_type=mode_id, similarity_threshold=cat_sim_threshold)
             bank.save()
             print(f"✅ Created/updated {len(categories)} categor{'y' if len(categories) == 1 else 'ies'}")
     
@@ -1193,129 +1196,28 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
 
 
 def _parse_output(content: str, mode: Literal["insights", "ideas"]) -> list[dict[str, Any]]:
-    """Parse output file into structured format based on mode."""
-    items = []
+    """
+    Parse output file into structured format with unified content structure.
     
+    Uses the same parsing logic as _parse_items_from_output for consistency.
+    Returns items with title, description, and tags.
+    """
     if not content or not content.strip():
-        return items
+        return []
     
     # Parse the main/best output (before "## All Generated Candidates")
     main_section = content.split("## All Generated Candidates")[0]
     
-    if mode == "insights":
-        # Extract all post sections from main content
-        post_pattern = r'^## Post \d+:\s*(.+?)(?=^## |\Z)'
-        for match in re.finditer(post_pattern, main_section, re.MULTILINE | re.DOTALL):
-            item = {}
-            item["title"] = match.group(1).strip().split('\n')[0]
-            
-            post_content = match.group(0)
-            patterns = {
-                "hook": r'\*\*Hook:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "key_insight": r'\*\*(?:Key )?Insight:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "takeaway": r'\*\*Takeaway:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-            }
-            
-            for key, pattern in patterns.items():
-                pattern_match = re.search(pattern, post_content, re.DOTALL | re.IGNORECASE)
-                if pattern_match:
-                    item[key] = pattern_match.group(1).strip()
-            
-            if item.get("title"):
-                items.append(item)
-        
-        # Parse all candidates section if it exists
-        if "## All Generated Candidates" in content:
-            candidates_section = content.split("## All Generated Candidates")[1]
-            candidate_pattern = r'^### (C\d+)\s*\n\n(.+?)(?=^### |\Z)'
-            for match in re.finditer(candidate_pattern, candidates_section, re.MULTILINE | re.DOTALL):
-                candidate_id = match.group(1)
-                candidate_text = match.group(2).strip()
-                
-                # Parse candidate text for posts
-                for post_match in re.finditer(post_pattern, candidate_text, re.MULTILINE | re.DOTALL):
-                    item = {}
-                    item["title"] = post_match.group(1).strip().split('\n')[0]
-                    item["candidate_id"] = candidate_id
-                    
-                    post_content = post_match.group(0)
-                    patterns = {
-                        "hook": r'\*\*Hook:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                        "key_insight": r'\*\*(?:Key )?Insight:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                        "takeaway": r'\*\*Takeaway:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                    }
-                    
-                    for key, pattern in patterns.items():
-                        pattern_match = re.search(pattern, post_content, re.DOTALL | re.IGNORECASE)
-                        if pattern_match:
-                            item[key] = pattern_match.group(1).strip()
-                    
-                    if item.get("title"):
-                        items.append(item)
+    # Use the unified parser
+    items = _parse_items_from_output(main_section, mode)
     
-    else:  # ideas mode
-        # Extract all idea sections from main content
-        # Try multiple patterns in case format varies
-        idea_patterns = [
-            r'^## Idea \d+:\s*(.+?)(?=^## |\Z)',  # Standard format: ## Idea 1: Title
-            r'^##\s+Idea\s+\d+[:\-]\s*(.+?)(?=^## |\Z)',  # Variant with dash or no colon
-        ]
-        
-        found_items = False
-        for pattern in idea_patterns:
-            for match in re.finditer(pattern, main_section, re.MULTILINE | re.DOTALL):
-                item = {}
-                item["title"] = match.group(1).strip().split('\n')[0]
-                
-                idea_content = match.group(0)
-                patterns = {
-                    "problem": r'\*\*Problem:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                    "solution": r'\*\*Solution:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                    "context": r'\*\*Why It Matters:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                }
-                
-                for key, pattern in patterns.items():
-                    pattern_match = re.search(pattern, idea_content, re.DOTALL | re.IGNORECASE)
-                    if pattern_match:
-                        item[key] = pattern_match.group(1).strip()
-                
-                if item.get("title"):
-                    items.append(item)
-                    found_items = True
-            
-            # If we found items with this pattern, stop trying other patterns
-            if found_items:
-                break
-        
-        # Parse all candidates section if it exists
-        if "## All Generated Candidates" in content:
-            candidates_section = content.split("## All Generated Candidates")[1]
-            candidate_pattern = r'^### (C\d+)\s*\n\n(.+?)(?=^### |\Z)'
-            for match in re.finditer(candidate_pattern, candidates_section, re.MULTILINE | re.DOTALL):
-                candidate_id = match.group(1)
-                candidate_text = match.group(2).strip()
-                
-                # Parse candidate text for ideas (try each pattern)
-                for idea_pattern in idea_patterns:
-                    for idea_match in re.finditer(idea_pattern, candidate_text, re.MULTILINE | re.DOTALL):
-                        item = {}
-                        item["title"] = idea_match.group(1).strip().split('\n')[0]
-                        item["candidate_id"] = candidate_id
-                        
-                        idea_content = idea_match.group(0)
-                        patterns = {
-                            "problem": r'\*\*Problem:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                            "solution": r'\*\*Solution:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                            "context": r'\*\*Why It Matters:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                        }
-                        
-                        for key, pattern in patterns.items():
-                            pattern_match = re.search(pattern, idea_content, re.DOTALL | re.IGNORECASE)
-                            if pattern_match:
-                                item[key] = pattern_match.group(1).strip()
-                        
-                        if item.get("title"):
-                            items.append(item)
+    # Also parse candidates section if it exists
+    if "## All Generated Candidates" in content:
+        candidates_section = content.split("## All Generated Candidates")[1]
+        candidate_items = _parse_items_from_output(candidates_section, mode)
+        for item in candidate_items:
+            item["from_candidates"] = True
+        items.extend(candidate_items)
     
     return items
 
@@ -1363,10 +1265,11 @@ def _sync_posted_status_v1(posts_dir: Path, dry_run: bool = False) -> int:
     from common.folder_tracking import sync_implemented_status_from_folder
     
     # Use folder-based tracking (same as solved status)
+    # Get category similarity threshold from config
     return sync_implemented_status_from_folder(
         folder_path=posts_dir,
         mode="insight",
-        similarity_threshold=0.75,
+        similarity_threshold=get_category_similarity_threshold(),
         dry_run=dry_run,
     )
 
@@ -1395,10 +1298,11 @@ def _sync_solved_status_v1(dry_run: bool = False) -> int:
         return 0
     
     # Use folder-based tracking
+    # Get category similarity threshold from config
     return sync_implemented_status_from_folder(
         folder_path=folder_path,
         mode="idea",
-        similarity_threshold=0.75,
+        similarity_threshold=get_category_similarity_threshold(),
         dry_run=dry_run,
     )
 
@@ -1818,15 +1722,16 @@ def process_aggregated_range(
     
     # Step 4: Compress/distill each conversation individually (lossless compression)
     # Users want signals/reminders, not all details - compression preserves key info
-    # OPTIMIZATION: Skip compression for small date ranges (< 7 days)
+    # OPTIMIZATION: Skip compression for small date ranges (configurable threshold)
     # Small date ranges typically have small prompts; compression adds cost/time without much benefit
     from common.prompt_compression import compress_single_conversation, estimate_tokens
     
     date_range_days = len(dates)
-    skip_compression = date_range_days < 7  # Skip compression for small ranges
+    compression_date_threshold = get_compression_date_threshold()
+    skip_compression = date_range_days < compression_date_threshold
     
     if skip_compression:
-        print(f"⏭️  Skipping compression (date range: {date_range_days} days < 7 days threshold)", file=sys.stderr)
+        print(f"⏭️  Skipping compression (date range: {date_range_days} days < {compression_date_threshold} days threshold)", file=sys.stderr)
         compressed_conversations = all_conversations
     else:
         # Pre-calculate which conversations need compression (avoid redundant formatting)

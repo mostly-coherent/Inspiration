@@ -1,18 +1,20 @@
 "use client";
 
-import { useState, useEffect, memo, useMemo } from "react";
-import ReactMarkdown from "react-markdown";
+import { useState, useEffect, memo, useMemo, useCallback } from "react";
 import { copyToClipboard, downloadFile } from "@/lib/utils";
-import { Item, Category, ThemeType, ModeType } from "@/lib/types";
-import { loadThemesAsync } from "@/lib/themes";
+import { Item, Category } from "@/lib/types";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { SectionErrorBoundary } from "./SectionErrorBoundary";
+import { ItemCard } from "./ItemCard";
+import { LibrarySearch } from "./LibrarySearch";
 
 type ViewMode = "items" | "categories";
 
 export const BanksOverview = memo(function BanksOverview() {
   const [items, setItems] = useState<Item[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [filteredItems, setFilteredItems] = useState<Item[]>([]);
+  const [filteredCategories, setFilteredCategories] = useState<Category[]>([]);
   const [stats, setStats] = useState<{
     totalItems: number;
     totalCategories: number;
@@ -21,58 +23,57 @@ export const BanksOverview = memo(function BanksOverview() {
     implemented: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true); // v3: Default expanded for two-panel layout
   const [viewMode, setViewMode] = useState<ViewMode>("items");
-  const [filterTheme, setFilterTheme] = useState<ThemeType | "all">("all");
-  const [filterMode, setFilterMode] = useState<ModeType | "all">("all");
-  const [showImplemented, setShowImplemented] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Load items on mount
   useEffect(() => {
     loadItems();
-  }, [viewMode, filterTheme, filterMode, showImplemented]);
+  }, []);
 
-  // Filter items and categories based on current filters
-  const filteredItems = useMemo(() => {
-    return items.filter((item) => {
-      if (filterTheme !== "all" && item.theme !== filterTheme) return false;
-      if (filterMode !== "all" && item.mode !== filterMode) return false;
-      if (!showImplemented && item.implemented) return false;
-      return true;
+  // Category lookup map for ItemCard
+  const categoryMap = useMemo(() => {
+    const map = new Map<string, Category>();
+    categories.forEach((cat) => {
+      cat.itemIds.forEach((itemId) => {
+        map.set(itemId, cat);
+      });
     });
-  }, [items, filterTheme, filterMode, showImplemented]);
+    return map;
+  }, [categories]);
 
-  const filteredCategories = useMemo(() => {
-    return categories.filter((category) => {
-      if (filterTheme !== "all" && category.theme !== filterTheme) return false;
-      if (filterMode !== "all" && category.mode !== filterMode) return false;
-      return true;
-    });
-  }, [categories, filterTheme, filterMode]);
+  // Callbacks for LibrarySearch
+  const handleFilteredItemsChange = useCallback((items: Item[]) => {
+    setFilteredItems(items);
+  }, []);
+
+  const handleFilteredCategoriesChange = useCallback((categories: Category[]) => {
+    setFilteredCategories(categories);
+  }, []);
 
   const loadItems = async () => {
     setError(null);
     setLoading(true);
     try {
+      // Load all items and categories (filtering done client-side via LibrarySearch)
       const params = new URLSearchParams({
-        view: viewMode,
-        implemented: showImplemented ? "true" : "false",
+        view: "items",
+        implemented: "true", // Include all statuses, filter client-side
       });
-      
-      if (filterTheme !== "all") {
-        params.append("theme", filterTheme);
-      }
-      if (filterMode !== "all") {
-        params.append("mode", filterMode);
-      }
       
       const res = await fetch(`/api/items?${params}`);
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          setItems(data.items || []);
-          setCategories(data.categories || []);
+          const loadedItems = data.items || [];
+          const loadedCategories = data.categories || [];
+          setItems(loadedItems);
+          setCategories(loadedCategories);
           setStats(data.stats);
+          // Initial filtered state is all items
+          setFilteredItems(loadedItems);
+          setFilteredCategories(loadedCategories);
         } else {
           setError(data.error || "Failed to load items");
         }
@@ -99,43 +100,71 @@ export const BanksOverview = memo(function BanksOverview() {
     }
   };
 
-  const generateItemsMarkdown = (itemsToExport: Item[]): string => {
-    const lines = ["# Items Bank", ""];
-    lines.push(`> **${items.length} items** — ${stats?.implemented || 0} implemented`);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const generateItemsMarkdown = (_items?: Item[]): string => {
+    const lines = ["# Items Library", ""];
+    const implementedCount = items.filter((item) => 
+      item.status === "implemented" || item.status === "posted" || item.implemented
+    ).length;
+    lines.push(`> **${items.length} items** — ${implementedCount} implemented/posted`);
     lines.push("");
     lines.push("---");
     lines.push("");
 
-    // Separate implemented and unimplemented
-    const unimplemented = items.filter((item) => !item.implemented);
-    const implemented = items.filter((item) => item.implemented);
+    // Separate by status
+    const active = items.filter((item) => 
+      (item.status === "active" || !item.status) && !item.implemented
+    );
+    const completed = items.filter((item) => 
+      item.status === "implemented" || item.status === "posted" || item.implemented
+    );
 
-    if (unimplemented.length > 0) {
+    if (active.length > 0) {
       lines.push("## Active Items");
       lines.push("");
-      unimplemented.forEach((item, idx) => {
-        lines.push(`### ${idx + 1}. ${item.name}`);
+      active.forEach((item, idx) => {
+        // Use unified structure: title + description
+        const title = item.title || item.name || item.content?.title || "Untitled";
+        const itemType = item.itemType || item.mode || "unknown";
+        const typeLabel = itemType.charAt(0).toUpperCase() + itemType.slice(1);
+        
+        lines.push(`### ${idx + 1}. ${title}`);
         lines.push("");
-        if (item.content.title) {
-          lines.push(`**Title:** ${item.content.title}`);
+        lines.push(`**Type:** ${typeLabel}`);
+        lines.push("");
+        
+        // Description (unified field)
+        const description = item.description || "";
+        if (description) {
+          lines.push(description);
+          lines.push("");
+        } else {
+          // Fallback to legacy content fields
+          if (item.content?.problem) {
+            lines.push(`**Problem:** ${item.content.problem}`);
+            lines.push("");
+          }
+          if (item.content?.solution) {
+            lines.push(`**Solution:** ${item.content.solution}`);
+            lines.push("");
+          }
+          if (item.content?.hook) {
+            lines.push(`**Hook:** ${item.content.hook}`);
+            lines.push("");
+          }
+          if (item.content?.insight) {
+            lines.push(`**Insight:** ${item.content.insight}`);
+            lines.push("");
+          }
+        }
+        
+        // Tags
+        const tags = item.tags || [];
+        if (tags.length > 0) {
+          lines.push(`**Tags:** ${tags.join(", ")}`);
           lines.push("");
         }
-        if (item.content.problem) {
-          lines.push(`**Problem:** ${item.content.problem}`);
-          lines.push("");
-        }
-        if (item.content.solution) {
-          lines.push(`**Solution:** ${item.content.solution}`);
-          lines.push("");
-        }
-        if (item.content.hook) {
-          lines.push(`**Hook:** ${item.content.hook}`);
-          lines.push("");
-        }
-        if (item.content.insight) {
-          lines.push(`**Insight:** ${item.content.insight}`);
-          lines.push("");
-        }
+        
         lines.push(`*Occurrence: ${item.occurrence}x | First seen: ${item.firstSeen} | Last seen: ${item.lastSeen}*`);
         lines.push("");
         lines.push("---");
@@ -143,14 +172,17 @@ export const BanksOverview = memo(function BanksOverview() {
       });
     }
 
-    if (implemented.length > 0) {
-      lines.push("## Implemented Items");
+    if (completed.length > 0) {
+      lines.push("## Completed Items");
       lines.push("");
-      implemented.forEach((item, idx) => {
-        lines.push(`### ${idx + 1}. ${item.name} ✅`);
+      completed.forEach((item, idx) => {
+        const title = item.title || item.name || item.content?.title || "Untitled";
+        const status = item.status || (item.implemented ? "implemented" : "active");
+        const statusEmoji = status === "posted" ? "📝" : "✅";
+        lines.push(`### ${idx + 1}. ${title} ${statusEmoji}`);
         lines.push("");
         if (item.implementedSource) {
-          lines.push(`*Implemented in: ${item.implementedSource}*`);
+          lines.push(`*Source: ${item.implementedSource}*`);
           lines.push("");
         }
         lines.push("---");
@@ -162,7 +194,7 @@ export const BanksOverview = memo(function BanksOverview() {
   };
 
   const generateCategoriesMarkdown = (categories: Category[], items: Item[]): string => {
-    const lines = ["# Categories Bank", ""];
+    const lines = ["# Categories Library", ""];
     lines.push(`> **${categories.length} categories**`);
     lines.push("");
     lines.push("---");
@@ -188,36 +220,14 @@ export const BanksOverview = memo(function BanksOverview() {
     return lines.join("\n");
   };
 
-  // Get available themes and modes for filters
-  const [availableThemes, setAvailableThemes] = useState<ThemeType[]>([]);
-  const [availableModes, setAvailableModes] = useState<ModeType[]>([]);
-
-  useEffect(() => {
-    loadThemesAsync().then((themesConfig) => {
-      const themes = themesConfig.themes.map((t) => t.id);
-      setAvailableThemes(themes);
-      
-      // Get modes for selected theme
-      const theme = themesConfig.themes.find((t) => t.id === filterTheme);
-      if (theme) {
-        setAvailableModes(theme.modes.map((m) => m.id));
-      } else {
-        // Get all modes
-        const allModes = new Set<ModeType>();
-        themesConfig.themes.forEach((t) => {
-          t.modes.forEach((m) => allModes.add(m.id));
-        });
-        setAvailableModes(Array.from(allModes));
-      }
-    });
-  }, [filterTheme]);
+  // v3: Filters are now handled by LibrarySearch component
 
   if (loading && !stats) {
     return (
       <section className="glass-card p-6 space-y-4 mt-8">
         <div className="flex items-center gap-2 text-adobe-gray-400">
           <LoadingSpinner />
-          <span className="text-sm">Loading bank...</span>
+          <span className="text-sm">Loading library...</span>
         </div>
       </section>
     );
@@ -225,21 +235,32 @@ export const BanksOverview = memo(function BanksOverview() {
   if (!stats && !error) return null;
 
   return (
-    <SectionErrorBoundary sectionName="Banks Overview">
-      <section className="glass-card p-6 space-y-4 mt-8">
+    <SectionErrorBoundary sectionName="Library">
+      <section className="glass-card p-4 lg:p-5 space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-medium text-adobe-gray-300 flex items-center gap-2">
-          <span>🏦</span> Your Bank
+        <h2 className="text-base lg:text-lg font-medium text-adobe-gray-300 flex items-center gap-2">
+          <span>📚</span> Your Library
         </h2>
-        {error && (
+        <div className="flex items-center gap-2">
+          {error && (
+            <button
+              onClick={() => loadItems()}
+              className="text-sm text-inspiration-ideas hover:text-inspiration-ideas/80 transition-colors"
+              aria-label="Retry loading library"
+            >
+              Retry
+            </button>
+          )}
           <button
-            onClick={() => loadItems()}
-            className="text-sm text-inspiration-ideas hover:text-inspiration-ideas/80 transition-colors"
-            aria-label="Retry loading bank"
+            onClick={() => setExpanded(!expanded)}
+            className="p-1 text-adobe-gray-400 hover:text-white transition-colors lg:hidden"
+            aria-label={expanded ? "Collapse library" : "Expand library"}
           >
-            Retry
+            <svg className={`w-5 h-5 transition-transform ${expanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
           </button>
-        )}
+        </div>
       </div>
       
       {error && (
@@ -255,227 +276,144 @@ export const BanksOverview = memo(function BanksOverview() {
       
       {stats && (
         <>
-          {/* Stats Summary */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-            <div className="p-3 bg-black/20 rounded-lg">
-              <div className="text-adobe-gray-400 text-xs mb-1">Total Items</div>
-              <div className="text-white font-medium text-lg">{stats.totalItems}</div>
+          {/* Stats Summary - Compact for sidebar */}
+          <div className="grid grid-cols-4 gap-2 text-sm">
+            <div className="p-2 bg-black/20 rounded-lg text-center">
+              <div className="text-white font-medium">{stats.totalItems}</div>
+              <div className="text-adobe-gray-500 text-xs">Items</div>
             </div>
-            <div className="p-3 bg-black/20 rounded-lg">
-              <div className="text-adobe-gray-400 text-xs mb-1">Categories</div>
-              <div className="text-white font-medium text-lg">{stats.totalCategories}</div>
+            <div className="p-2 bg-black/20 rounded-lg text-center">
+              <div className="text-white font-medium">{stats.totalCategories}</div>
+              <div className="text-adobe-gray-500 text-xs">Cats</div>
             </div>
-            <div className="p-3 bg-black/20 rounded-lg">
-              <div className="text-adobe-gray-400 text-xs mb-1">Implemented</div>
-              <div className="text-white font-medium text-lg">{stats.implemented}</div>
+            <div className="p-2 bg-black/20 rounded-lg text-center">
+              <div className="text-emerald-400 font-medium">{stats.implemented}</div>
+              <div className="text-adobe-gray-500 text-xs">Done</div>
             </div>
-            <div className="p-3 bg-black/20 rounded-lg">
-              <div className="text-adobe-gray-400 text-xs mb-1">Active</div>
-              <div className="text-white font-medium text-lg">{stats.totalItems - stats.implemented}</div>
+            <div className="p-2 bg-black/20 rounded-lg text-center">
+              <div className="text-amber-400 font-medium">{stats.totalItems - stats.implemented}</div>
+              <div className="text-adobe-gray-500 text-xs">Active</div>
             </div>
           </div>
 
-          {/* Filters and View Toggle */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-adobe-gray-400">View:</label>
+          {/* Expandable content (always visible on desktop, collapsible on mobile) */}
+          <div className={`space-y-3 ${expanded ? "block" : "hidden lg:block"}`}>
+            {/* v3: Search and Filters */}
+            <LibrarySearch
+              items={items}
+              categories={categories}
+              onFilteredItemsChange={handleFilteredItemsChange}
+              onFilteredCategoriesChange={handleFilteredCategoriesChange}
+            />
+
+            {/* View Toggle - Compact */}
+            <div className="flex items-center justify-between gap-2">
               <div className="flex gap-1">
                 <button
                   onClick={() => setViewMode("items")}
-                  className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                  className={`px-2 py-1 text-xs rounded-lg transition-colors ${
                     viewMode === "items"
                       ? "bg-white/20 text-white"
                       : "bg-white/10 text-adobe-gray-400 hover:bg-white/15"
                   }`}
                 >
-                  Items
+                  Items ({filteredItems.length})
                 </button>
                 <button
                   onClick={() => setViewMode("categories")}
-                  className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                  className={`px-2 py-1 text-xs rounded-lg transition-colors ${
                     viewMode === "categories"
                       ? "bg-white/20 text-white"
                       : "bg-white/10 text-adobe-gray-400 hover:bg-white/15"
                   }`}
                 >
-                  Categories
+                  Categories ({filteredCategories.length})
                 </button>
               </div>
-            </div>
 
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-adobe-gray-400">Theme:</label>
-              <select
-                value={filterTheme}
-                onChange={(e) => setFilterTheme(e.target.value as ThemeType | "all")}
-                className="px-3 py-1 text-sm bg-black/30 border border-white/10 rounded-lg text-white"
-              >
-                <option value="all">All</option>
-                {availableThemes.map((theme) => (
-                  <option key={theme} value={theme}>
-                    {theme.charAt(0).toUpperCase() + theme.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-adobe-gray-400">Mode:</label>
-              <select
-                value={filterMode}
-                onChange={(e) => setFilterMode(e.target.value as ModeType | "all")}
-                className="px-3 py-1 text-sm bg-black/30 border border-white/10 rounded-lg text-white"
-              >
-                <option value="all">All</option>
-                {availableModes.map((mode) => (
-                  <option key={mode} value={mode}>
-                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <label className="flex items-center gap-2 text-sm text-adobe-gray-400">
-              <input
-                type="checkbox"
-                checked={showImplemented}
-                onChange={(e) => setShowImplemented(e.target.checked)}
-                className="rounded"
-              />
-              Show implemented
-            </label>
-
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="ml-auto px-4 py-2 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
-            >
-              {expanded ? "Collapse" : "Expand"}
-            </button>
-          </div>
-
-          {/* Expanded View */}
-          {expanded && (
-            <div className="mt-4">
-              {/* Export Actions */}
-              <div className="flex gap-2 mb-3">
+              {/* Export Actions - Compact */}
+              <div className="flex gap-1">
                 <button
                   onClick={() => downloadMarkdown(generateMarkdown())}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
-                  aria-label="Export bank as markdown"
+                  className="p-1.5 text-adobe-gray-400 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                  aria-label="Export library as markdown"
+                  title="Export .md"
                 >
-                  <span aria-hidden="true">📥</span> Export .md
+                  <span aria-hidden="true">📥</span>
                 </button>
                 <button
                   onClick={() => copyToClipboard(generateMarkdown())}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
-                  aria-label="Copy bank to clipboard"
+                  className="p-1.5 text-adobe-gray-400 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                  aria-label="Copy library to clipboard"
+                  title="Copy"
                 >
-                  <span aria-hidden="true">📋</span> Copy
+                  <span aria-hidden="true">📋</span>
                 </button>
               </div>
+            </div>
 
-              {/* Content */}
-              <div className="p-4 bg-black/30 rounded-xl border border-white/10 max-h-96 overflow-y-auto">
-                {viewMode === "items" ? (
-                  <div className="space-y-4">
-                    {filteredItems.length === 0 ? (
-                      <p className="text-adobe-gray-400">No items found.</p>
-                    ) : (
-                      filteredItems.map((item) => (
+            {/* Content - Scrollable */}
+            <div className="bg-black/20 rounded-xl border border-white/10 max-h-[50vh] lg:max-h-[60vh] overflow-y-auto">
+              {viewMode === "items" ? (
+                <div className="p-3 space-y-2">
+                  {filteredItems.length === 0 ? (
+                    <div className="text-center py-6">
+                      <p className="text-adobe-gray-400 text-sm">No items found.</p>
+                      <p className="text-adobe-gray-500 text-xs mt-1">Try adjusting your search or filters.</p>
+                    </div>
+                  ) : (
+                    filteredItems.map((item) => (
+                      <ItemCard
+                        key={item.id}
+                        item={item}
+                        category={categoryMap.get(item.id)}
+                      />
+                    ))
+                  )}
+                </div>
+              ) : (
+                <div className="p-3 space-y-3">
+                  {filteredCategories.length === 0 ? (
+                    <p className="text-adobe-gray-400 text-sm">No categories found.</p>
+                  ) : (
+                    filteredCategories.map((category) => {
+                      const categoryItems = filteredItems.filter((item) =>
+                        category.itemIds.includes(item.id)
+                      );
+                      return (
                         <div
-                          key={item.id}
-                          className={`p-4 rounded-lg border ${
-                            item.implemented
-                              ? "border-emerald-500/30 bg-emerald-500/5"
-                              : "border-white/10 bg-white/5"
-                          }`}
+                          key={category.id}
+                          className="p-3 rounded-lg border border-white/10 bg-white/5"
                         >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <h3 className="font-semibold text-white">{item.name}</h3>
-                                {item.implemented && (
-                                  <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">
-                                    ✅ Implemented
-                                  </span>
-                                )}
-                                <span className="text-xs text-adobe-gray-400">
-                                  ({item.occurrence}x)
-                                </span>
+                          <h3 className="font-medium text-white text-sm mb-1">
+                            {category.name}
+                          </h3>
+                          <p className="text-xs text-adobe-gray-500 mb-2">
+                            {categoryItems.length} items
+                          </p>
+                          <div className="space-y-1">
+                            {categoryItems.slice(0, 5).map((item) => (
+                              <div
+                                key={item.id}
+                                className="text-xs text-adobe-gray-300 pl-2 border-l border-white/10"
+                              >
+                                {item.title || item.name}
                               </div>
-                              {item.content.title && (
-                                <p className="text-sm text-adobe-gray-300 mb-2">
-                                  {item.content.title}
-                                </p>
-                              )}
-                              {item.content.problem && (
-                                <p className="text-sm text-adobe-gray-300 mb-1">
-                                  <strong>Problem:</strong> {item.content.problem}
-                                </p>
-                              )}
-                              {item.content.solution && (
-                                <p className="text-sm text-adobe-gray-300 mb-1">
-                                  <strong>Solution:</strong> {item.content.solution}
-                                </p>
-                              )}
-                              {item.content.hook && (
-                                <p className="text-sm text-adobe-gray-300 mb-1">
-                                  <strong>Hook:</strong> {item.content.hook}
-                                </p>
-                              )}
-                              {item.content.insight && (
-                                <p className="text-sm text-adobe-gray-300 mb-1">
-                                  <strong>Insight:</strong> {item.content.insight}
-                                </p>
-                              )}
-                              <p className="text-xs text-adobe-gray-400 mt-2">
-                                {item.firstSeen} → {item.lastSeen}
-                              </p>
-                            </div>
+                            ))}
+                            {categoryItems.length > 5 && (
+                              <div className="text-xs text-adobe-gray-500 pl-2">
+                                +{categoryItems.length - 5} more
+                              </div>
+                            )}
                           </div>
                         </div>
-                      ))
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {filteredCategories.length === 0 ? (
-                      <p className="text-adobe-gray-400">No categories found.</p>
-                    ) : (
-                      filteredCategories.map((category) => {
-                        const categoryItems = filteredItems.filter((item) =>
-                          category.itemIds.includes(item.id)
-                        );
-                        return (
-                          <div
-                            key={category.id}
-                            className="p-4 rounded-lg border border-white/10 bg-white/5"
-                          >
-                            <h3 className="font-semibold text-white mb-2">
-                              {category.name}
-                            </h3>
-                            <p className="text-xs text-adobe-gray-400 mb-3">
-                              {category.theme} / {category.mode} • {categoryItems.length} items
-                            </p>
-                            <div className="space-y-2">
-                              {categoryItems.map((item) => (
-                                <div
-                                  key={item.id}
-                                  className="text-sm text-adobe-gray-300 pl-3 border-l-2 border-white/10"
-                                >
-                                  <strong>{item.name}</strong> ({item.occurrence}x)
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                )}
-              </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </>
       )}
     </section>

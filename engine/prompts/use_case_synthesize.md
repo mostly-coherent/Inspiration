@@ -26,36 +26,6 @@ Given a user's query (what they want to build or post) and relevant chat history
 - **Why:** Problem it solved or goal it achieved
 - **Outcome:** What happened (if mentioned)
 
-### Similarity (the connection)
-- **Relevance score:** How closely it relates to the query (0.0-1.0)
-- **Key similarities:** What makes it relevant
-- **Differences:** How it differs from what they want to build
-
-## Use Case Format
-
-Each use case should include:
-
-```
-## Use Case 1: [Short Name]
-
-**What:**  
-[2-3 sentences describing the project/example from chat history]
-
-**How:**  
-[2-3 sentences describing the approach, tools, or methodology used]
-
-**Context:**  
-[1-2 sentences about when/why this happened, from conversation dates]
-
-**Similarity:**  
-[Score 0.0-1.0] [Brief explanation of why this is relevant]
-
-**Key Takeaways:**  
-- [What they learned or can reuse]
-- [Pattern or approach that applies]
-- [Tool or technique worth remembering]
-```
-
 ## Prioritization Criteria
 
 Generate use cases ranked by:
@@ -80,35 +50,42 @@ Return exactly this structure (generate up to {item_count} use cases, numbered s
 
 Found [N] relevant examples from your chat history:
 
-## Use Case 1: [Short Name]
+## Item 1: [Compelling Use Case Name]
 
-**What:**  
-[Description]
+**Job-to-be-Done:** [What the user was trying to accomplish - the core need or goal]
 
-**How:**  
-[Description]
+**How It Was Done:** [2-3 sentences describing the approach, tools, or methodology used]
 
-**Context:**  
-[Description]
+**Takeaway:** [Key lesson, pattern, or approach that's reusable for the current query]
 
-**Similarity:**  
-[Score] [Explanation]
-
-**Key Takeaways:**  
-- [Takeaway 1]
-- [Takeaway 2]
-- [Takeaway 3]
+**Tags:** [tag1], [tag2], [tag3]
 
 ---
 
-## Use Case 2: [Short Name]
+## Item 2: [Compelling Use Case Name]
 
-[Same format]
+**Job-to-be-Done:** [What the user was trying to accomplish]
+
+**How It Was Done:** [Description]
+
+**Takeaway:** [Key lesson or pattern]
+
+**Tags:** [tag1], [tag2], [tag3]
 
 ---
 
 [Continue for all found use cases...]
 ```
+
+## Title Requirements
+
+The title should be:
+- **Descriptive** — Captures the essence of the use case
+- **Specific** — Not vague or generic
+- **Concise** — 3-8 words
+
+Good titles: "Calendar Sync with Apple API", "Vector DB Migration for Scale", "Chat Export Pipeline"
+Bad titles: "Project 1", "Example", "Use Case"
 
 ## If Nothing Found
 
@@ -116,6 +93,8 @@ If no relevant examples are found, be honest:
 
 ```
 # Use Cases for: [User's Query]
+
+## No Items Found
 
 No similar examples found in the provided chat history. This appears to be a new area for you.
 

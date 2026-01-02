@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback } from "react";
 import { SeekResult } from "@/lib/types";
-import { copyToClipboard } from "@/lib/utils";
+// copyToClipboard imported but may be used in future for individual item copy
 import { LoadingSpinner } from "./LoadingSpinner";
 import { StopIcon } from "./StopIcon";
 import { MarkdownContent } from "./MarkdownContent";
@@ -118,18 +118,6 @@ export function SeekSection({
     }
   };
 
-  // Memoize formatTimestamp function to avoid recreation on every render
-  const formatTimestamp = useMemo(
-    () => (ts: number): string => {
-      try {
-        const date = new Date(ts);
-        return date.toLocaleString();
-      } catch {
-        return String(ts);
-      }
-    },
-    []
-  );
 
   return (
     <section className="glass-card p-6 space-y-6">

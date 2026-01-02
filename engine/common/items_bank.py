@@ -1,12 +1,13 @@
 """
-Unified Items Bank Management — v1 unified system for Ideas, Insights, and Use Cases.
+Unified Items Bank Management — v2 unified system with simplified content structure.
 
-Replaces separate idea_bank.json and insight_bank.json with a single items_bank.json
-that supports user-defined modes and automatic category grouping via cosine similarity.
+All item types (Ideas, Insights, Use Cases) share the same content structure:
+- title: Compelling hook/attention grabber
+- description: Main content with problem, solution, takeaway as appropriate
+- tags: Auto-generated keywords for filtering/discovery
 """
 
 import json
-import hashlib
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -18,16 +19,19 @@ from .semantic_search import get_embedding, cosine_similarity
 
 
 ThemeType = Literal["generation", "seek"]
-ModeType = str  # User-defined modes: "idea", "insight", "use_case", etc.
+ItemType = Literal["insight", "idea", "use_case"]
+StatusType = Literal["active", "implemented", "posted", "archived"]
 
 
 class ItemsBank:
     """Unified bank manager for Items and Categories."""
     
+    CURRENT_VERSION = 3  # Bumped for new unified structure
+    
     def __init__(self, data_dir: Optional[Path] = None):
         self.data_dir = data_dir or get_data_dir()
         self.bank_path = self.data_dir / "items_bank.json"
-        self._bank: dict[str, Any] = {"version": 2, "items": [], "categories": []}
+        self._bank: dict[str, Any] = {"version": self.CURRENT_VERSION, "items": [], "categories": []}
         self._load()
     
     def _load(self) -> None:
@@ -38,19 +42,20 @@ class ItemsBank:
                     self._bank = json.load(f)
                     # Ensure version is set
                     if "version" not in self._bank:
-                        self._bank["version"] = 2
+                        self._bank["version"] = self.CURRENT_VERSION
                     # Ensure items and categories arrays exist
                     if "items" not in self._bank:
                         self._bank["items"] = []
                     if "categories" not in self._bank:
                         self._bank["categories"] = []
             except (json.JSONDecodeError, IOError):
-                self._bank = {"version": 2, "items": [], "categories": []}
+                self._bank = {"version": self.CURRENT_VERSION, "items": [], "categories": []}
     
     def save(self) -> bool:
         """Save bank to disk."""
         try:
             self._bank["last_updated"] = datetime.now().isoformat()
+            self._bank["version"] = self.CURRENT_VERSION
             self.data_dir.mkdir(parents=True, exist_ok=True)
             with open(self.bank_path, "w") as f:
                 json.dump(self._bank, f, indent=2)
@@ -60,40 +65,70 @@ class ItemsBank:
     
     def add_item(
         self,
-        mode: ModeType,
-        theme: ThemeType,
-        content: dict[str, Any],
-        name: Optional[str] = None,
+        item_type: ItemType,
+        title: str,
+        description: str,
+        *,
+        tags: Optional[list[str]] = None,
+        source_conversations: int = 1,
         embedding: Optional[list[float]] = None,
+        # Legacy support - ignore these
+        mode: Optional[str] = None,
+        theme: Optional[str] = None,
+        content: Optional[dict[str, Any]] = None,
+        name: Optional[str] = None,
     ) -> str:
         """
-        Add a new item to the bank.
+        Add a new item to the bank with unified content structure.
         
         Args:
-            mode: Mode identifier (e.g., "idea", "insight", "use_case")
-            theme: Theme identifier ("generation" or "seek")
-            content: Item content (original data from generation)
-            name: Optional name (will be generated if not provided)
+            item_type: Type of item ("insight", "idea", "use_case")
+            title: Compelling title/hook for the item
+            description: Main content (problem+solution, post draft, or JTBD with takeaway)
+            tags: Optional list of tags for filtering/discovery
+            source_conversations: Number of distinct conversations this came from
             embedding: Optional embedding vector (will be generated if not provided)
+            
+            # Legacy parameters (for backward compatibility)
+            mode: Deprecated - maps to item_type
+            theme: Deprecated - ignored
+            content: Deprecated - extracts title/description if new params not provided
+            name: Deprecated - maps to title
         
         Returns:
             Item ID
         """
+        # Handle legacy content dict format
+        if content and not description:
+            title = content.get("title", "") or name or title
+            description = self._extract_description_from_legacy(content, mode or item_type)
+            tags = content.get("tags", tags)
+        
+        # Map legacy mode to item_type
+        if mode and not item_type:
+            item_type = mode  # type: ignore
+        
+        # Use name as title fallback
+        if name and not title:
+            title = name
+        
+        # Validate required fields
+        if not title:
+            title = "Untitled Item"
+        if not description:
+            description = ""
+        
         # Generate item ID
         item_id = f"item-{uuid.uuid4().hex[:8]}"
-        
-        # Generate name if not provided
-        if not name:
-            name = self._generate_item_name(content, mode)
         
         # Generate embedding if not provided
         if not embedding:
             # Create text representation for embedding
-            text = self._item_to_text(content, mode)
+            text = f"{title} {description}"
             embedding = get_embedding(text)
         
         # Check for existing similar item
-        existing_id = self._find_similar_item(embedding, mode, threshold=0.85)
+        existing_id = self._find_similar_item(embedding, item_type, threshold=0.85)
         
         if existing_id:
             # Update existing item
@@ -101,68 +136,81 @@ class ItemsBank:
             if item:
                 item["occurrence"] = item.get("occurrence", 1) + 1
                 item["lastSeen"] = datetime.now().isoformat()[:10]
-                item["content"] = content  # Update content
+                item["sourceConversations"] = item.get("sourceConversations", 1) + source_conversations
+                # Update description if new one is longer/better
+                if len(description) > len(item.get("description", "")):
+                    item["description"] = description
+                # Merge tags
+                existing_tags = set(item.get("tags", []))
+                if tags:
+                    existing_tags.update(tags)
+                item["tags"] = list(existing_tags)[:10]  # Cap at 10 tags
                 return existing_id
         
-        # Create new item
+        # Create new item with unified structure
         item = {
             "id": item_id,
-            "mode": mode,
-            "theme": theme,
-            "name": name,
-            "content": content,
+            "itemType": item_type,
+            "title": title,
+            "description": description,
+            "tags": (tags or [])[:10],  # Cap at 10 tags
             "occurrence": 1,
+            "sourceConversations": source_conversations,
             "firstSeen": datetime.now().isoformat()[:10],
             "lastSeen": datetime.now().isoformat()[:10],
+            "status": "active",
             "categoryId": None,
-            "implemented": False,
-            "implementedDate": None,
-            "implementedSource": None,
             "embedding": embedding,
-            "metadata": {
-                "generatedDate": datetime.now().isoformat()[:10],
-            },
+            # Legacy fields for backward compatibility
+            "mode": item_type,
+            "theme": "generation",
         }
         
         self._bank["items"].append(item)
         return item_id
     
-    def _generate_item_name(self, content: dict[str, Any], mode: ModeType) -> str:
-        """Generate an intuitive name for an item based on its content."""
-        # For ideas: use title or problem
-        if mode == "idea":
-            return content.get("title") or content.get("problem", "Untitled Idea")[:50]
-        # For insights: use title or hook
-        elif mode == "insight":
-            return content.get("title") or content.get("hook", "Untitled Insight")[:50]
-        # For use cases: use description or query
-        elif mode == "use_case":
-            return content.get("description") or content.get("query", "Untitled Use Case")[:50]
-        # Fallback
-        return content.get("title") or content.get("name") or "Untitled Item"
-    
-    def _item_to_text(self, content: dict[str, Any], mode: ModeType) -> str:
-        """Convert item content to text for embedding generation."""
+    def _extract_description_from_legacy(self, content: dict[str, Any], item_type: str) -> str:
+        """Extract description from legacy content dict format."""
         parts = []
         
-        if mode == "idea":
-            parts.append(content.get("title", ""))
-            parts.append(content.get("problem", ""))
-            parts.append(content.get("solution", ""))
-        elif mode == "insight":
-            parts.append(content.get("title", ""))
-            parts.append(content.get("hook", ""))
-            parts.append(content.get("insight", ""))
-        elif mode == "use_case":
-            parts.append(content.get("description", ""))
-            parts.append(content.get("query", ""))
+        if item_type == "insight":
+            # Legacy: hook, insight, takeaway
+            if content.get("hook"):
+                parts.append(content["hook"])
+            if content.get("insight"):
+                parts.append(content["insight"])
+            if content.get("takeaway"):
+                parts.append(f"\n\n**Takeaway:** {content['takeaway']}")
+        elif item_type == "idea":
+            # Legacy: problem, solution
+            if content.get("problem"):
+                parts.append(f"**Problem:** {content['problem']}")
+            if content.get("solution"):
+                parts.append(f"\n\n**Solution:** {content['solution']}")
+            if content.get("why_it_matters"):
+                parts.append(f"\n\n**Why It Matters:** {content['why_it_matters']}")
+        elif item_type == "use_case":
+            # Legacy: what, how, context
+            if content.get("what"):
+                parts.append(f"**What:** {content['what']}")
+            if content.get("how"):
+                parts.append(f"\n\n**How:** {content['how']}")
+            if content.get("takeaways"):
+                parts.append(f"\n\n**Takeaways:** {content['takeaways']}")
         
-        return " ".join(p for p in parts if p)
+        # Fallback to any content field
+        if not parts:
+            if content.get("content"):
+                parts.append(content["content"])
+            elif content.get("description"):
+                parts.append(content["description"])
+        
+        return "".join(parts).strip()
     
     def _find_similar_item(
         self,
         embedding: list[float],
-        mode: ModeType,
+        item_type: ItemType,
         threshold: float = 0.85,
     ) -> Optional[str]:
         """Find similar item using cosine similarity."""
@@ -171,7 +219,9 @@ class ItemsBank:
         best_similarity = 0.0
         
         for item in self._bank["items"]:
-            if item["mode"] != mode:
+            # Check both new itemType and legacy mode
+            item_item_type = item.get("itemType") or item.get("mode")
+            if item_item_type != item_type:
                 continue
             
             if not item.get("embedding"):
@@ -193,23 +243,32 @@ class ItemsBank:
     
     def generate_categories(
         self,
-        mode: Optional[ModeType] = None,
+        item_type: Optional[ItemType] = None,
         similarity_threshold: float = 0.75,
+        # Legacy parameter
+        mode: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """
         Generate categories by grouping similar items using cosine similarity.
         
         Args:
-            mode: Optional mode filter (only group items of this mode)
+            item_type: Optional type filter (only group items of this type)
             similarity_threshold: Minimum similarity for grouping (0.0-1.0)
+            mode: Deprecated - maps to item_type
         
         Returns:
             List of created/updated categories
         """
-        from .semantic_search import cosine_similarity
+        # Legacy support
+        if mode and not item_type:
+            item_type = mode  # type: ignore
         
-        # Filter items by mode if specified
-        items = [item for item in self._bank["items"] if not mode or item["mode"] == mode]
+        # Filter items by type if specified
+        items = []
+        for item in self._bank["items"]:
+            item_item_type = item.get("itemType") or item.get("mode")
+            if not item_type or item_item_type == item_type:
+                items.append(item)
         
         # Group items by similarity
         categories: dict[str, list[str]] = defaultdict(list)
@@ -224,7 +283,9 @@ class ItemsBank:
             best_similarity = 0.0
             
             for cat in self._bank["categories"]:
-                if cat["mode"] != item["mode"]:
+                cat_item_type = cat.get("itemType") or cat.get("mode")
+                item_item_type = item.get("itemType") or item.get("mode")
+                if cat_item_type != item_item_type:
                     continue
                 
                 # Get representative item from category
@@ -253,14 +314,17 @@ class ItemsBank:
         for cat_id, item_ids in categories.items():
             if cat_id in category_names:
                 # New category
+                first_item = self._get_item(item_ids[0]) if item_ids else None
                 category = {
                     "id": cat_id,
                     "name": category_names[cat_id],
-                    "theme": items[0]["theme"] if items else "generation",
-                    "mode": items[0]["mode"] if items else "idea",
+                    "itemType": first_item.get("itemType") or first_item.get("mode") if first_item else "idea",
                     "itemIds": item_ids,
                     "similarityThreshold": similarity_threshold,
                     "createdDate": datetime.now().isoformat()[:10],
+                    # Legacy fields
+                    "theme": "generation",
+                    "mode": first_item.get("itemType") or first_item.get("mode") if first_item else "idea",
                 }
                 self._bank["categories"].append(category)
                 created_categories.append(category)
@@ -289,52 +353,57 @@ class ItemsBank:
         return created_categories
     
     def _generate_category_name(self, items: list[dict[str, Any]]) -> str:
-        """
-        Generate an intuitive name for a category based on its items.
-        Uses LLM for better category names when multiple items are present.
-        """
+        """Generate an intuitive name for a category based on its items."""
         if not items:
             return "Unnamed Category"
         
-        # For single item, use its name
+        # For single item, use its title
         if len(items) == 1:
-            return items[0].get("name", "Category")
+            return items[0].get("title") or items[0].get("name", "Category")
         
         # For multiple items, try to find common words first
-        words = [item.get("name", "").split() for item in items[:5]]
-        common_words = set(words[0])
-        for word_list in words[1:]:
-            common_words &= set(word_list)
+        titles = [item.get("title") or item.get("name", "") for item in items[:5]]
+        words = [t.split() for t in titles if t]
+        if words:
+            common_words = set(words[0])
+            for word_list in words[1:]:
+                common_words &= set(word_list)
+            
+            if common_words:
+                name = " ".join(sorted(common_words)[:3])
+                if len(name) > 50:
+                    name = name[:47] + "..."
+                return name
         
-        if common_words:
-            # Use common words if found
-            name = " ".join(sorted(common_words)[:3])
-            if len(name) > 50:
-                name = name[:47] + "..."
-            return name
-        
-        # Fallback: use first item's name with count
-        base_name = items[0].get("name", "Category")
+        # Fallback: use first item's title with count
+        base_name = items[0].get("title") or items[0].get("name", "Category")
         if len(base_name) > 40:
             base_name = base_name[:37] + "..."
         return f"{base_name} (+{len(items) - 1})"
     
     def get_items(
         self,
-        mode: Optional[ModeType] = None,
-        theme: Optional[ThemeType] = None,
-        implemented: Optional[bool] = None,
+        item_type: Optional[ItemType] = None,
+        status: Optional[StatusType] = None,
         category_id: Optional[str] = None,
+        # Legacy parameters
+        mode: Optional[str] = None,
+        theme: Optional[str] = None,
+        implemented: Optional[bool] = None,
     ) -> list[dict[str, Any]]:
         """Get items with optional filters."""
         items = self._bank["items"]
         
-        if mode:
-            items = [item for item in items if item["mode"] == mode]
-        if theme:
-            items = [item for item in items if item["theme"] == theme]
-        if implemented is not None:
-            items = [item for item in items if item["implemented"] == implemented]
+        # Legacy support
+        if mode and not item_type:
+            item_type = mode  # type: ignore
+        if implemented is not None and not status:
+            status = "implemented" if implemented else "active"
+        
+        if item_type:
+            items = [item for item in items if (item.get("itemType") or item.get("mode")) == item_type]
+        if status:
+            items = [item for item in items if item.get("status", "active") == status]
         if category_id:
             items = [item for item in items if item.get("categoryId") == category_id]
         
@@ -345,38 +414,59 @@ class ItemsBank:
     
     def get_categories(
         self,
-        mode: Optional[ModeType] = None,
-        theme: Optional[ThemeType] = None,
+        item_type: Optional[ItemType] = None,
+        # Legacy parameters
+        mode: Optional[str] = None,
+        theme: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """Get categories with optional filters."""
         categories = self._bank["categories"]
         
-        if mode:
-            categories = [c for c in categories if c["mode"] == mode]
-        if theme:
-            categories = [c for c in categories if c["theme"] == theme]
+        # Legacy support
+        if mode and not item_type:
+            item_type = mode  # type: ignore
+        
+        if item_type:
+            categories = [c for c in categories if (c.get("itemType") or c.get("mode")) == item_type]
         
         # Sort by number of items (largest first)
         categories.sort(key=lambda x: len(x.get("itemIds", [])), reverse=True)
         
         return categories
     
+    def set_status(
+        self,
+        item_id: str,
+        status: StatusType,
+        source: Optional[str] = None,
+    ) -> bool:
+        """Set item status (active, implemented, posted, archived)."""
+        item = self._get_item(item_id)
+        if not item:
+            return False
+        
+        item["status"] = status
+        if status in ("implemented", "posted"):
+            item["statusDate"] = datetime.now().isoformat()[:10]
+            if source:
+                item["statusSource"] = source
+        
+        # Legacy compatibility
+        item["implemented"] = status == "implemented"
+        if status == "implemented":
+            item["implementedDate"] = datetime.now().isoformat()[:10]
+            if source:
+                item["implementedSource"] = source
+        
+        return True
+    
     def mark_implemented(
         self,
         item_id: str,
         source: Optional[str] = None,
     ) -> bool:
-        """Mark an item as implemented."""
-        item = self._get_item(item_id)
-        if not item:
-            return False
-        
-        item["implemented"] = True
-        item["implementedDate"] = datetime.now().isoformat()[:10]
-        if source:
-            item["implementedSource"] = source
-        
-        return True
+        """Mark an item as implemented. Legacy method - use set_status instead."""
+        return self.set_status(item_id, "implemented", source)
     
     def clear(self) -> bool:
         """
@@ -385,7 +475,7 @@ class ItemsBank:
         Returns:
             True if successful
         """
-        self._bank = {"version": 2, "items": [], "categories": []}
+        self._bank = {"version": self.CURRENT_VERSION, "items": [], "categories": []}
         return self.save()
     
     def get_stats(self) -> dict[str, Any]:
@@ -396,20 +486,28 @@ class ItemsBank:
         stats = {
             "totalItems": len(items),
             "totalCategories": len(categories),
+            "byType": {},
+            "byStatus": {},
+            # Legacy fields
             "byMode": {},
             "byTheme": {},
-            "implemented": sum(1 for item in items if item.get("implemented")),
+            "implemented": 0,
         }
         
-        # Count by mode
+        # Count by item type
         for item in items:
-            mode = item["mode"]
-            stats["byMode"][mode] = stats["byMode"].get(mode, 0) + 1
+            item_type = item.get("itemType") or item.get("mode", "unknown")
+            stats["byType"][item_type] = stats["byType"].get(item_type, 0) + 1
+            stats["byMode"][item_type] = stats["byMode"].get(item_type, 0) + 1
         
-        # Count by theme
+        # Count by status
         for item in items:
-            theme = item["theme"]
-            stats["byTheme"][theme] = stats["byTheme"].get(theme, 0) + 1
+            status = item.get("status", "active")
+            stats["byStatus"][status] = stats["byStatus"].get(status, 0) + 1
+            if status == "implemented":
+                stats["implemented"] += 1
+        
+        # Legacy: count by theme (always "generation" now)
+        stats["byTheme"]["generation"] = len(items)
         
         return stats
-

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Theme, Mode, ThemeType, ModeType } from "@/lib/types";
-import { loadThemesAsync, getModeAsync } from "@/lib/themes";
+import { Mode, ThemeType, ModeType } from "@/lib/types";
+import { getModeAsync } from "@/lib/themes";
 
 interface ModeSettingsEditorProps {
   theme: ThemeType;
@@ -23,7 +23,8 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
 
   useEffect(() => {
     loadMode();
-  }, [theme, mode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [theme, mode]); // loadMode is stable, only re-run when theme/mode changes
 
   const loadMode = async () => {
     setLoading(true);

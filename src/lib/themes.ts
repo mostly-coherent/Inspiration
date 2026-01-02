@@ -21,7 +21,9 @@ export async function loadThemesAsync(): Promise<ThemesConfig> {
   // Server-side (Node.js)
   if (typeof window === "undefined") {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { readFileSync } = require("fs");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { join } = require("path");
       const themesPath = join(process.cwd(), "data", "themes.json");
       const content = readFileSync(themesPath, "utf-8");
@@ -64,7 +66,9 @@ export function loadThemes(): ThemesConfig {
 
   if (typeof window === "undefined") {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { readFileSync } = require("fs");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { join } = require("path");
       const themesPath = join(process.cwd(), "data", "themes.json");
       const content = readFileSync(themesPath, "utf-8");

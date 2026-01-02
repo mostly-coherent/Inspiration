@@ -32,7 +32,7 @@ function LoginForm() {
       } else {
         setError(data.error || "Invalid password");
       }
-    } catch (err) {
+    } catch {
       setError("Failed to authenticate. Please try again.");
     } finally {
       setIsLoading(false);
