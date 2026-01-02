@@ -44,7 +44,16 @@ export async function GET(request: NextRequest) {
     }
     if (implemented !== null) {
       const isImplemented = implemented === "true";
-      items = items.filter((item) => item.implemented === isImplemented);
+      items = items.filter((item) => {
+        // Support both new status field and legacy implemented field
+        if (item.status) {
+          return isImplemented 
+            ? (item.status === "implemented" || item.status === "posted")
+            : (item.status === "active" || item.status === "archived");
+        }
+        // Legacy format
+        return item.implemented === isImplemented;
+      });
     }
     
     // Sort by occurrence (highest first)
@@ -69,7 +78,10 @@ export async function GET(request: NextRequest) {
       totalCategories: bank.categories?.length || 0,
       byMode: {} as Record<string, number>,
       byTheme: {} as Record<string, number>,
-      implemented: allItems.filter((item) => item.implemented).length,
+      implemented: allItems.filter((item) => {
+        // Support both new status field and legacy implemented field
+        return item.status === "implemented" || item.status === "posted" || item.implemented === true;
+      }).length,
     };
     
     // Count by mode

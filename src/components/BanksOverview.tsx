@@ -59,7 +59,7 @@ export const BanksOverview = memo(function BanksOverview() {
       // Load all items and categories (filtering done client-side via LibrarySearch)
       const params = new URLSearchParams({
         view: "items",
-        implemented: "true", // Include all statuses, filter client-side
+        // No implemented filter - include all statuses, filter client-side
       });
       
       const res = await fetch(`/api/items?${params}`);

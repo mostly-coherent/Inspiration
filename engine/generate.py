@@ -600,59 +600,58 @@ def items_to_markdown(items: list[dict], mode: str) -> str:
     lines = []
     
     for i, item in enumerate(items, 1):
-        if mode == "ideas":
-            lines.append(f"## Idea {i}: {item.get('title', 'Untitled')}")
+        # Use Item N: format for consistent parsing (matches parser pattern)
+        lines.append(f"## Item {i}: {item.get('title', 'Untitled')}")
+        lines.append("")
+        
+        # v2: Unified description field takes precedence
+        if item.get("description"):
+            lines.append(item["description"])
             lines.append("")
+        
+        # Fallback: Legacy fields for backward compatibility
+        elif mode == "ideas":
             if item.get("problem"):
-                lines.append(f"**Problem:**  ")
-                lines.append(item["problem"])
+                lines.append(f"**Problem:** {item['problem']}")
                 lines.append("")
             if item.get("solution"):
-                lines.append(f"**Solution:**  ")
-                lines.append(item["solution"])
+                lines.append(f"**Solution:** {item['solution']}")
                 lines.append("")
             if item.get("why_it_matters"):
-                lines.append(f"**Why It Matters:**  ")
-                lines.append(item["why_it_matters"])
+                lines.append(f"**Why It Matters:** {item['why_it_matters']}")
                 lines.append("")
             if item.get("build_complexity"):
                 lines.append(f"**Build Complexity:** {item['build_complexity']}")
             if item.get("audience"):
                 lines.append(f"**Audience:** {item['audience']}")
             lines.append("")
-            lines.append("---")
-            lines.append("")
         
         elif mode == "insights":
-            lines.append(f"## Post {i}: {item.get('title', 'Untitled')}")
-            lines.append("")
             if item.get("content"):
                 lines.append(item["content"])
-            lines.append("")
-            lines.append("---")
-            lines.append("")
+                lines.append("")
         
         elif mode == "use_case":
-            lines.append(f"## Use Case {i}: {item.get('title', 'Untitled')}")
-            lines.append("")
             if item.get("what"):
-                lines.append(f"**What:**  ")
-                lines.append(item["what"])
+                lines.append(f"**What:** {item['what']}")
                 lines.append("")
             if item.get("how"):
-                lines.append(f"**How:**  ")
-                lines.append(item["how"])
+                lines.append(f"**How:** {item['how']}")
                 lines.append("")
             if item.get("context"):
-                lines.append(f"**Context:**  ")
-                lines.append(item["context"])
+                lines.append(f"**Context:** {item['context']}")
                 lines.append("")
             if item.get("similarity"):
-                lines.append(f"**Similarity:**  ")
-                lines.append(item["similarity"])
+                lines.append(f"**Similarity:** {item['similarity']}")
                 lines.append("")
-            lines.append("---")
+        
+        # Tags (for all modes)
+        if item.get("tags"):
+            lines.append(f"**Tags:** {', '.join(item['tags'])}")
             lines.append("")
+        
+        lines.append("---")
+        lines.append("")
     
     return "\n".join(lines)
 
