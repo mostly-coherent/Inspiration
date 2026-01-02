@@ -1,7 +1,5 @@
 import { NextRequest } from "next/server";
 import { spawn } from "child_process";
-import { readFile } from "fs/promises";
-import path from "path";
 import { GenerateRequest, TOOL_CONFIG, PRESET_MODES, getToolPath, ThemeType, ModeType, ToolType } from "@/lib/types";
 import { logger } from "@/lib/logger";
 import { resolveThemeModeFromTool, validateThemeMode, getModeSettings } from "@/lib/themes";

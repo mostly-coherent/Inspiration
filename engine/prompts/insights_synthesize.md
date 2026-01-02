@@ -26,7 +26,7 @@ Each post must NOT be:
 - **Corporate** — No buzzword soup
 - **Negative or critical** — No complaints, frustrations, or anything that could harm reputations
 
-## Voice Guidelines (Insights-Specific)
+## Voice Guidelines
 
 ### Use Natural Language
 - "Let's..." (invitations)
@@ -67,15 +67,19 @@ Generate posts ranked by:
 Return exactly this structure (generate {item_count} posts, numbered sequentially):
 
 ```
-## Post 1: [Short Topic Label]
+## Item 1: [Compelling Title - Hook/Attention Grabber]
 
-[Post content - variable length, ready to paste into social media]
+[Post content - variable length, ready to paste into social media. Include the key insight and a clear takeaway for readers.]
+
+**Tags:** [tag1], [tag2], [tag3]
 
 ---
 
-## Post 2: [Short Topic Label]
+## Item 2: [Compelling Title - Hook/Attention Grabber]
 
-[Post content - variable length, ready to paste into social media]
+[Post content - variable length, ready to paste into social media. Include the key insight and a clear takeaway for readers.]
+
+**Tags:** [tag1], [tag2], [tag3]
 
 ---
 
@@ -96,19 +100,30 @@ Return exactly this structure (generate {item_count} posts, numbered sequentiall
 - ...
 ```
 
+## Title Requirements
+
+The title should be:
+- **Compelling** — Makes reader want to know more
+- **Specific** — Not vague or generic
+- **Concise** — 3-8 words
+- **Descriptive** — Hints at the insight without giving it all away
+
+Good titles: "The Documentation Paradox", "Why Context Windows Matter More Than Model Size", "Building for Your Future Self"
+Bad titles: "My Learnings", "AI Insight", "Coding Tips"
+
 ## If Nothing Worth Sharing
 
 If the chats contain nothing insightful, return:
 
 ```
-## No Posts Found
+## No Items Found
 
 The chats were routine work with no novel insights worth sharing.
 
 ### What Was Covered
 - [Brief list of topics]
 
-### Why No Post
+### Why No Items
 [Brief explanation - e.g., "Debugging session with no aha moments"]
 
 ### Conversations Analyzed

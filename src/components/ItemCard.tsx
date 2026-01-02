@@ -1,0 +1,225 @@
+"use client";
+
+import { memo, useState } from "react";
+import { Item, Category } from "@/lib/types";
+
+interface ItemCardProps {
+  item: Item;
+  category?: Category;
+  onStatusChange?: (id: string, status: Item["status"]) => void;
+  isExpanded?: boolean;
+}
+
+// Format date for memory jog (e.g., "Dec 19" or "Dec 19, 2025")
+function formatDateShort(dateStr: string): string {
+  if (!dateStr) return "";
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const isThisYear = date.getFullYear() === now.getFullYear();
+    const options: Intl.DateTimeFormatOptions = isThisYear
+      ? { month: "short", day: "numeric" }
+      : { month: "short", day: "numeric", year: "numeric" };
+    return date.toLocaleDateString("en-US", options);
+  } catch {
+    return dateStr;
+  }
+}
+
+// Calculate days ago for recency indicator
+function getDaysAgo(dateStr: string): number {
+  if (!dateStr) return 999;
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  } catch {
+    return 999;
+  }
+}
+
+// Get recency label and color
+function getRecencyInfo(daysAgo: number): { label: string; color: string } {
+  if (daysAgo <= 1) return { label: "Today", color: "text-emerald-400" };
+  if (daysAgo <= 7) return { label: `${daysAgo}d ago`, color: "text-emerald-400" };
+  if (daysAgo <= 14) return { label: `${daysAgo}d ago`, color: "text-blue-400" };
+  if (daysAgo <= 30) return { label: `${daysAgo}d ago`, color: "text-slate-400" };
+  if (daysAgo <= 90) return { label: `${Math.floor(daysAgo / 7)}w ago`, color: "text-slate-500" };
+  return { label: `${Math.floor(daysAgo / 30)}mo ago`, color: "text-slate-600" };
+}
+
+// Status icons and labels
+const STATUS_CONFIG: Record<Item["status"], { icon: string; label: string; bgColor: string; textColor: string }> = {
+  active: { icon: "💡", label: "Active", bgColor: "bg-amber-500/20", textColor: "text-amber-400" },
+  implemented: { icon: "✅", label: "Built", bgColor: "bg-emerald-500/20", textColor: "text-emerald-400" },
+  posted: { icon: "📝", label: "Posted", bgColor: "bg-purple-500/20", textColor: "text-purple-400" },
+  archived: { icon: "📦", label: "Archived", bgColor: "bg-slate-500/20", textColor: "text-slate-400" },
+};
+
+export const ItemCard = memo(function ItemCard({
+  item,
+  category,
+  onStatusChange,
+  isExpanded: initialExpanded = false,
+}: ItemCardProps) {
+  const [isExpanded, setIsExpanded] = useState(initialExpanded);
+
+  const title = item.title || item.name || (item.content?.title as string) || "Untitled";
+  const itemType = item.itemType || item.mode || "idea";
+  const typeEmoji = itemType === "idea" ? "💡" : itemType === "insight" ? "✨" : "🔍";
+  const status = item.status || (item.implemented ? "implemented" : "active");
+  const statusConfig = STATUS_CONFIG[status] || STATUS_CONFIG.active;
+  
+  const daysAgo = getDaysAgo(item.lastSeen);
+  const recency = getRecencyInfo(daysAgo);
+  const tags = item.tags || [];
+  
+  // Memory jog: First seen to last seen
+  const firstSeenFormatted = formatDateShort(item.firstSeen);
+  const lastSeenFormatted = formatDateShort(item.lastSeen);
+  const dateRange = firstSeenFormatted === lastSeenFormatted
+    ? firstSeenFormatted
+    : `${firstSeenFormatted} → ${lastSeenFormatted}`;
+
+  return (
+    <div
+      className={`group rounded-xl border transition-all duration-200 ${
+        status === "implemented" || status === "posted"
+          ? "border-emerald-500/30 bg-gradient-to-br from-emerald-500/5 to-transparent"
+          : "border-white/10 bg-gradient-to-br from-white/5 to-transparent hover:border-white/20"
+      }`}
+    >
+      {/* Main Content */}
+      <div className="p-4">
+        {/* Header Row */}
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div className="flex-1 min-w-0">
+            {/* Title with type emoji */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-lg">{typeEmoji}</span>
+              <h3 className="font-semibold text-white truncate">{title}</h3>
+            </div>
+          </div>
+          
+          {/* Recency Badge */}
+          <div className={`flex items-center gap-1 text-xs ${recency.color} whitespace-nowrap`}>
+            <span className="opacity-60">●</span>
+            {recency.label}
+          </div>
+        </div>
+
+        {/* Memory Jog Bar */}
+        <div className="flex items-center gap-3 mb-3 text-xs">
+          {/* Date Range */}
+          <div className="flex items-center gap-1 text-slate-400">
+            <span className="opacity-50">📅</span>
+            <span>{dateRange}</span>
+          </div>
+          
+          {/* Occurrence Count */}
+          <div className="flex items-center gap-1 text-slate-400">
+            <span className="opacity-50">💬</span>
+            <span>{item.occurrence || item.sourceConversations || 1}x mentioned</span>
+          </div>
+          
+          {/* Category */}
+          {category && (
+            <div className="flex items-center gap-1 text-slate-500">
+              <span className="opacity-50">📁</span>
+              <span className="truncate max-w-32">{category.name}</span>
+            </div>
+          )}
+          
+          {/* Status */}
+          <div className={`ml-auto flex items-center gap-1 px-2 py-0.5 rounded-full ${statusConfig.bgColor} ${statusConfig.textColor}`}>
+            <span>{statusConfig.icon}</span>
+            <span>{statusConfig.label}</span>
+          </div>
+        </div>
+
+        {/* Description Preview */}
+        {item.description && (
+          <div className="text-sm text-slate-300 mb-2">
+            {isExpanded ? (
+              <div className="whitespace-pre-wrap">{item.description}</div>
+            ) : (
+              <div className="line-clamp-2">
+                {item.description.length > 200 
+                  ? item.description.slice(0, 200) + "..." 
+                  : item.description}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Legacy content fallback */}
+        {!item.description && item.content && (() => {
+          const content = item.content as Record<string, string>;
+          return (
+            <div className="text-sm text-slate-300 mb-2 space-y-1">
+              {content.problem && (
+                <p><span className="text-slate-500">Problem:</span> {content.problem}</p>
+              )}
+              {content.solution && (
+                <p><span className="text-slate-500">Solution:</span> {content.solution}</p>
+              )}
+              {content.hook && (
+                <p><span className="text-slate-500">Hook:</span> {content.hook}</p>
+              )}
+              {content.insight && (
+                <p><span className="text-slate-500">Insight:</span> {content.insight}</p>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Tags */}
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {(isExpanded ? tags : tags.slice(0, 4)).map((tag, i) => (
+              <span
+                key={i}
+                className="text-xs bg-white/5 text-slate-400 px-2 py-0.5 rounded-md border border-white/5"
+              >
+                #{tag}
+              </span>
+            ))}
+            {!isExpanded && tags.length > 4 && (
+              <span className="text-xs text-slate-500">+{tags.length - 4}</span>
+            )}
+          </div>
+        )}
+
+        {/* Expand/Collapse */}
+        {(item.description?.length > 200 || tags.length > 4) && (
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="mt-2 text-xs text-inspiration-ideas hover:text-inspiration-ideas/80 transition-colors"
+          >
+            {isExpanded ? "Show less ↑" : "Show more ↓"}
+          </button>
+        )}
+      </div>
+
+      {/* Quick Actions (shown on hover) */}
+      {onStatusChange && (
+        <div className="hidden group-hover:flex items-center gap-2 px-4 py-2 border-t border-white/5 bg-white/5">
+          <span className="text-xs text-slate-500">Mark as:</span>
+          {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+            key !== status && (
+              <button
+                key={key}
+                onClick={() => onStatusChange(item.id, key as Item["status"])}
+                className={`text-xs px-2 py-1 rounded ${config.bgColor} ${config.textColor} hover:opacity-80 transition-opacity`}
+              >
+                {config.icon} {config.label}
+              </button>
+            )
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
+

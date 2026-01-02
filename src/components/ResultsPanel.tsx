@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, memo, useMemo } from "react";
-import { GenerateResult, TOOL_CONFIG, RankedItem } from "@/lib/types";
+import { GenerateResult, TOOL_CONFIG } from "@/lib/types";
 import { copyToClipboard, downloadFile } from "@/lib/utils";
 import { MarkdownContent } from "./MarkdownContent";
 import { parseRankedItems, extractEstimatedCost } from "@/lib/resultParser";
@@ -38,7 +38,7 @@ export const ResultsPanel = memo(function ResultsPanel({ result }: { result: Gen
         const timestamp = new Date().toISOString().split("T")[0];
         const filename = `${result.tool}_${timestamp}.md`;
         
-        // @ts-ignore - showSaveFilePicker is available in modern browsers
+        // @ts-expect-error - showSaveFilePicker is available in modern browsers
         const fileHandle = await window.showSaveFilePicker({
           suggestedName: filename,
           types: [{
@@ -50,7 +50,7 @@ export const ResultsPanel = memo(function ResultsPanel({ result }: { result: Gen
         const writable = await fileHandle.createWritable();
         await writable.write(content);
         await writable.close();
-      } catch (err) {
+      } catch {
         // User cancelled or error - fallback to download
         const timestamp = new Date().toISOString().split("T")[0];
         const filename = `${result.tool}_${timestamp}.md`;
@@ -125,7 +125,7 @@ export const ResultsPanel = memo(function ResultsPanel({ result }: { result: Gen
           {/* Harmonization Stats */}
           {result.stats.harmonization && (
             <div className="mt-4 pt-4 border-t border-white/10">
-              <h4 className="text-xs font-medium text-adobe-gray-300 mb-2">Harmonization with Bank</h4>
+              <h4 className="text-xs font-medium text-adobe-gray-300 mb-2">Harmonization with Library</h4>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div>
                   <div className="text-adobe-gray-400 text-xs mb-1">Items Processed</div>
@@ -154,7 +154,7 @@ export const ResultsPanel = memo(function ResultsPanel({ result }: { result: Gen
                result.stats.harmonization.itemsAdded === 0 && 
                result.stats.harmonization.itemsUpdated === 0 && (
                 <div className="mt-3 p-2 bg-adobe-gray-800/50 rounded text-xs text-adobe-gray-300">
-                  ℹ️ All generated items were deduplicated against existing bank entries. No new unique {result.tool === "ideas" ? "ideas" : "insights"} found.
+                  ℹ️ All generated items were deduplicated against existing library entries. No new unique {result.tool === "ideas" ? "ideas" : "insights"} found.
                 </div>
               )}
             </div>

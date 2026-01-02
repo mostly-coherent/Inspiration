@@ -23,7 +23,8 @@ export function ModeSettingsManager() {
     if (selectedTheme) {
       loadModes(selectedTheme);
     }
-  }, [selectedTheme]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTheme]); // loadModes is stable, only re-run when theme changes
 
   const loadThemes = async () => {
     setLoading(true);
@@ -198,7 +199,7 @@ export function ModeSettingsManager() {
                                 const data = await response.json();
                                 alert(`Failed to delete: ${data.error}`);
                               }
-                            } catch (error) {
+                            } catch {
                               alert("Failed to delete mode");
                             }
                           }

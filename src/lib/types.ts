@@ -1,5 +1,38 @@
 export type ToolType = "ideas" | "insights";
 
+// v3: LLM Provider Types
+export type LLMProviderType = "anthropic" | "openai" | "openrouter";
+
+// v3: Advanced LLM Configuration
+export interface LLMTaskConfig {
+  provider: LLMProviderType;
+  model: string;
+}
+
+export interface AdvancedLLMConfig {
+  generation: LLMTaskConfig;
+  judge: LLMTaskConfig;
+  embedding: LLMTaskConfig;
+  compression: LLMTaskConfig;
+}
+
+// v3: Global Thresholds
+export interface GlobalThresholds {
+  categorySimilarity: number; // Default: 0.75 - for grouping items into categories
+  judgeTemperature: number; // Default: 0.0 - for ranking/judging
+  compressionTokenThreshold: number; // Default: 10000 - when to compress
+  compressionDateThreshold: number; // Default: 7 - skip compression for ranges under this
+}
+
+// v3: Time Preset Configuration
+export interface TimePreset {
+  id: string;
+  label: string;
+  days: number;
+  hours?: number;
+  isCustom: boolean;
+}
+
 export type PresetMode = "daily" | "sprint" | "month" | "quarter" | "custom";
 
 export interface ModeConfig {
@@ -136,6 +169,7 @@ export const TOOL_CONFIG = {
     getPath: () => {
       // When running in Next.js, resolve relative to project root
       if (typeof window === 'undefined') {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const path = require('path');
         return path.resolve(process.cwd(), 'engine');
       }
@@ -151,6 +185,7 @@ export const TOOL_CONFIG = {
     mode: "insights",
     getPath: () => {
       if (typeof window === 'undefined') {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const path = require('path');
         return path.resolve(process.cwd(), 'engine');
       }
@@ -204,29 +239,35 @@ export interface SeekResult {
   error?: string;
 }
 
-// v1 Unified Items/Categories Types
+// v2 Unified Items/Categories Types
 export type ThemeType = "generation" | "seek";
 export type ModeType = string; // User-defined: "idea", "insight", "use_case", etc.
+export type ItemType = "insight" | "idea" | "use_case";
+export type ItemStatus = "active" | "implemented" | "posted" | "archived";
 
 export interface Item {
   id: string;
-  mode: ModeType;
-  theme: ThemeType;
-  name: string;
-  content: Record<string, any>; // Original item data (varies by mode)
+  // v2 unified fields
+  itemType: ItemType;
+  title: string;
+  description: string;
+  tags: string[];
+  status: ItemStatus;
+  sourceConversations: number; // Number of distinct conversations
+  // Core metadata
   occurrence: number;
   firstSeen: string; // ISO date string
   lastSeen: string; // ISO date string
   categoryId: string | null;
-  implemented: boolean;
-  implementedDate: string | null; // ISO date string
-  implementedSource: string | null; // File path if found via cosine similarity
+  // Legacy fields (for backward compatibility)
+  mode?: ModeType;
+  theme?: ThemeType;
+  name?: string; // Maps to title
+  content?: Record<string, unknown>; // Deprecated - use title + description
+  implemented?: boolean; // Deprecated - use status
+  implementedDate?: string | null;
+  implementedSource?: string | null;
   embedding?: number[]; // For category grouping
-  metadata?: {
-    generatedDate?: string;
-    generationMode?: string;
-    candidatesGenerated?: number;
-  };
 }
 
 export interface Category {

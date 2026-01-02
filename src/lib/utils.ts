@@ -8,7 +8,7 @@
 export async function copyToClipboard(content: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(content);
-  } catch (error) {
+  } catch {
     // Fallback for older browsers
     // NOTE: document.execCommand is deprecated but kept as fallback for browsers
     // that don't support the Clipboard API (e.g., older Safari versions)

@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ModeSettingsManager } from "@/components/ModeSettingsManager";
+import { AdvancedConfigSection } from "@/components/AdvancedConfigSection";
+import { PromptTemplateEditor } from "@/components/PromptTemplateEditor";
 
 interface AppConfig {
   version: number;
@@ -58,12 +60,23 @@ interface AppConfig {
 
 type WizardStep = "workspaces" | "vectordb" | "voice" | "llm" | "features" | "done";
 
+// Tab types for post-setup navigation
+type SettingsTab = "general" | "modes" | "advanced" | "prompts";
+
+const SETTINGS_TABS: { id: SettingsTab; label: string; icon: string }[] = [
+  { id: "general", label: "General", icon: "⚙️" },
+  { id: "modes", label: "Modes", icon: "🎯" },
+  { id: "advanced", label: "Advanced", icon: "🔧" },
+  { id: "prompts", label: "Prompts", icon: "📝" },
+];
+
 export default function SettingsPage() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<WizardStep>("workspaces");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const [chatHistoryPath, setChatHistoryPath] = useState<string | null>(null);
   const [chatHistoryPlatform, setChatHistoryPlatform] = useState<"darwin" | "win32" | null>(null);
   const [chatHistoryExists, setChatHistoryExists] = useState(false);
@@ -80,7 +93,8 @@ export default function SettingsPage() {
     if (config) {
       detectChatHistory();
     }
-  }, [config]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config]); // detectChatHistory is stable, only re-run when config changes
 
   // Auto-detect chat history path
   const detectChatHistory = async () => {
@@ -258,8 +272,33 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {/* Tab Navigation (Setup Complete Mode) */}
+        {config.setupComplete && (
+          <div className="mb-8">
+            <nav className="flex items-center gap-1 p-1 bg-slate-800/50 rounded-lg border border-slate-700/30" role="tablist" aria-label="Settings sections">
+              {SETTINGS_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
+                  aria-controls={`${tab.id}-panel`}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md transition-all ${
+                    activeTab === tab.id
+                      ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-700/50"
+                  }`}
+                >
+                  <span aria-hidden="true">{tab.icon}</span>
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+        )}
+
         {/* Workspaces Section */}
-        {(currentStep === "workspaces" || config.setupComplete) && (
+        {(currentStep === "workspaces" || (config.setupComplete && activeTab === "general")) && (
           <Section
             title="📁 Workspaces"
             description="Directories containing Cursor projects to analyze"
@@ -318,9 +357,9 @@ export default function SettingsPage() {
         )}
 
         {/* VectorDB Setup Section */}
-        {(currentStep === "vectordb" || config.setupComplete) && (
+        {(currentStep === "vectordb" || (config.setupComplete && activeTab === "general")) && (
           <Section
-            title="🧠 Vector Database (Cloud Brain)"
+            title="🧠 Vector Database (Memory)"
             description="Set up Supabase Vector DB for efficient chat history search"
           >
             <div className="space-y-6">
@@ -328,7 +367,7 @@ export default function SettingsPage() {
                 <h4 className="text-blue-400 font-medium mb-2">Why Vector DB?</h4>
                 <p className="text-sm text-slate-400 mb-2">
                   Vector DB enables fast semantic search across your entire chat history, 
-                  even with 2GB+ of conversations. It's required for Inspiration v1.
+                  even with 2GB+ of conversations. It&apos;s required for Inspiration v1.
                 </p>
                 <p className="text-xs text-slate-500">
                   💡 <strong>Setup:</strong> Create a free Supabase project, run the SQL script 
@@ -457,7 +496,7 @@ export default function SettingsPage() {
                   </div>
                 ) : (
                   <p className="text-sm text-slate-500">
-                    Click "Refresh" to auto-detect your Cursor chat history location.
+                    Click &quot;Refresh&quot; to auto-detect your Cursor chat history location.
                   </p>
                 )}
               </div>
@@ -469,7 +508,7 @@ export default function SettingsPage() {
                   <li>Create a free Supabase project at <a href="https://supabase.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">supabase.com</a></li>
                   <li>Run the SQL script: <code className="px-1.5 py-0.5 bg-slate-900 rounded text-xs">engine/scripts/init_vector_db.sql</code></li>
                   <li>Copy your Project URL and Anon Key from Project Settings → API</li>
-                  <li>Enter them above and click "Test Connection"</li>
+                  <li>Enter them above and click &quot;Test Connection&quot;</li>
                 </ol>
               </div>
 
@@ -505,7 +544,7 @@ export default function SettingsPage() {
         )}
 
         {/* Voice & Style Section */}
-        {(currentStep === "voice" || config.setupComplete) && (
+        {(currentStep === "voice" || (config.setupComplete && activeTab === "general")) && (
           <Section
             title="✍️ Your Voice & Style"
             description="Configure how Inspiration captures your authentic writing voice"
@@ -666,7 +705,7 @@ export default function SettingsPage() {
         )}
 
         {/* LLM Settings */}
-        {(currentStep === "llm" || config.setupComplete) && (
+        {(currentStep === "llm" || (config.setupComplete && activeTab === "general")) && (
           <Section
             title="🤖 LLM Provider"
             description="Configure your AI model for generation"
@@ -833,7 +872,7 @@ export default function SettingsPage() {
         )}
 
         {/* Mode Settings Section */}
-        {(currentStep === "features" || config.setupComplete) && (
+        {(config.setupComplete && activeTab === "modes") && (
           <Section
             title="⚙️ Mode Settings"
             description="Configure settings for each generation mode"
@@ -842,8 +881,28 @@ export default function SettingsPage() {
           </Section>
         )}
 
+        {/* Advanced Configuration Section (v3) */}
+        {config.setupComplete && activeTab === "advanced" && (
+          <Section
+            title="🔧 Advanced Configuration"
+            description="Fine-tune LLM assignments, thresholds, and presets"
+          >
+            <AdvancedConfigSection onSave={() => loadConfig()} />
+          </Section>
+        )}
+
+        {/* Prompt Templates Section (v3) */}
+        {config.setupComplete && activeTab === "prompts" && (
+          <Section
+            title="📝 Prompt Templates"
+            description="View and edit system prompts for each generation mode"
+          >
+            <PromptTemplateEditor />
+          </Section>
+        )}
+
         {/* Power Features */}
-        {(currentStep === "features" || config.setupComplete) && (
+        {(currentStep === "features" || (config.setupComplete && activeTab === "general")) && (
           <Section
             title="⚡ Power Features"
             description="Optional features for advanced users"
@@ -872,7 +931,7 @@ export default function SettingsPage() {
                   Social Media Sync
                 </label>
                 <p className="text-xs text-slate-500 mt-1 ml-7">
-                  Mark insights as "shared" when they match your social media posts
+                  Mark insights as &quot;shared&quot; when they match your social media posts
                 </p>
                 {config.features.linkedInSync.enabled && (
                   <div className="mt-3 ml-7">
@@ -917,7 +976,7 @@ export default function SettingsPage() {
                   Solved Status Sync
                 </label>
                 <p className="text-xs text-slate-500 mt-1 ml-7">
-                  Mark ideas as "solved" when they match projects in your workspaces
+                  Mark ideas as &quot;solved&quot; when they match projects in your workspaces
                 </p>
               </div>
             </div>

@@ -21,7 +21,9 @@ import { ExpectedOutput } from "@/components/ExpectedOutput";
 import { LogoutButton } from "@/components/LogoutButton";
 import { SimpleModeSelector } from "@/components/SimpleModeSelector";
 import { RunHistory } from "@/components/RunHistory";
-import { getModeAsync, loadThemesAsync } from "@/lib/themes";
+import { ScoreboardHeader } from "@/components/ScoreboardHeader";
+import { AnalysisCoverage } from "@/components/AnalysisCoverage";
+import { loadThemesAsync } from "@/lib/themes";
 import { saveRunToHistory } from "@/lib/runHistory";
 
 export default function Home() {
@@ -52,13 +54,18 @@ export default function Home() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   
-  // Brain stats
-  const [brainStats, setBrainStats] = useState<{
-    localSize: string | null;
-    vectorSize: string | null;
-    earliestDate: string | null;
-    latestDate: string | null;
-  }>({ localSize: null, vectorSize: null, earliestDate: null, latestDate: null });
+  // Library delta tracking (v3)
+  const [libraryCountBefore, setLibraryCountBefore] = useState<number | null>(null);
+  const [libraryCountAfter, setLibraryCountAfter] = useState<number | null>(null);
+  
+  // Analysis coverage state (v3)
+  const [analysisCoverage, setAnalysisCoverage] = useState<{
+    conversationsAnalyzed?: number;
+    messagesAnalyzed?: number;
+    actualFromDate?: string;
+    actualToDate?: string;
+    workspaces?: number;
+  } | null>(null);
 
   // Progress tracking
   const [progress, setProgress] = useState(0);
@@ -144,24 +151,6 @@ export default function Home() {
     return days;
   }, []);
 
-  // Fetch brain stats
-  const fetchBrainStats = useCallback(async () => {
-    try {
-      const res = await fetch("/api/brain-stats");
-      const data = await res.json();
-      
-      if (data.success) {
-        setBrainStats({
-          localSize: data.localSize,
-          vectorSize: data.vectorSize,
-          earliestDate: data.earliestDate,
-          latestDate: data.latestDate,
-        });
-      }
-    } catch (e) {
-      console.error("Failed to fetch brain stats:", e);
-    }
-  }, []);
 
   // Sync brain with local Cursor history
   const handleSync = useCallback(async () => {
@@ -178,22 +167,21 @@ export default function Home() {
           const { indexed = 0, skipped = 0, failed = 0 } = data.stats;
           if (indexed > 0) {
             const statusMsg = skipped > 0 
-              ? `✓ Synced ${indexed} new items (${skipped} already indexed)`
-              : `✓ Synced ${indexed} new items`;
+              ? `✓ Synced ${indexed} new (${skipped} already indexed)`
+              : `✓ Synced ${indexed} new`;
             setSyncStatus(statusMsg);
           } else if (skipped > 0) {
-            setSyncStatus(`✓ Brain up to date (${skipped} already indexed)`);
+            setSyncStatus(`✓ Up to date (${skipped} indexed)`);
           } else {
-            setSyncStatus("✓ Brain up to date");
+            setSyncStatus("✓ Up to date");
           }
           if (failed > 0) {
             console.warn(`${failed} messages failed to sync`);
           }
         } else {
-          setSyncStatus("✓ Brain up to date");
+          setSyncStatus("✓ Up to date");
         }
-        // Refresh brain stats after sync
-        await fetchBrainStats();
+        // Note: ScoreboardHeader will auto-refresh when syncStatus changes
         // Clear success status after 5 seconds
         setTimeout(() => {
           setSyncStatus((prev) => {
@@ -227,25 +215,39 @@ export default function Home() {
     } finally {
       setIsSyncing(false);
     }
-  }, [isSyncing, fetchBrainStats]);
+  }, [isSyncing]);
 
-  // Auto-sync on mount and fetch brain stats
+  // Auto-sync on mount
   // Note: Only works when running locally (not on Vercel)
   // On Vercel, it will gracefully show "Cloud Mode (Read-only)" status
   useEffect(() => {
-    fetchBrainStats();
     // Auto-sync on first load (only works locally)
+    // ScoreboardHeader will fetch stats on its own
     handleSync().catch((error) => {
       console.error("Auto-sync failed:", error);
-      // Error handling is done in handleSync, so we don't need to set status here
     });
-  }, []); // Run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount - handleSync is stable
 
   const handleGenerate = async () => {
     setIsGenerating(true);
     setResult(null);
     setProgress(0);
     setElapsedSeconds(0);
+    setAnalysisCoverage(null);
+    setLibraryCountBefore(null);
+    setLibraryCountAfter(null);
+    
+    // v3: Fetch library count before generation
+    try {
+      const libRes = await fetch("/api/items?view=items");
+      const libData = await libRes.json();
+      if (libData.success) {
+        setLibraryCountBefore(libData.stats?.totalItems || 0);
+      }
+    } catch (e) {
+      console.error("Failed to fetch library count before:", e);
+    }
     
     // Create new AbortController for this request
     abortController.current = new AbortController();
@@ -308,7 +310,7 @@ export default function Home() {
       let data;
       try {
         data = await response.json();
-      } catch (jsonError) {
+      } catch {
         throw new Error("Invalid JSON response from server");
       }
       
@@ -319,6 +321,25 @@ export default function Home() {
       setProgress(100);
       setProgressPhase("Complete!");
       setResult(data);
+      
+      // v3: Update analysis coverage from result
+      if (data.success && data.stats) {
+        setAnalysisCoverage({
+          conversationsAnalyzed: data.stats.conversationsAnalyzed,
+          workspaces: 3, // TODO: Get actual workspace count from API
+        });
+        
+        // v3: Fetch library count after generation
+        try {
+          const libRes = await fetch("/api/items?view=items");
+          const libData = await libRes.json();
+          if (libData.success) {
+            setLibraryCountAfter(libData.stats?.totalItems || 0);
+          }
+        } catch (e) {
+          console.error("Failed to fetch library count after:", e);
+        }
+      }
       
       // Save to run history
       if (data.success) {
@@ -399,55 +420,11 @@ export default function Home() {
       >
         Skip to main content
       </a>
-      <div className="max-w-5xl mx-auto space-y-8">
+      <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <header className="text-center space-y-4 pt-8 relative">
-          <div className="absolute right-0 top-8 flex items-center gap-2">
-            {/* Sync Status / Refresh Button with Brain Size */}
-            <div className="flex items-center gap-2">
-              {/* Brain Size Display */}
-              {(brainStats.localSize || brainStats.vectorSize) && (
-                <div className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-white/5 text-slate-400">
-                  <span className="text-slate-500">🧠</span>
-                  {brainStats.localSize && (
-                    <span className="text-slate-300">{brainStats.localSize}</span>
-                  )}
-                  {brainStats.localSize && brainStats.vectorSize && (
-                    <span className="text-slate-500">/</span>
-                  )}
-                  {brainStats.vectorSize && (
-                    <span className="text-slate-300">{brainStats.vectorSize}</span>
-                  )}
-                  {brainStats.earliestDate && brainStats.latestDate && (
-                    <>
-                      <span className="text-slate-600">|</span>
-                      <span className="text-slate-400" title="Date range of indexed chats">
-                        {brainStats.earliestDate} → {brainStats.latestDate}
-                      </span>
-                    </>
-                  )}
-                </div>
-              )}
-              
-              <button
-                onClick={handleSync}
-                disabled={isSyncing}
-                className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                  isSyncing 
-                    ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait" 
-                    : syncStatus === "☁️ Cloud Mode (Read-only)"
-                      ? "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
-                      : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white"
-                }`}
-                title={syncStatus === "☁️ Cloud Mode (Read-only)" ? "Running in cloud. Cannot sync from local disk." : "Refresh Brain with latest Cursor history"}
-              >
-                <span className={`text-base ${isSyncing ? "animate-spin" : ""}`}>
-                  {syncStatus === "☁️ Cloud Mode (Read-only)" ? "☁️" : "🔄"}
-                </span>
-                {syncStatus || "Refresh Brain"}
-              </button>
-            </div>
-
+        <header className="text-center space-y-3 pt-6 relative">
+          {/* Settings & Logout - Top Right */}
+          <div className="absolute right-0 top-6 flex items-center gap-2">
             <a 
               href="/settings" 
               className="p-2 text-slate-400 hover:text-amber-400 transition-colors"
@@ -461,147 +438,178 @@ export default function Home() {
             </a>
             <LogoutButton />
           </div>
-          <h1 className="text-5xl font-bold gradient-text mt-48">Inspiration</h1>
-          <p className="text-adobe-gray-400 text-lg">
+          
+          <h1 className="text-4xl font-bold gradient-text mt-8">Inspiration</h1>
+          <p className="text-adobe-gray-400 text-base">
             Turn your Cursor conversations into ideas and insights
           </p>
         </header>
+        
+        {/* v3: Scoreboard Header - Always Visible */}
+        <ScoreboardHeader
+          onSyncClick={handleSync}
+          isSyncing={isSyncing}
+          syncStatus={syncStatus}
+        />
 
-        {/* Mode Selection - Always Visible */}
-        <section className="glass-card p-6 space-y-6">
-          <div className="space-y-4">
-            <h2 className="text-lg font-medium text-adobe-gray-300">
-              What do you want to do?
-            </h2>
-            
-            <SimpleModeSelector
-              selectedModeId={selectedModeId}
-              onModeChange={(modeId, themeId) => {
-                setSelectedModeId(modeId as ModeType);
-                setSelectedTheme(themeId as ThemeType);
-              }}
-            />
-          </div>
-        </section>
-
-        {showSeek ? null : (
-          <>
-        {/* Time Period & Settings Section */}
-        <section className="glass-card p-6 space-y-6">
-
-          {/* Time Period & Settings */}
-          <div className="space-y-4 pt-4 border-t border-white/10">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-medium text-adobe-gray-300">
-                Time period & depth
-              </h2>
-              <button
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="text-sm text-inspiration-ideas hover:text-inspiration-ideas/80 transition-colors"
-              >
-                {showAdvanced ? "← Presets" : "Advanced →"}
-              </button>
-            </div>
-
-            {!showAdvanced ? (
-              <div className="grid grid-cols-4 gap-4">
-                {PRESET_MODES.map((mode) => (
-                  <ModeCard
-                    key={mode.id}
-                    mode={mode}
-                    isSelected={selectedMode === mode.id}
-                    onClick={() => setSelectedMode(mode.id)}
-                  />
-                ))}
+        {/* v3: Two-Panel Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* LEFT PANEL: Library */}
+          <aside className="lg:col-span-5 xl:col-span-4 order-2 lg:order-1">
+            <div className="lg:sticky lg:top-6 space-y-4">
+              <div id="library-section">
+                <BanksOverview />
               </div>
-            ) : (
-              <AdvancedSettings
-                customDays={customDays}
-                setCustomDays={setCustomDays}
-                customItemCount={customItemCount}
-                setCustomItemCount={setCustomItemCount}
-                customTemperature={customTemperature}
-                setCustomTemperature={setCustomTemperature}
-                fromDate={fromDate}
-                setFromDate={setFromDate}
-                toDate={toDate}
-                setToDate={setToDate}
-                useCustomDates={useCustomDates}
-                setUseCustomDates={setUseCustomDates}
-              />
-            )}
-
-            {/* Expected output summary - integrated */}
-            <ExpectedOutput
-              tool={displayTool}
-              days={showAdvanced ? (useCustomDates ? calculateDateRangeDays(fromDate, toDate) : customDays) : (currentModeConfig?.days ?? 14)}
-              hours={!showAdvanced ? currentModeConfig?.hours : undefined}
-              itemCount={getCurrentItemCount()}
-              temperature={showAdvanced ? customTemperature : (currentModeConfig?.temperature ?? 0.4)}
-              estimatedCost={estimateCost(getCurrentItemCount())}
-            />
-          </div>
-        </section>
-
-        {/* Generate Button & Progress - More Prominent */}
-        <div className="space-y-4">
-          {isGenerating ? (
-            <ProgressPanel
-              progress={progress}
-              phase={progressPhase}
-              elapsedSeconds={elapsedSeconds}
-              estimatedSeconds={estimatedSeconds}
-              tool={toolConfig.label}
-              onStop={handleStop}
-            />
-          ) : (
-            <div className="flex justify-center">
-              <button
-                onClick={handleGenerate}
-                className="btn-primary text-2xl px-16 py-5 font-semibold shadow-lg shadow-inspiration-ideas/20 hover:shadow-inspiration-ideas/30 transition-all"
-                aria-busy={isGenerating}
-                aria-live="polite"
-              >
-                <span className="flex items-center gap-3">
-                  <span className="text-3xl">{modeConfig?.icon || toolConfig.icon}</span>
-                  Generate {modeConfig?.name || toolConfig.label}
-                </span>
-              </button>
             </div>
-          )}
+          </aside>
+
+          {/* RIGHT PANEL: Generate/Seek Actions */}
+          <main className="lg:col-span-7 xl:col-span-8 order-1 lg:order-2 space-y-6">
+            {/* Mode Selection */}
+            <section className="glass-card p-5 space-y-4">
+              <h2 className="text-lg font-medium text-adobe-gray-300">
+                What do you want to do?
+              </h2>
+              
+              <SimpleModeSelector
+                selectedModeId={selectedModeId}
+                onModeChange={(modeId, themeId) => {
+                  setSelectedModeId(modeId as ModeType);
+                  setSelectedTheme(themeId as ThemeType);
+                }}
+              />
+            </section>
+
+            {showSeek ? (
+              /* Seek Section */
+              <SeekSection
+                showSeek={showSeek}
+                setShowSeek={setShowSeek}
+                query={reverseQuery}
+                setQuery={setReverseQuery}
+                daysBack={reverseDaysBack}
+                setDaysBack={setReverseDaysBack}
+                topK={reverseTopK}
+                setTopK={setReverseTopK}
+                minSimilarity={reverseMinSimilarity}
+                setMinSimilarity={setReverseMinSimilarity}
+                isSeeking={isSeeking}
+                setIsSeeking={setIsSeeking}
+                result={seekResult}
+                setResult={setSeekResult}
+                abortController={seekAbortController}
+              />
+            ) : (
+              <>
+                {/* Time Period & Settings Section */}
+                <section className="glass-card p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-medium text-adobe-gray-300">
+                      Time period & depth
+                    </h2>
+                    <button
+                      onClick={() => setShowAdvanced(!showAdvanced)}
+                      className="text-sm text-inspiration-ideas hover:text-inspiration-ideas/80 transition-colors"
+                    >
+                      {showAdvanced ? "← Presets" : "Advanced →"}
+                    </button>
+                  </div>
+
+                  {!showAdvanced ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {PRESET_MODES.map((mode) => (
+                        <ModeCard
+                          key={mode.id}
+                          mode={mode}
+                          isSelected={selectedMode === mode.id}
+                          onClick={() => setSelectedMode(mode.id)}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <AdvancedSettings
+                      customDays={customDays}
+                      setCustomDays={setCustomDays}
+                      customItemCount={customItemCount}
+                      setCustomItemCount={setCustomItemCount}
+                      customTemperature={customTemperature}
+                      setCustomTemperature={setCustomTemperature}
+                      fromDate={fromDate}
+                      setFromDate={setFromDate}
+                      toDate={toDate}
+                      setToDate={setToDate}
+                      useCustomDates={useCustomDates}
+                      setUseCustomDates={setUseCustomDates}
+                    />
+                  )}
+
+                  {/* Expected output summary - integrated */}
+                  <ExpectedOutput
+                    tool={displayTool}
+                    days={showAdvanced ? (useCustomDates ? calculateDateRangeDays(fromDate, toDate) : customDays) : (currentModeConfig?.days ?? 14)}
+                    hours={!showAdvanced ? currentModeConfig?.hours : undefined}
+                    itemCount={getCurrentItemCount()}
+                    temperature={showAdvanced ? customTemperature : (currentModeConfig?.temperature ?? 0.4)}
+                    estimatedCost={estimateCost(getCurrentItemCount())}
+                  />
+                </section>
+
+                {/* Generate Button & Progress */}
+                <div className="space-y-4">
+                  {isGenerating ? (
+                    <ProgressPanel
+                      progress={progress}
+                      phase={progressPhase}
+                      elapsedSeconds={elapsedSeconds}
+                      estimatedSeconds={estimatedSeconds}
+                      tool={toolConfig.label}
+                      onStop={handleStop}
+                    />
+                  ) : (
+                    <div className="flex justify-center">
+                      <button
+                        onClick={handleGenerate}
+                        className="btn-primary text-xl px-12 py-4 font-semibold shadow-lg shadow-inspiration-ideas/20 hover:shadow-inspiration-ideas/30 transition-all"
+                        aria-busy={isGenerating}
+                        aria-live="polite"
+                      >
+                        <span className="flex items-center gap-3">
+                          <span className="text-2xl">{modeConfig?.icon || toolConfig.icon}</span>
+                          Generate {modeConfig?.name || toolConfig.label}
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* v3: Analysis Coverage - Shows after generation */}
+                {(result?.success || analysisCoverage) && (
+                  <AnalysisCoverage
+                    plannedDays={showAdvanced ? (useCustomDates ? undefined : customDays) : currentModeConfig?.days}
+                    plannedHours={!showAdvanced ? currentModeConfig?.hours : undefined}
+                    plannedFromDate={useCustomDates ? fromDate : undefined}
+                    plannedToDate={useCustomDates ? toDate : undefined}
+                    conversationsAnalyzed={result?.stats?.conversationsAnalyzed || analysisCoverage?.conversationsAnalyzed}
+                    workspaces={analysisCoverage?.workspaces}
+                    isComplete={result?.success}
+                    itemsGenerated={result?.stats?.itemsGenerated}
+                    itemsAfterDedup={result?.stats?.itemsAfterDedup}
+                    itemsNew={result?.stats?.harmonization?.itemsAdded}
+                    itemsUpdated={result?.stats?.harmonization?.itemsUpdated}
+                    libraryBefore={libraryCountBefore ?? undefined}
+                    libraryAfter={libraryCountAfter ?? undefined}
+                  />
+                )}
+
+                {/* Results */}
+                {result && <ResultsPanel result={result} />}
+
+                {/* Run History */}
+                <RunHistory />
+              </>
+            )}
+          </main>
         </div>
-
-        {/* Results */}
-        {result && <ResultsPanel result={result} />}
-
-        {/* Banks Overview */}
-        <BanksOverview />
-
-        {/* Run History */}
-        <RunHistory />
-          </>
-        )}
-
-        {/* Seek Section - Only shown when Use Case mode is selected */}
-        {showSeek && (
-          <SeekSection
-            showSeek={showSeek}
-            setShowSeek={setShowSeek}
-            query={reverseQuery}
-            setQuery={setReverseQuery}
-            daysBack={reverseDaysBack}
-            setDaysBack={setReverseDaysBack}
-            topK={reverseTopK}
-            setTopK={setReverseTopK}
-            minSimilarity={reverseMinSimilarity}
-            setMinSimilarity={setReverseMinSimilarity}
-            isSeeking={isSeeking}
-            setIsSeeking={setIsSeeking}
-            result={seekResult}
-            setResult={setSeekResult}
-            abortController={seekAbortController}
-          />
-        )}
       </div>
     </main>
   );

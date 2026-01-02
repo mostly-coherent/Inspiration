@@ -18,12 +18,35 @@ interface ScriptResult {
   exitCode: number;
 }
 
+/** Request body type for Python engine calls */
+export interface PythonEngineRequest {
+  query?: string;
+  daysBack?: number;
+  topK?: number;
+  minSimilarity?: number;
+  workspaces?: string[];
+  hours?: number;
+  mode?: string;
+  theme?: string;
+  limit?: number;
+  // Generate endpoint specific
+  preset?: string;
+  days?: number;
+  date?: string;
+  fromDate?: string;
+  toDate?: string;
+  bestOf?: number;
+  temperature?: number | null;
+  dryRun?: boolean;
+  [key: string]: unknown; // Allow additional properties
+}
+
 /**
  * Call Python engine via HTTP (production) or spawn (local development)
  */
 export async function callPythonEngine(
   endpoint: string,
-  body: any,
+  body: PythonEngineRequest,
   signal?: AbortSignal
 ): Promise<ScriptResult> {
   if (USE_LOCAL_PYTHON) {
@@ -40,7 +63,7 @@ export async function callPythonEngine(
  */
 async function callPythonEngineHTTP(
   endpoint: string,
-  body: any,
+  body: PythonEngineRequest,
   signal?: AbortSignal
 ): Promise<ScriptResult> {
   const url = `${PYTHON_ENGINE_URL}/${endpoint}`;
@@ -102,7 +125,7 @@ async function callPythonEngineHTTP(
  */
 async function callPythonEngineLocal(
   endpoint: string,
-  body: any,
+  body: PythonEngineRequest,
   signal?: AbortSignal
 ): Promise<ScriptResult> {
   // Safety check: prevent running from wrong directory (e.g., MyPrivateTools/Inspiration)
@@ -121,7 +144,7 @@ async function callPythonEngineLocal(
   
   // Map endpoint to script
   let script: string;
-  let args: string[] = [];
+  const args: string[] = [];
   
   if (endpoint === "generate") {
     script = "generate.py";
@@ -144,11 +167,11 @@ async function callPythonEngineLocal(
     }
     
     if (body.bestOf) args.push("--best-of", body.bestOf.toString());
-    if (body.temperature !== undefined) args.push("--temperature", body.temperature.toString());
+    if (body.temperature !== undefined && body.temperature !== null) args.push("--temperature", body.temperature.toString());
     if (body.dryRun) args.push("--dry-run");
   } else if (endpoint === "seek") {
     script = "seek.py";
-    args.push("--query", body.query);
+    args.push("--query", body.query || "");
     args.push("--days", (body.daysBack || 90).toString());
     args.push("--top-k", (body.topK || 10).toString());
     args.push("--min-similarity", (body.minSimilarity || 0.0).toString());
@@ -159,7 +182,7 @@ async function callPythonEngineLocal(
         args.push("--workspace", workspace);
       }
     }
-    if (body.temperature !== undefined) args.push("--temperature", body.temperature.toString());
+    if (body.temperature !== undefined && body.temperature !== null) args.push("--temperature", body.temperature.toString());
     if (body.bestOf) args.push("--best-of", body.bestOf.toString());
     if (body.dryRun) args.push("--dry-run");
   } else if (endpoint === "sync") {

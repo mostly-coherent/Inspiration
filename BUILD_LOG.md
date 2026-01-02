@@ -6,6 +6,224 @@
 
 ---
 
+## Progress - 2026-01-02 (V3-2: Two-Panel Layout Implementation)
+
+**Done:**
+
+- ✅ **Two-Panel Layout (V3-2)**
+  - Implemented side-by-side layout: Library (left) + Generate/Seek (right)
+  - Responsive design: stacks vertically on mobile, side-by-side on desktop (lg:)
+  - Library panel (5/12 cols) is sticky on desktop with scrollable content
+  - Action panel (7/12 cols) contains mode selection, time presets, generate button, results, and run history
+  - Widened max container from `max-w-5xl` to `max-w-7xl` to accommodate two panels
+
+- ✅ **Library Component Optimizations**
+  - Compact stats grid (4 columns with icons)
+  - Default expanded state for desktop visibility
+  - Mobile-only collapse toggle
+  - Reduced padding and font sizes for sidebar use
+  - Scrollable content area with `max-h-[60vh]`
+
+- ✅ **LibrarySearch Compact Mode**
+  - 2x2 grid layout for filters (Type, Status, Category, Sort)
+  - Smaller search input with compact styling
+  - All filters accessible without horizontal scrolling
+
+**Evidence:**
+- `src/app/page.tsx` — Two-panel grid layout with `lg:grid-cols-12`
+- `src/components/BanksOverview.tsx` — Compact sidebar styling
+- `src/components/LibrarySearch.tsx` — 2x2 filter grid
+- `npm run build` — ✅ Successful build
+
+**TypeScript:** ✅ Passes (npx tsc --noEmit)
+**ESLint:** ✅ Passes (npx eslint src --max-warnings=0)
+
+---
+
+## Progress - 2026-01-02 (Debug Audit - ESLint & TypeScript Cleanup)
+
+**Done:**
+
+- ✅ **ESLint Configuration Fixed**
+  - Migrated to ESLint 9 flat config format (`eslint.config.mjs`)
+  - Fixed plugin resolution for `@typescript-eslint`
+  - All 16 warnings resolved (0 errors, 0 warnings)
+
+- ✅ **React Hook Dependency Warnings Resolved**
+  - Added `eslint-disable-next-line` with explanatory comments for stable callbacks
+  - Files fixed: `page.tsx`, `settings/page.tsx`, `ModeSettingsEditor.tsx`, `ModeSettingsManager.tsx`, `RunHistory.tsx`
+
+- ✅ **TypeScript Type Safety Improvements**
+  - Replaced `any` types with proper typed interfaces in `pythonEngine.ts`
+  - Created `PythonEngineRequest` interface for engine API calls
+  - Fixed `Record<string, unknown>` handling in `ItemCard.tsx` legacy content fallback
+  - Fixed unused variable warnings across multiple files
+
+- ✅ **Code Quality Fixes**
+  - Added missing import (`getModeAsync`) in `ModeSettingsEditor.tsx`
+  - Fixed function signature mismatch in `BanksOverview.tsx`
+  - Proper type casting for test mocks in `utils.test.ts` and `setup.ts`
+
+**Evidence:**
+- `npx eslint src --max-warnings=0` — ✅ Exit 0 (no warnings)
+- `npx tsc --noEmit` — ✅ Exit 0 (no type errors)
+- `npm run build` — ✅ Successful build
+
+---
+
+## Progress - 2026-01-02 (v3 Phase 3 Wiring + Settings UX)
+
+**Done:**
+
+- ✅ **Wired Advanced Config to Python Engine**
+  - Updated `config.py` with new DEFAULT_CONFIG values for v3 thresholds
+  - Added getter functions: `get_advanced_thresholds()`, `get_category_similarity_threshold()`, `get_judge_temperature()`, `get_compression_token_threshold()`, `get_compression_date_threshold()`, `get_custom_time_presets()`
+  - Updated `generate.py` to read category similarity and compression date thresholds from config
+  - Updated `seek.py` to use config values instead of hardcoded defaults
+  - Updated `prompt_compression.py` to use config for token threshold
+
+- ✅ **Settings Page Tab Navigation**
+  - Added tabbed navigation for settings when setup is complete
+  - Tabs: General | Modes | Advanced | Prompts
+  - Clean separation of concerns:
+    - General: Workspaces, VectorDB, Voice, LLM, Power Features
+    - Modes: Mode Settings Manager
+    - Advanced: LLM Task Assignments, Thresholds, Presets
+    - Prompts: Prompt Template Editor
+  - Amber accent styling consistent with app theme
+
+- ✅ **Plan.md Improvement Backlog Updated**
+  - Added prompt editing risk mitigation item (IMP-13)
+  - Documented future validation needs (syntax check, preview, restore, versioning)
+
+**Evidence:**
+- `engine/common/config.py` — new getter functions (lines 220-260)
+- `engine/generate.py` — imports + usage of config functions
+- `engine/seek.py` — imports + usage of config functions
+- `engine/common/prompt_compression.py` — uses get_compression_token_threshold()
+- `src/app/settings/page.tsx` — tab navigation added
+- `Plan.md` — IMP-13 added to improvement backlog
+
+**TypeScript:** ✅ Passes (npx tsc --noEmit)
+**Python:** ✅ Compiles (py_compile on all modified files)
+
+---
+
+## Progress - 2026-01-01 (v3 Phase 1 Implementation)
+
+**Done:**
+- ✅ Completed v3 UX Redesign planning session
+  - Defined Library-centric architecture (Library as scoreboard, not storage)
+  - Identified terminology changes: Brain → Memory, Bank → Library
+  - Documented user mental model (5 guiding principles)
+  - Audited hardcoded configuration (identified 12+ parameters to expose)
+  - Planned 3-phase implementation approach
+
+- ✅ **Phase 1: Scoreboard + Assurance (COMPLETED)**
+  - Created `ScoreboardHeader` component with Memory and Library stats
+    - Memory section: local size → vector size, date range, sync button
+    - Library section: total items, weekly delta, categories, implemented count
+  - Created `AnalysisCoverage` component for analysis transparency
+    - Shows planned analysis period before generation
+    - Shows conversations analyzed, workspaces covered after generation
+    - Shows Library delta (before → after) with new/updated item counts
+  - Integrated both components into `page.tsx`
+  - Renamed all user-facing "Bank" → "Library" and "Brain" → "Memory"
+    - Updated BanksOverview.tsx (header, loading text, aria labels)
+    - Updated ResultsPanel.tsx (harmonization section)
+    - Updated settings/page.tsx (Vector Database section title)
+
+**Evidence:**
+- `src/components/ScoreboardHeader.tsx` — new component
+- `src/components/AnalysisCoverage.tsx` — new component
+- `src/app/page.tsx` — integrated ScoreboardHeader + AnalysisCoverage
+- Screenshots: `v3-scoreboard-header.png`, `v3-phase1-complete.png`
+
+- ✅ **Bug Fixes (Post Phase 1)**
+  - Fixed "Output file could not be read" error
+    - Root cause: Python deletes output file after harmonizing to Library
+    - Solution: API now recognizes harmonization success (`itemsAdded > 0`) as success
+  - Fixed output file path regex mismatch
+    - Old regex expected `output/...`, new format is `ideas_output/...`
+    - Added fallback to extract absolute path from `📄 Output:` line
+  - Fixed MyPrivateTools/Inspiration folder recreation
+    - Added safety check in `next.config.ts` to abort if running from wrong directory
+    - Deleted orphaned folder
+  - Updated terminology in `route.ts` error messages (bank → library)
+
+- ✅ **Phase 2: Rich Library Experience (COMPLETED)**
+  - Created `ItemCard` component with memory jog features:
+    - Type emoji (💡 idea, ✨ insight, 🔍 use case)
+    - Recency indicator (Today, 3d ago, 2w ago, etc.)
+    - Date range (Dec 19 → Jan 1) for quick context
+    - Occurrence count (💬 3x mentioned)
+    - Category badge
+    - Status indicator (💡 Active, ✅ Built, 📝 Posted, 📦 Archived)
+    - Tags with expand/collapse
+    - Description with truncation and expand
+  - Created `LibrarySearch` component with:
+    - Full-text search (title, description, tags, content)
+    - Type filter (Idea, Insight, Use Case)
+    - Status filter (Active, Built, Posted, Archived)
+    - Category filter (with item counts)
+    - Sort options (Most Recent, Most Mentioned, A-Z)
+    - Clear all filters button
+  - Updated `BanksOverview` to use new components:
+    - Replaced old filter dropdowns with LibrarySearch
+    - Replaced inline item rendering with ItemCard
+    - Added filtered item count display
+    - Increased max height for better scrolling
+
+**Evidence:**
+- `src/components/ItemCard.tsx` — new component
+- `src/components/LibrarySearch.tsx` — new component
+- `src/components/BanksOverview.tsx` — refactored
+
+- ✅ **Phase 3: Settings Configuration Hub (COMPLETED)**
+  - Created `AdvancedConfigSection` component with:
+    - **LLM Task Assignments:** Configure which model to use for each task
+      - Generation (provider + model)
+      - Judging/Ranking (provider + model)
+      - Embedding (model selection)
+      - Compression (provider + model)
+    - **Global Thresholds:** Fine-tune similarity, temperature, and limits
+      - Category similarity (0.5-0.95)
+      - Judge temperature (0.0-1.0)
+      - Compression token threshold (5K-50K)
+      - Compression date threshold (1-30 days)
+    - **Custom Time Presets:** Add/edit custom time windows (6h, 12h, etc.)
+  - Created `PromptTemplateEditor` component with:
+    - View all prompt templates (base, ideas, insights, use_case, judge)
+    - Edit prompts in-browser with syntax highlighting
+    - Automatic backup creation before save
+    - File metadata display (size, last modified)
+  - Created `/api/prompts` API route for reading/writing prompt templates
+  - Updated `src/lib/types.ts` with new configuration types:
+    - `AdvancedLLMConfig`, `LLMTaskConfig`
+    - `GlobalThresholds`
+    - `TimePreset`
+  - Integrated new sections into Settings page
+
+**Evidence:**
+- `src/components/AdvancedConfigSection.tsx` — new component
+- `src/components/PromptTemplateEditor.tsx` — new component
+- `src/app/api/prompts/route.ts` — new API route
+- `src/lib/types.ts` — new type definitions
+- `src/app/settings/page.tsx` — updated with new sections
+
+**In Progress:**
+- [ ] Browser testing of Phase 3 features
+
+**Next:**
+- [ ] Update Plan.md v3 feature status
+- [ ] Wire advanced config to Python engine
+- [ ] Improvement backlog items (post-v3)
+
+**Blockers:**
+- None
+
+---
+
 ## Progress - 2025-12-24
 
 **Done:**

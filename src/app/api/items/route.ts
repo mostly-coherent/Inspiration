@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
-import { ItemsBank, Item, Category } from "@/lib/types";
+import { ItemsBank } from "@/lib/types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const ITEMS_BANK_PATH = path.join(DATA_DIR, "items_bank.json");
@@ -74,12 +74,14 @@ export async function GET(request: NextRequest) {
     
     // Count by mode
     for (const item of allItems) {
-      stats.byMode[item.mode] = (stats.byMode[item.mode] || 0) + 1;
+      const mode = item.mode || "unknown";
+      stats.byMode[mode] = (stats.byMode[mode] || 0) + 1;
     }
     
     // Count by theme
     for (const item of allItems) {
-      stats.byTheme[item.theme] = (stats.byTheme[item.theme] || 0) + 1;
+      const theme = item.theme || "unknown";
+      stats.byTheme[theme] = (stats.byTheme[theme] || 0) + 1;
     }
     
     return NextResponse.json({
