@@ -179,14 +179,20 @@ def index_messages_batch(
     
     indexed_at = datetime.now().isoformat()
     
-    # Prepare batch data
+    # Prepare batch data, deduplicating by message_id (PostgreSQL batch upsert can't handle duplicates within batch)
     batch_data = []
+    seen_ids = set()
     for msg in messages:
         if not msg.get("text", "").strip():
             continue
         
+        msg_id = msg["message_id"]
+        if msg_id in seen_ids:
+            continue  # Skip duplicate message_id within batch
+        seen_ids.add(msg_id)
+        
         batch_data.append({
-            "message_id": msg["message_id"],
+            "message_id": msg_id,
             "text": msg["text"],
             "embedding": msg.get("embedding"),
             "timestamp": msg["timestamp"],  # Chat timestamp (when message occurred)

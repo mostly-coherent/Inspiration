@@ -6,6 +6,7 @@ import { GenerateRequest, GenerateResult, TOOL_CONFIG, PRESET_MODES, getToolPath
 import { logger } from "@/lib/logger";
 import { parseRankedItems, extractEstimatedCost } from "@/lib/resultParser";
 import { resolveThemeModeFromTool, validateThemeMode, getModeSettings, getMode } from "@/lib/themes";
+import { getPythonPath } from "@/lib/pythonPath";
 
 // Performance note (v2 Item-Centric Architecture):
 // - itemCount: Single LLM call generates N items (no more parallel candidate calls)
@@ -166,8 +167,9 @@ export async function POST(request: NextRequest) {
 
     // Get tool path dynamically
     const toolPath = getToolPath(resolvedTool);
+    const pythonPath = getPythonPath();
     
-    logger.log(`[Inspiration] Running: python3 ${toolConfig.script} ${args.join(" ")}`);
+    logger.log(`[Inspiration] Running: ${pythonPath} ${toolConfig.script} ${args.join(" ")}`);
     logger.log(`[Inspiration] Working directory: ${toolPath}`);
 
     // Execute Python script with abort signal support
@@ -382,8 +384,9 @@ async function runPythonScript(
   args: string[],
   signal?: AbortSignal
 ): Promise<ScriptResult> {
+  const pythonPath = getPythonPath();
   return new Promise((resolve, reject) => {
-    const proc = spawn("python3", [script, ...args], {
+    const proc = spawn(pythonPath, [script, ...args], {
       cwd,
       env: {
         ...process.env,

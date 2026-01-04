@@ -1097,6 +1097,10 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
             batch_items_added = 0
             batch_items_updated = 0
             
+            # OPTIMIZATION: Prepare all items first, then batch-generate embeddings
+            from common.semantic_search import batch_get_embeddings
+            
+            prepared_items = []
             for item in items:
                 # Use unified content structure (v2)
                 title = item.get("title", "")
@@ -1126,25 +1130,39 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
                             parts.append(f"\n\n**Why It Matters:** {item['why_it_matters']}")
                         description = "".join(parts).strip()
                 
-                # Track if item was new or updated
-                returned_id = bank.add_item(
-                    item_type=mode_id,
-                    title=title,
-                    description=description,
-                    tags=tags,
-                )
+                prepared_items.append({
+                    "title": title,
+                    "description": description,
+                    "tags": tags,
+                })
+            
+            # Batch generate embeddings for all items at once (10x faster than individual calls)
+            if prepared_items:
+                texts = [f"{p['title']} {p['description']}" for p in prepared_items]
+                print(f"   ⚡ Batch generating {len(texts)} embeddings...", file=sys.stderr)
+                embeddings = batch_get_embeddings(texts)
                 
-                batch_items_processed += 1
-                total_items_processed += 1
-                
-                # If returned_id was already in bank before, it was an update; otherwise new
-                if returned_id in existing_ids_before:
-                    batch_items_updated += 1
-                    total_items_updated += 1
-                else:
-                    batch_items_added += 1
-                    total_items_added += 1
-                    existing_ids_before.add(returned_id)  # Track for next iteration
+                # Now add items with pre-computed embeddings
+                for i, prep in enumerate(prepared_items):
+                    returned_id = bank.add_item(
+                        item_type=mode_id,
+                        title=prep["title"],
+                        description=prep["description"],
+                        tags=prep["tags"],
+                        embedding=embeddings[i],  # Pass pre-computed embedding
+                    )
+                    
+                    batch_items_processed += 1
+                    total_items_processed += 1
+                    
+                    # If returned_id was already in bank before, it was an update; otherwise new
+                    if returned_id in existing_ids_before:
+                        batch_items_updated += 1
+                        total_items_updated += 1
+                    else:
+                        batch_items_added += 1
+                        total_items_added += 1
+                        existing_ids_before.add(returned_id)  # Track for next iteration
             
             bank.save()
             

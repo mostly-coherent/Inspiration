@@ -171,6 +171,20 @@ def sync_new_messages(
     
     if skipped_count > 0:
         print(f"   ✅ Already indexed: {skipped_count} messages (skipping)")
+    
+    # Deduplicate messages within batch (same message_id can occur if same text appears multiple times)
+    seen_ids = set()
+    deduped_messages = []
+    for msg in new_messages:
+        if msg["message_id"] not in seen_ids:
+            seen_ids.add(msg["message_id"])
+            deduped_messages.append(msg)
+    
+    batch_dupes = len(new_messages) - len(deduped_messages)
+    if batch_dupes > 0:
+        print(f"   🔄 Removed {batch_dupes} duplicate(s) within batch")
+    new_messages = deduped_messages
+    
     print(f"   🆕 New messages to index: {len(new_messages)}")
     
     if dry_run:
