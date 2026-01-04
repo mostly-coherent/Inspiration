@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import { spawn } from "child_process";
 import path from "path";
+import { getPythonPath } from "@/lib/pythonPath";
 
 export async function GET() {
   try {
     const enginePath = path.resolve(process.cwd(), "engine");
     const scriptPath = path.join(enginePath, "scripts", "get_brain_stats.py");
+    const pythonPath = getPythonPath();
 
     return new Promise<NextResponse>((resolve) => {
-      const process = spawn("python3", [scriptPath], {
+      const process = spawn(pythonPath, [scriptPath], {
         cwd: enginePath,
       });
 

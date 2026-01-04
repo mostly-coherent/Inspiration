@@ -8,6 +8,7 @@
 import { spawn } from "child_process";
 import path from "path";
 import { logger } from "./logger";
+import { getPythonPath } from "./pythonPath";
 
 const PYTHON_ENGINE_URL = process.env.PYTHON_ENGINE_URL;
 const USE_LOCAL_PYTHON = !PYTHON_ENGINE_URL;
@@ -193,10 +194,11 @@ async function callPythonEngineLocal(
   
   const scriptPath = path.join(enginePath, script);
   
-  logger.log(`[Inspiration] Running locally: python3 ${script} ${args.join(" ")}`);
+  const pythonPath = getPythonPath();
+  logger.log(`[Inspiration] Running locally: ${pythonPath} ${script} ${args.join(" ")}`);
   
   return new Promise((resolve, reject) => {
-    const proc = spawn("python3", [scriptPath, ...args], {
+    const proc = spawn(pythonPath, [scriptPath, ...args], {
       cwd: enginePath,
       env: {
         ...process.env,

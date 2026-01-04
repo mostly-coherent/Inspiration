@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { spawn } from "child_process";
 import path from "path";
+import { getPythonPath } from "@/lib/pythonPath";
 
 export const maxDuration = 300; // 5 minutes
 
@@ -8,12 +9,13 @@ export async function POST() {
   try {
     const enginePath = path.resolve(process.cwd(), "engine");
     const scriptPath = path.join(enginePath, "scripts", "sync_messages.py");
+    const pythonPath = getPythonPath();
 
     // Check if running on Vercel (simplified check: if local cursor DB path is missing)
     // We'll let the script fail if it can't find the DB, and handle the error output.
     
     return new Promise<NextResponse>((resolve) => {
-      const process = spawn("python3", [scriptPath], {
+      const process = spawn(pythonPath, [scriptPath], {
         cwd: enginePath,
       });
 

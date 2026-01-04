@@ -3,6 +3,7 @@ import { spawn } from "child_process";
 import { GenerateRequest, TOOL_CONFIG, PRESET_MODES, getToolPath, ThemeType, ModeType, ToolType } from "@/lib/types";
 import { logger } from "@/lib/logger";
 import { resolveThemeModeFromTool, validateThemeMode, getModeSettings } from "@/lib/themes";
+import { getPythonPath } from "@/lib/pythonPath";
 
 export const maxDuration = 300; // 5 minutes for long-running generation
 
@@ -106,9 +107,10 @@ export async function POST(request: NextRequest) {
         }
 
         const toolPath = getToolPath(resolvedTool);
+        const pythonPath = getPythonPath();
         
         send({ type: "start", message: `Starting ${resolvedTool} generation...` });
-        send({ type: "log", message: `Running: python3 ${toolConfig.script} ${args.join(" ")}` });
+        send({ type: "log", message: `Running: ${pythonPath} ${toolConfig.script} ${args.join(" ")}` });
 
         // Execute Python script with streaming output
         await runPythonScriptStream(toolPath, toolConfig.script, args, signal, send);
@@ -143,8 +145,9 @@ async function runPythonScriptStream(
   signal: AbortSignal | undefined,
   send: (data: object) => void
 ): Promise<void> {
+  const pythonPath = getPythonPath();
   return new Promise((resolve, reject) => {
-    const proc = spawn("python3", [script, ...args], {
+    const proc = spawn(pythonPath, [script, ...args], {
       cwd,
       env: {
         ...process.env,
