@@ -1,13 +1,21 @@
 "use client";
 
 import { useState, memo, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { GenerateResult, TOOL_CONFIG } from "@/lib/types";
 import { copyToClipboard, downloadFile } from "@/lib/utils";
 import { MarkdownContent } from "./MarkdownContent";
 import { parseRankedItems, extractEstimatedCost } from "@/lib/resultParser";
+import { getFriendlyError, FriendlyError } from "@/lib/errorMessages";
 
-export const ResultsPanel = memo(function ResultsPanel({ result }: { result: GenerateResult }) {
+interface ResultsPanelProps {
+  result: GenerateResult;
+  onRetry?: () => void;
+}
+
+export const ResultsPanel = memo(function ResultsPanel({ result, onRetry }: ResultsPanelProps) {
   const [showRaw, setShowRaw] = useState(false);
+  const router = useRouter();
 
   // Parse ranked items from content
   const rankedItems = useMemo(() => {
@@ -65,12 +73,78 @@ export const ResultsPanel = memo(function ResultsPanel({ result }: { result: Gen
   };
 
   if (!result.success) {
+    const friendlyError: FriendlyError = getFriendlyError(result.error || "Unknown error");
+    
+    const handleCTA = () => {
+      if (!friendlyError.cta) return;
+      
+      switch (friendlyError.cta.action) {
+        case "retry":
+          onRetry?.();
+          break;
+        case "settings":
+          router.push("/settings");
+          break;
+        case "external_link":
+          if (friendlyError.cta.url) {
+            window.open(friendlyError.cta.url, "_blank");
+          }
+          break;
+        case "harmonize":
+          // Call harmonize API
+          fetch("/api/harmonize", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: result.tool === "ideas" ? "ideas" : "insights" }),
+          })
+            .then((res) => res.json())
+            .then((data) => {
+              if (data.success) {
+                alert(`✅ Harmonized ${data.filesProcessed} files: ${data.itemsAdded} added, ${data.itemsUpdated} updated`);
+              } else {
+                alert(`❌ Harmonization failed: ${data.error}`);
+              }
+            })
+            .catch((err) => alert(`❌ Error: ${err}`));
+          break;
+      }
+    };
+    
+    const borderColor = friendlyError.severity === "warning" ? "border-yellow-500/30" : "border-red-500/30";
+    const iconColor = friendlyError.severity === "warning" ? "text-yellow-400" : "text-red-400";
+    const icon = friendlyError.severity === "warning" ? "⚠️" : "❌";
+    
     return (
-      <section className="glass-card p-6 border-red-500/30">
-        <h2 className="text-lg font-medium text-red-400 flex items-center gap-2">
-          ❌ Generation Failed
+      <section className={`glass-card p-6 ${borderColor}`}>
+        <h2 className={`text-lg font-medium ${iconColor} flex items-center gap-2`}>
+          {icon} {friendlyError.title}
         </h2>
-        <p className="text-adobe-gray-400 mt-2">{result.error}</p>
+        <p className="text-adobe-gray-400 mt-2">{friendlyError.message}</p>
+        
+        {friendlyError.cta && (
+          <div className="mt-4 flex gap-3">
+            <button
+              onClick={handleCTA}
+              className="px-4 py-2 bg-adobe-blue-600 hover:bg-adobe-blue-500 text-white rounded-md text-sm font-medium transition-colors"
+            >
+              {friendlyError.cta.label}
+            </button>
+            
+            {/* Show raw error toggle for debugging */}
+            <button
+              onClick={() => setShowRaw(!showRaw)}
+              className="px-4 py-2 bg-adobe-gray-700 hover:bg-adobe-gray-600 text-adobe-gray-300 rounded-md text-sm transition-colors"
+            >
+              {showRaw ? "Hide Details" : "Show Details"}
+            </button>
+          </div>
+        )}
+        
+        {showRaw && (
+          <pre className="mt-4 p-3 bg-adobe-gray-900 rounded text-xs text-adobe-gray-400 overflow-x-auto whitespace-pre-wrap">
+            {result.error}
+          </pre>
+        )}
       </section>
     );
   }

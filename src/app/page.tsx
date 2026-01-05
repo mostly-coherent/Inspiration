@@ -23,10 +23,15 @@ import { SimpleModeSelector } from "@/components/SimpleModeSelector";
 import { RunHistory } from "@/components/RunHistory";
 import { ScoreboardHeader } from "@/components/ScoreboardHeader";
 import { AnalysisCoverage } from "@/components/AnalysisCoverage";
+import { ViewToggle, ViewMode } from "@/components/ViewToggle";
+import { LibraryView } from "@/components/LibraryView";
 import { loadThemesAsync } from "@/lib/themes";
 import { saveRunToHistory } from "@/lib/runHistory";
 
 export default function Home() {
+  // View mode state (Library View vs Comprehensive View)
+  const [viewMode, setViewMode] = useState<ViewMode>("comprehensive");
+  
   // State - simplified mode system (theme auto-determined from mode)
   const [selectedModeId, setSelectedModeId] = useState<ModeType>("idea");
   const [selectedTheme, setSelectedTheme] = useState<ThemeType>("generation"); // Auto-determined from mode
@@ -452,19 +457,27 @@ export default function Home() {
           syncStatus={syncStatus}
         />
 
-        {/* v3: Two-Panel Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* LEFT PANEL: Library */}
-          <aside className="lg:col-span-5 xl:col-span-4 order-2 lg:order-1">
-            <div className="lg:sticky lg:top-6 space-y-4">
-              <div id="library-section">
-                <BanksOverview />
-              </div>
-            </div>
-          </aside>
+        {/* View Toggle */}
+        <ViewToggle currentView={viewMode} onViewChange={setViewMode} />
 
-          {/* RIGHT PANEL: Generate/Seek Actions */}
-          <main className="lg:col-span-7 xl:col-span-8 order-1 lg:order-2 space-y-6">
+        {/* Conditional Layout based on View Mode */}
+        {viewMode === "library" ? (
+          /* Library View - Full width, focused on exploring items */
+          <LibraryView />
+        ) : (
+          /* Comprehensive View - Two-Panel Layout */
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* LEFT PANEL: Library */}
+            <aside className="lg:col-span-5 xl:col-span-4 order-2 lg:order-1">
+              <div className="lg:sticky lg:top-6 space-y-4">
+                <div id="library-section">
+                  <BanksOverview />
+                </div>
+              </div>
+            </aside>
+
+            {/* RIGHT PANEL: Generate/Seek Actions */}
+            <main className="lg:col-span-7 xl:col-span-8 order-1 lg:order-2 space-y-6">
             {/* Mode Selection */}
             <section className="glass-card p-5 space-y-4">
               <h2 className="text-lg font-medium text-adobe-gray-300">
@@ -602,7 +615,7 @@ export default function Home() {
                 )}
 
                 {/* Results */}
-                {result && <ResultsPanel result={result} />}
+                {result && <ResultsPanel result={result} onRetry={handleGenerate} />}
 
                 {/* Run History */}
                 <RunHistory />
@@ -610,6 +623,7 @@ export default function Home() {
             )}
           </main>
         </div>
+        )}
       </div>
     </main>
   );

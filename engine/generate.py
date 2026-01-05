@@ -148,29 +148,6 @@ def load_synthesize_prompt(mode: Literal["insights", "ideas", "use_case"]) -> st
     return combined
 
 
-def load_judge_prompt() -> str:
-    """Load the reranking judge prompt (cached)."""
-    prompt_name = "judge"
-    prompt_file = PROMPTS_DIR / f"{prompt_name}.md"
-    
-    # Check cache and file modification time
-    if prompt_file.exists():
-        current_mtime = prompt_file.stat().st_mtime
-        cached_mtime = _prompt_file_mtimes.get(prompt_name, 0)
-        
-        # Return cached version if file hasn't changed
-        if prompt_name in _prompt_cache and current_mtime == cached_mtime:
-            return _prompt_cache[prompt_name]
-        
-        # Load and cache
-        content = prompt_file.read_text()
-        _prompt_cache[prompt_name] = content
-        _prompt_file_mtimes[prompt_name] = current_mtime
-        return content
-    
-    return """Pick the best candidate set. Return JSON: {"best": "C1", "why": "...", "scores": {...}}"""
-
-
 def load_golden_posts() -> str:
     """Load user's actual LinkedIn posts as golden examples (insights mode only)."""
     # First try custom voice config
@@ -657,7 +634,7 @@ def items_to_markdown(items: list[dict], mode: str) -> str:
 
 
 # =============================================================================
-# Content Generation (v1 - Legacy Candidate-Based - DEPRECATED)
+# Content Generation (v2 - Single Item Generation)
 # =============================================================================
 
 def generate_content(
@@ -667,26 +644,19 @@ def generate_content(
     llm: LLMProvider,
     max_tokens: int = 2000,
     temperature: float = DEFAULT_TEMPERATURE,
-    best_of: int = 1,
-    rerank: bool = True,
-    include_scorecard: bool = True,
 ) -> tuple[str, list[tuple[str, str]]]:
     """
     Generate content (insights or ideas) from conversation text.
     
     Args:
         conversations_text: Formatted conversation history
-        mode: Generation mode ("insights" or "ideas")
+        mode: Generation mode ("insights", "ideas", or "use_case")
         llm: LLM provider instance
         max_tokens: Max tokens for generation
         temperature: Sampling temperature
-        best_of: Number of candidates to generate
-        rerank: Whether to rerank candidates
-        include_scorecard: Whether to include judge scorecard
     
     Returns:
-        Tuple of (best_match_markdown, all_candidates_list)
-        where all_candidates_list is [(candidate_id, text), ...]
+        Tuple of (generated_markdown, [(id, text)] for compatibility)
     """
     base_prompt = load_synthesize_prompt(mode)
     
@@ -715,189 +685,17 @@ def generate_content(
         if golden:
             system_prompt += f"\n\n## Reference Posts (Study Voice & Style)\n\nThese are actual posts from the author. Study the voice, depth, introspection, and value-add patterns:\n\n{golden}"
     
-    user_content_base = f"Here are today's Cursor chat conversations:\n\n{conversations_text}"
+    user_content = f"Here are today's Cursor chat conversations:\n\n{conversations_text}"
     
-    # Single generation (deterministic)
-    if best_of <= 1:
-        single_result = llm.generate(
-            user_content_base,
-            system_prompt=system_prompt,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-        return single_result, [("C1", single_result)]
-    
-    # Multiple candidates with reranking - generate in parallel for speed
-    candidates = []
-    errors = []  # Collect errors for better diagnostics
-    with ThreadPoolExecutor(max_workers=min(best_of, 5)) as executor:
-        # Submit all generation tasks
-        futures = {}
-        for i in range(best_of):
-            candidate_id = f"C{i+1}"
-            user_content = f"{user_content_base}\n\n(Candidate {candidate_id})"
-            future = executor.submit(
-                llm.generate,
-                user_content,
-                system_prompt=system_prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-            )
-            futures[future] = candidate_id
-        
-        # Collect results as they complete
-        for future in as_completed(futures):
-            candidate_id = futures[future]
-            try:
-                text = future.result()
-                candidates.append((candidate_id, text))
-            except Exception as e:
-                import traceback
-                error_msg = str(e)
-                error_traceback = traceback.format_exc()
-                error_info = f"{candidate_id}: {error_msg}"
-                errors.append(error_info)
-                print(f"⚠️  Failed to generate {candidate_id}: {error_msg}", file=sys.stderr)
-                print(f"   Traceback:\n{error_traceback}", file=sys.stderr)
-                # Continue with remaining candidates
-    
-    # Check if we have any successful candidates
-    if not candidates:
-        error_summary = "\n".join(f"  - {err}" for err in errors) if errors else "  (No error details captured)"
-        raise RuntimeError(
-            f"All candidate generations failed ({best_of} attempts).\n\n"
-            f"Errors encountered:\n{error_summary}\n\n"
-            "Common causes:\n"
-            "  - Rate limits (prompt too large, too many requests)\n"
-            "  - API key issues (invalid or missing API key)\n"
-            "  - API errors (service unavailable, timeout)\n"
-            "  - Network issues\n"
-            "  - Prompt exceeds token limits\n\n"
-            "Try:\n"
-            "  - Enabling prompt compression in settings\n"
-            "  - Reducing the date range\n"
-            "  - Using a smaller best-of value\n"
-            "  - Checking API keys in .env file\n"
-            "  - Verifying API quota/limits"
-        )
-    
-    if not rerank:
-        return candidates[0][1], candidates
-    
-    # OPTIMIZATION: Skip judging if only one candidate (no choice needed)
-    if best_of <= 1 or len(candidates) <= 1:
-        print(f"⏭️  Skipping judge (only {len(candidates)} candidate(s))", file=sys.stderr)
-        return candidates[0][1], candidates
-    
-    # Rerank candidates using cheaper judge model if available
-    judge_prompt = load_judge_prompt()
-    
-    # OPTIMIZATION: Truncate candidates for faster judging
-    # Judge only needs to see enough to compare quality, not full content
-    MAX_CANDIDATE_CHARS = 1500  # ~375 tokens per candidate
-    truncated_candidates = []
-    for cid, text in candidates:
-        if len(text) > MAX_CANDIDATE_CHARS:
-            truncated_text = text[:MAX_CANDIDATE_CHARS] + "\n... (truncated for judging)"
-        else:
-            truncated_text = text
-        truncated_candidates.append((cid, truncated_text))
-    
-    candidates_blob = "\n\n".join([f"---\nCANDIDATE {cid}\n---\n{text}" for cid, text in truncated_candidates])
-    judge_user = f"Pick the best set.\n\n{candidates_blob}"
-    
-    # Use cheaper judge model if configured (saves ~80% cost)
-    judge_llm = llm.get_judge_llm()
-    if judge_llm != llm:
-        print(f"💰 Using {judge_llm.provider}/{judge_llm.model} for judging (cost optimization)")
-    
-    print(f"⚖️  Judging {len(candidates)} candidates...", file=sys.stderr)
-    judge_text = judge_llm.generate(
-        judge_user,
-        system_prompt=judge_prompt,
-        max_tokens=200,  # Reduced from 300 - judge response is simple JSON
-        temperature=0.0,
+    result = llm.generate(
+        user_content,
+        system_prompt=system_prompt,
+        max_tokens=max_tokens,
+        temperature=temperature,
     )
     
-    # Parse judge response
-    judge = _safe_parse_judge_json(judge_text)
-    best_id = judge.get("best", "C1") if judge else "C1"
-    if not isinstance(best_id, str) or not re.fullmatch(r"C\d+", best_id.strip()):
-        best_id = "C1"
-    best_id = best_id.strip().upper()
-    
-    # Find best match, or use first candidate if best_id not found
-    best_match = next((t for cid, t in candidates if cid == best_id), candidates[0][1])
-    
-    # VALIDATION: Check if best_match has valid content format
-    # If judge picked an invalid/empty candidate, try other candidates
-    # Skip validation for use_case mode (not in MODE_CONFIG)
-    if mode in MODE_CONFIG:
-        config = MODE_CONFIG[mode]
-        if not config["has_output_check"](best_match):
-            print(f"⚠️  Judge picked {best_id} but it has no valid output format", file=sys.stderr)
-            print(f"   Trying other candidates...", file=sys.stderr)
-            # Try to find a candidate with valid format
-            for cid, candidate_text in candidates:
-                if config["has_output_check"](candidate_text):
-                    print(f"   ✅ Found valid candidate: {cid}", file=sys.stderr)
-                    best_match = candidate_text
-                    best_id = cid
-                    break
-        else:
-            # No valid candidates found - log warning but continue
-            print(f"   ⚠️  No candidates have valid output format. Using judge's pick anyway.", file=sys.stderr)
-    
-    if include_scorecard and judge:
-        scorecard_md = _format_scorecard(judge, candidates)
-        return f"{best_match}\n\n---\n\n{scorecard_md}\n", candidates
-    
-    return best_match, candidates
-
-
-def _safe_parse_judge_json(text: str) -> dict | None:
-    """Parse judge JSON, handling various formats."""
-    if not text:
-        return None
-    raw = text.strip()
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        pass
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start != -1 and end > start:
-        try:
-            return json.loads(raw[start:end + 1])
-        except json.JSONDecodeError:
-            pass
-    return None
-
-
-def _format_scorecard(judge: dict, candidates: list[tuple[str, str]]) -> str:
-    """Format judge scores as markdown table."""
-    best = judge.get("best", "")
-    why = judge.get("why", "")
-    scores = judge.get("scores", {})
-    
-    lines = ["## Judge Scorecard", ""]
-    if best:
-        lines.append(f"**Best:** {best}")
-    if why:
-        lines.append(f"**Why:** {why}")
-    lines.append("")
-    lines.append("| Candidate | Specificity | Constructive | Voice | Actionability | Nonrepetition | Total |")
-    lines.append("|---|---:|---:|---:|---:|---:|---:|")
-    
-    for cid, _ in candidates:
-        s = scores.get(cid, {})
-        mark = " ✅" if cid == best else ""
-        lines.append(
-            f"| {cid}{mark} | {s.get('specificity', '')} | {s.get('constructive', '')} | "
-            f"{s.get('voice', '')} | {s.get('actionability', '')} | {s.get('nonrepetition', '')} | {s.get('total', '')} |"
-        )
-    
-    return "\n".join(lines)
+    # Return in legacy format for compatibility with callers expecting tuple
+    return result, [("C1", result)]
 
 
 # =============================================================================
@@ -970,7 +768,18 @@ Workspaces: {', '.join(workspaces) if workspaces else 'All'}
         for cid, candidate_text in all_candidates:
             footer += f"### {cid}\n\n{candidate_text}\n\n---\n\n"
     
-    output_file.write_text(header + content + footer)
+    # Atomic write: write to temp file first, then rename (prevents partial files)
+    full_content = header + content + footer
+    temp_file = output_file.with_suffix(".tmp")
+    try:
+        temp_file.write_text(full_content)
+        temp_file.rename(output_file)  # Atomic on most filesystems
+    except Exception as e:
+        # Clean up temp file if rename fails
+        if temp_file.exists():
+            temp_file.unlink()
+        raise RuntimeError(f"WRITE_FAILED: Could not save {output_file.name}: {e}")
+    
     return output_file
 
 
@@ -1026,7 +835,17 @@ Total conversations analyzed: {total_conversations}
         for cid, candidate_text in all_candidates:
             footer += f"### {cid}\n\n{candidate_text}\n\n---\n\n"
     
-    output_file.write_text(header + content + footer)
+    # Atomic write: write to temp file first, then rename (prevents partial files)
+    full_content = header + content + footer
+    temp_file = output_file.with_suffix(".tmp")
+    try:
+        temp_file.write_text(full_content)
+        temp_file.rename(output_file)  # Atomic on most filesystems
+    except Exception as e:
+        # Clean up temp file if rename fails
+        if temp_file.exists():
+            temp_file.unlink()
+        raise RuntimeError(f"WRITE_FAILED: Could not save {output_file.name}: {e}")
     return output_file
 
 
@@ -1080,11 +899,24 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
             if parsed_items:
                 items.extend(parsed_items)
             else:
-                # Log when file has no parseable items (helps debug)
-                print(f"   ⚠️  No items found in {f.name} (content may be empty or wrong format)", file=sys.stderr)
-                # Log a snippet of content to help debug
-                content_preview = content[:200].replace('\n', ' ')
-                print(f"      Content preview: {content_preview}...", file=sys.stderr)
+                # Diagnose WHY no items were found
+                content_lower = content.lower()
+                
+                if "no posts found" in content_lower or "no insights" in content_lower or "no ideas" in content_lower:
+                    # Expected case: LLM intentionally returned no content for this date
+                    print(f"   ℹ️  {f.name}: No items for this date (insufficient chat activity)", file=sys.stderr)
+                elif not content.strip():
+                    print(f"   ⚠️  {f.name}: File is empty (generation may have failed)", file=sys.stderr)
+                elif "## Item" not in content and "## Post" not in content and "## Idea" not in content:
+                    # LLM didn't use expected format
+                    print(f"   ⚠️  {f.name}: Unexpected format (missing ## Item/Post/Idea headers)", file=sys.stderr)
+                    content_preview = content[:300].replace('\n', ' ')
+                    print(f"      Preview: {content_preview}...", file=sys.stderr)
+                else:
+                    # Has headers but still failed to parse
+                    print(f"   ⚠️  {f.name}: Parsing failed despite having headers (regex issue?)", file=sys.stderr)
+                    content_preview = content[:200].replace('\n', ' ')
+                    print(f"      Preview: {content_preview}...", file=sys.stderr)
         
         if items:
             # Use v2 ItemsBank system with unified content structure
@@ -1453,8 +1285,6 @@ def process_single_date(
     temperature: float = DEFAULT_TEMPERATURE,
     item_count: int = 10,
     dedup_threshold: float = 0.85,
-    best_of: int = 1,  # Deprecated
-    rerank: bool = True,  # Deprecated
 ) -> dict:
     """Process a single date and return results."""
     # Use semantic search to find relevant conversations
@@ -1564,8 +1394,6 @@ def process_aggregated_range(
     temperature: float = DEFAULT_TEMPERATURE,
     item_count: int = 10,
     dedup_threshold: float = 0.85,
-    best_of: int = 1,  # Deprecated
-    rerank: bool = True,  # Deprecated
     timestamp_range: tuple[int, int] | None = None,  # Optional (start_ts, end_ts) for precise time-based ranges
 ) -> dict:
     """Process a date range with aggregated output."""
@@ -1688,7 +1516,15 @@ def process_aggregated_range(
             else:
                 all_conversations = []
                 days_with_activity = 0
-                print(f"⚠️  Semantic search found no matches", file=sys.stderr)
+                # PRE-FLIGHT CHECK: Clear message before wasting LLM credits
+                print(f"", file=sys.stderr)  # Visual break
+                print(f"❓ NO_MESSAGES_FOUND: No relevant conversations for {start_date} to {end_date}", file=sys.stderr)
+                print(f"   Possible reasons:", file=sys.stderr)
+                print(f"   • Brain not synced recently (check 'Sync Brain' in UI)", file=sys.stderr)
+                print(f"   • No Cursor activity during this date range", file=sys.stderr)
+                print(f"   • Search queries didn't match your chat content", file=sys.stderr)
+                print(f"   Try: Different dates, shorter range, or sync your brain first.", file=sys.stderr)
+                print(f"", file=sys.stderr)
         else:
             raise RuntimeError("Vector DB not configured")
             
@@ -1878,18 +1714,14 @@ def main():
     parser.add_argument("--temperature", type=float, default=None)
     # v2 Item-centric architecture
     parser.add_argument("--item-count", dest="item_count", type=int, default=None,
-                        help="Number of items to generate (v2 - replaces best-of)")
+                        help="Number of items to generate")
     parser.add_argument("--dedup-threshold", dest="dedup_threshold", type=float, default=0.85,
                         help="Similarity threshold for deduplication (0.0-1.0)")
-    # v1 Legacy (deprecated)
-    parser.add_argument("--best-of", dest="best_of", type=int, default=None,
-                        help="DEPRECATED: Use --item-count instead")
     
     args = parser.parse_args()
     
     mode: Literal["insights", "ideas"] = args.mode
     
-    # v2: item_count replaces best_of
     # MODE_PRESETS: (days_or_hours, item_count, temperature, is_hours)
     # Note: "daily" now uses hours=24 for true "last 24 hours" behavior
     MODE_PRESETS = {
@@ -1934,14 +1766,9 @@ def main():
         mode_name = "custom"
         use_aggregated = True
     
-    # v2: Prefer item_count, fallback to best_of for backward compatibility
+    # Use mode's default item_count if not specified
     if args.item_count is None:
-        if args.best_of is not None:
-            # Backward compatibility: treat best_of as item_count
-            args.item_count = args.best_of
-            print("⚠️  --best-of is deprecated, use --item-count instead", file=sys.stderr)
-        else:
-            args.item_count = mode_item_count
+        args.item_count = mode_item_count
     if args.temperature is None:
         args.temperature = mode_temperature
     

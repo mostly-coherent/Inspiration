@@ -393,12 +393,36 @@ inspiration/
 
 **v3 Complete!** All v3 features are now implemented.
 
+---
+
+## v3.1 View Modes (2026-01-05)
+
+**v3.1 Goal:** Add dedicated Library View for focused item exploration as library grows to 100+ items.
+
+| ID | Feature | Description | Status |
+|----|---------|-------------|--------|
+| V31-1 | **View Toggle** | Switch between Library View and Comprehensive View | ✅ Done |
+| V31-2 | **Library View** | Full-width dedicated view for exploring items with detail panel | ✅ Done |
+| V31-3 | **Comprehensive View** | Retain existing two-panel layout (Library + Generate/Seek) | ✅ Done |
+
+**Library View Features:**
+- Full-width two-column layout (items grid + detail panel)
+- Search, filter by type/status/category, sort options
+- Item cards with type badge, status, occurrence count, date
+- Detail panel shows full description, tags, metadata, source dates
+- Click item to view details (no generation clutter)
+
+**Comprehensive View:** Unchanged from v3 - two-panel layout with Library on left, Generate/Seek on right.
+
+---
+
 **Immediate Next Steps:**
 1. ✅ Test v3 UI changes (Scoreboard, Library, Settings with tabs)
 2. ✅ Wire advanced config to Python engine (use config values instead of hardcoded)
 3. ✅ Implement V3-2: Two-Panel Layout
-4. E2E test the full generation flow with new settings
-5. Prepare for public release (README updates, documentation)
+4. ✅ V3.1 View Modes (Library View / Comprehensive View)
+5. E2E test the full generation flow with new settings
+6. Prepare for public release (README updates, documentation)
 
 ---
 
@@ -417,6 +441,8 @@ inspiration/
 | IMP-3 | Bulk actions (archive, status change multiple items) | LOW | MEDIUM |
 | IMP-4 | Item detail modal with full chat context | MEDIUM | HIGH |
 | IMP-5 | Export only filtered/selected items | LOW | LOW |
+| IMP-14 | **Suggested date range on "Request Too Large" error** — Pre-fill retry with smaller range | MEDIUM | LOW |
+| IMP-15 | **Cost estimation before generation** — "This will cost ~$0.50" warning | MEDIUM | MEDIUM |
 
 **Reliability:**
 | ID | Improvement | Priority | Effort |
@@ -424,6 +450,18 @@ inspiration/
 | IMP-6 | Automatic retry logic for failed operations | LOW | MEDIUM |
 | IMP-7 | Save drafts locally (IndexedDB) for offline resilience | LOW | HIGH |
 | IMP-13 | Prompt template validation (syntax check before save) | MEDIUM | MEDIUM |
+| IMP-16 | **Resume generation from partial progress** — Save intermediate state, not just final output | MEDIUM | HIGH |
+| IMP-17 | **Streaming progress per-day** — Show which day is being processed during generation | LOW | MEDIUM |
+
+**Error Handling (Implemented 2026-01-05):**
+| ID | Improvement | Status | Notes |
+|----|-------------|--------|-------|
+| ERR-1 | Smart LLM routing — Size request before calling, pick capable model | ✅ Done | `MODEL_CONTEXT_LIMITS` in `llm.py` |
+| ERR-2 | User-friendly error messages with CTAs | ✅ Done | `errorMessages.ts` maps errors to plain English |
+| ERR-3 | Pre-flight message count check | ✅ Done | Warns if no messages found before LLM calls |
+| ERR-4 | Atomic file writes | ✅ Done | Write to `.tmp`, then rename (prevents partial files) |
+| ERR-5 | Diagnostic parsing errors | ✅ Done | Distinguishes "no activity" vs "parsing failed" |
+| ERR-6 | Manual harmonization resume | ✅ Done | `/api/harmonize` endpoint + CTA button |
 
 **Prompt Editing Risk Mitigation:**
 Users can now edit prompt templates directly in the UI. While we create backups before each save, there's no validation to prevent users from breaking prompts with invalid edits. Future work should include:
@@ -432,6 +470,12 @@ Users can now edit prompt templates directly in the UI. While we create backups 
 - One-click restore from backup
 - Version history with diff view
 
+**Legacy Code Cleanup (Completed 2026-01-05):**
+| ID | Cleanup | Status | Notes |
+|----|---------|--------|-------|
+| CLN-1 | Remove deprecated `best_of` and `rerank` parameters | ✅ Done | Removed from generate.py and seek.py |
+| CLN-2 | Remove judge-related code | ✅ Done | Removed `load_judge_prompt`, `_safe_parse_judge_json`, `_format_scorecard`, `judge.md` |
+
 ---
 
-**Last Updated:** 2026-01-02
+**Last Updated:** 2026-01-05
