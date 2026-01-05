@@ -179,7 +179,9 @@ def sync_implemented_status_from_folder(
         if item:
             if not dry_run:
                 bank.mark_implemented(item_id, source=str(file_path))
-            print(f"   ✅ Matched '{item['name']}' to {file_path.name} (similarity: {similarity:.2f})")
+            # Support both new 'title' field and legacy 'name' field
+            item_name = item.get("title") or item.get("name", "Unknown")
+            print(f"   ✅ Matched '{item_name}' to {file_path.name} (similarity: {similarity:.2f})")
             updated_count += 1
     
     if not dry_run and updated_count > 0:

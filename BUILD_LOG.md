@@ -92,7 +92,7 @@
     - Prompts: Prompt Template Editor
   - Amber accent styling consistent with app theme
 
-- ✅ **Plan.md Improvement Backlog Updated**
+- ✅ **PLAN.md Improvement Backlog Updated**
   - Added prompt editing risk mitigation item (IMP-13)
   - Documented future validation needs (syntax check, preview, restore, versioning)
 
@@ -102,7 +102,7 @@
 - `engine/seek.py` — imports + usage of config functions
 - `engine/common/prompt_compression.py` — uses get_compression_token_threshold()
 - `src/app/settings/page.tsx` — tab navigation added
-- `Plan.md` — IMP-13 added to improvement backlog
+- `PLAN.md` — IMP-13 added to improvement backlog
 
 **TypeScript:** ✅ Passes (npx tsc --noEmit)
 **Python:** ✅ Compiles (py_compile on all modified files)
@@ -215,7 +215,7 @@
 - [ ] Browser testing of Phase 3 features
 
 **Next:**
-- [ ] Update Plan.md v3 feature status
+- [ ] Update PLAN.md v3 feature status
 - [ ] Wire advanced config to Python engine
 - [ ] Improvement backlog items (post-v3)
 
@@ -398,7 +398,7 @@
 **Context:**
 We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB** (93,000+ messages), which is orders of magnitude larger than typical setups. This rendered the SQLite + In-Memory approach inefficient (3-5s searches) and fragile.
 
-**Decisions (from PIVOTS.md):**
+**Decisions (from PIVOT_LOG.md):**
 - **Pivot to Vector DB:** Adopted Supabase pgvector as the primary backend for chat history search.
     - *Rationale:* Scale (2.1GB), Speed (O(1) search), and Ownership (independent data vault).
 - **Bubble Extraction:** Updated `cursor_db.py` to handle Cursor's "Bubble" architecture (messages fragmented into thousands of `bubbleId` entries).
@@ -463,7 +463,7 @@ We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB**
   - All modules now fail fast with clear error messages if Vector DB not configured
 
 **In Progress:**
-- [ ] Documentation audit (BUILD_LOG.md, PIVOTS.md, ARCHITECTURE.md)
+- [ ] Documentation audit (BUILD_LOG.md, PIVOT_LOG.md, ARCHITECTURE.md)
 - [ ] Debug audit (Helpful Agents/Debug.md)
 - [ ] Architecture audit (Helpful Agents/ReArchitecture.md)
 
@@ -563,18 +563,18 @@ We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB**
 **Done:**
 - ✅ **Documentation Consolidation**
   - Merged v1 vision/requirements from Next.md and V1_BUILD_PLAN.md into PLAN.md
-  - Merged v1 deployment strategy decision into PIVOTS.md
-  - Merged v1 feature migration strategy into PIVOTS.md
-  - Merged platform support and 90-day limit removal decisions into PIVOTS.md
+  - Merged v1 deployment strategy decision into PIVOT_LOG.md
+  - Merged v1 feature migration strategy into PIVOT_LOG.md
+  - Merged platform support and 90-day limit removal decisions into PIVOT_LOG.md
   - Added debug audit progress entry to BUILD_LOG.md
   - Merged v1 implementation status summary into BUILD_LOG.md
   - Deleted merged files: Next.md, V1_DEPLOYMENT_STRATEGY.md, V1_MIGRATION_ANALYSIS.md, V1_EVOLUTION_SUMMARY.md, DEBUG_AUDIT_*.md
 
 **Evidence:**
 - PLAN.md updated with v1 vision and evolution details
-- PIVOTS.md updated with v1-related decisions
+- PIVOT_LOG.md updated with v1-related decisions
 - BUILD_LOG.md updated with debug audit and v1 implementation progress
-- Only canonical files remain: README.md, CLAUDE.md, PLAN.md, BUILD_LOG.md, PIVOTS.md, ARCHITECTURE.md
+- Only canonical files remain: README.md, CLAUDE.md, PLAN.md, BUILD_LOG.md, PIVOT_LOG.md, ARCHITECTURE.md
 
 **Next:**
 - Continue v1 feature development and polish
@@ -593,7 +593,7 @@ We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB**
   - Updated `engine/common/llm.py` to support OpenRouter client initialization and API calls
   - Updated config schema to include "openrouter" as a valid provider option
   - Updated Settings UI to include OpenRouter in provider dropdown
-  - Updated documentation (CLAUDE.md, Plan.md) with OpenRouter setup instructions
+  - Updated documentation (CLAUDE.md, PLAN.md) with OpenRouter setup instructions
   - Requires `OPENROUTER_API_KEY` environment variable
   - Default model: `anthropic/claude-sonnet-4` (OpenRouter model ID)
   - Supports both streaming and non-streaming generation
@@ -601,7 +601,7 @@ We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB**
 
 **Evidence:**
 - Files modified: `engine/common/llm.py`, `engine/common/config.py`, `src/app/api/config/route.ts`, `src/app/settings/page.tsx`
-- Documentation updated: `CLAUDE.md`, `Plan.md`, `BUILD_LOG.md`
+- Documentation updated: `CLAUDE.md`, `PLAN.md`, `BUILD_LOG.md`
 - Build: ✓ Compiled successfully
 
 **Next:**
@@ -723,7 +723,7 @@ We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB**
 - ✅ Integrated Seek with harmonization pipeline (saves to ItemsBank as `use_case` items)
 - ✅ Updated API route (`/api/seek/route.ts`) to return structured use cases
 - ✅ Updated UI (`SeekSection.tsx`) to display synthesized use cases instead of raw matches
-- ✅ Updated canonical docs (PLAN.md, BUILD_LOG.md, PIVOTS.md, ARCHITECTURE.md)
+- ✅ Updated canonical docs (PLAN.md, BUILD_LOG.md, PIVOT_LOG.md, ARCHITECTURE.md)
 - ✅ Made Seek use predefined queries (like Generate) - configurable per mode in Settings
 - ✅ Implemented performance optimizations:
   - Skip judging for `best_of=1` (saves 5-15 seconds, ~$0.003)
@@ -882,10 +882,10 @@ We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB**
   - Updated frontend: replaced bestOf slider with itemCount slider
   - Updated FLOW_ANALYSIS.md with v2 architecture details
   - Updated E2E tests (12 tests passing)
-  - Updated PIVOTS.md with architectural decisions
+  - Updated PIVOT_LOG.md with architectural decisions
 
 **Evidence:**
-- Files modified: generate.py, themes.json, types.ts, generate/route.ts, page.tsx, AdvancedSettings.tsx, ExpectedOutput.tsx, ModeCard.tsx, ModeSettingsEditor.tsx, e2e/inspiration.spec.ts, FLOW_ANALYSIS.md, PIVOTS.md
+- Files modified: generate.py, themes.json, types.ts, generate/route.ts, page.tsx, AdvancedSettings.tsx, ExpectedOutput.tsx, ModeCard.tsx, ModeSettingsEditor.tsx, e2e/inspiration.spec.ts, FLOW_ANALYSIS.md, PIVOT_LOG.md
 - E2E tests: 12/12 passing
 
 ---
@@ -894,9 +894,9 @@ We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB**
 
 **Done:**
 - ✅ **Documentation Consolidation (Cleanup-folder.md)**
-  - Merged BRAIN_REFRESH_FIXES.md → PIVOTS.md (decisions with dates)
-  - Merged COMPRESSION_VS_TRUNCATION.md → PIVOTS.md (architectural decision)
-  - Merged REFRESH_BRAIN_OPTIMIZATIONS.md → PIVOTS.md (optimization decisions)
+  - Merged BRAIN_REFRESH_FIXES.md → PIVOT_LOG.md (decisions with dates)
+  - Merged COMPRESSION_VS_TRUNCATION.md → PIVOT_LOG.md (architectural decision)
+  - Merged REFRESH_BRAIN_OPTIMIZATIONS.md → PIVOT_LOG.md (optimization decisions)
   - Merged MYPRIVATETOOLS_FIX.md → BUILD_LOG.md (bug fix with date)
   - Merged FLOW_ANALYSIS.md → ARCHITECTURE.md (system flow details)
   - Deleted 12 non-canonical files (7 already merged in CLAUDE.md, 5 newly merged)
@@ -907,6 +907,6 @@ We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB**
 - Newly merged: BRAIN_REFRESH_FIXES.md, COMPRESSION_VS_TRUNCATION.md, REFRESH_BRAIN_OPTIMIZATIONS.md, MYPRIVATETOOLS_FIX.md, FLOW_ANALYSIS.md
 
 **Evidence:**
-- PIVOTS.md updated with 3 merged decision entries
+- PIVOT_LOG.md updated with 3 merged decision entries
 - BUILD_LOG.md updated with 2 merged progress entries
 - ARCHITECTURE.md updated with flow analysis content
