@@ -6,6 +6,95 @@
 
 ---
 
+## Progress - 2026-01-05 (V3.1 View Modes)
+
+**Done:**
+
+- ✅ **View Toggle Component (V31-1)**
+  - Created `ViewToggle.tsx` with Library View / Comprehensive View toggle
+  - Styled to match app theme with icons
+  - Files: `src/components/ViewToggle.tsx`
+
+- ✅ **Dedicated Library View (V31-2)**
+  - Created `LibraryView.tsx` with full-width layout for 100+ items
+  - Two-column layout: Item cards grid (left) + Detail panel (right)
+  - Search, filter by type/status/category, sort options
+  - Item cards show type badge, status, occurrence, date
+  - Detail panel shows full content, tags, metadata, source dates
+  - Files: `src/components/LibraryView.tsx`
+
+- ✅ **View Mode Integration (V31-3)**
+  - Updated `page.tsx` with view mode state
+  - Conditional rendering: Library View OR Comprehensive View
+  - Comprehensive View unchanged (existing two-panel layout)
+  - Files: `src/app/page.tsx`
+
+**Evidence:**
+- `npx tsc --noEmit` — ✅ Passes
+
+---
+
+## Progress - 2026-01-05 (Error Handling & Resume Capability)
+
+**Done:**
+
+- ✅ **Smart LLM Routing (ERR-1)**
+  - Added `MODEL_CONTEXT_LIMITS` dictionary with context limits for all models
+  - Added `can_model_handle_request()` to check if model can handle request size
+  - Routes to capable model before attempting request (prevents wasted API credits)
+  - Files: `engine/common/llm.py`
+
+- ✅ **User-Friendly Error Messages (ERR-2)**
+  - Created `src/lib/errorMessages.ts` with `getFriendlyError()` function
+  - Maps technical errors to plain English with actionable CTAs
+  - CTAs: Retry, Go to Settings, Add Credits (external link), Resume Harmonization
+  - Error UI shows severity (error vs warning), title, message, and CTA button
+  - Files: `src/lib/errorMessages.ts`, `src/components/ResultsPanel.tsx`
+
+- ✅ **Pre-flight Message Count Check (ERR-3)**
+  - Added clear `NO_MESSAGES_FOUND` message with actionable suggestions
+  - Lists possible reasons (brain not synced, no activity, search queries didn't match)
+  - Happens before any LLM calls, saving API credits
+  - Files: `engine/generate.py`
+
+- ✅ **Atomic File Writes (ERR-4)**
+  - File writes now use temp file + rename pattern
+  - Prevents partial/corrupted files if process crashes mid-write
+  - Files: `engine/generate.py` (both `save_output()` and `save_aggregated_output()`)
+
+- ✅ **Diagnostic Parsing Errors (ERR-5)**
+  - Enhanced harmonization logging to distinguish:
+    - "No items for this date (insufficient chat activity)" — expected, not a failure
+    - "File is empty (generation may have failed)" — something went wrong
+    - "Unexpected format (missing headers)" — LLM didn't follow format
+    - "Parsing failed despite having headers" — regex issue
+  - Files: `engine/generate.py`
+
+- ✅ **Manual Harmonization Resume (ERR-6)**
+  - Created `/api/harmonize` endpoint (GET for pending files, POST to run)
+  - CTA button in error UI triggers harmonization
+  - Standalone script already existed: `engine/scripts/harmonize.py`
+  - Files: `src/app/api/harmonize/route.ts`
+
+**Evidence:**
+- `npx tsc --noEmit` — ✅ Passes
+- `python3 -m py_compile engine/generate.py engine/common/llm.py` — ✅ Passes
+
+**Enhancements Logged to PLAN.md:**
+- IMP-14: Suggested date range on "Request Too Large" error
+- IMP-15: Cost estimation before generation
+- IMP-16: Resume generation from partial progress
+- IMP-17: Streaming progress per-day
+
+**Legacy Code Removed (CLN-1, CLN-2):**
+- Removed `best_of` and `rerank` parameters from `generate_content()`, `process_single_date()`, `process_aggregated_range()`, and `seek_use_cases()`
+- Removed `load_judge_prompt()`, `_safe_parse_judge_json()`, `_format_scorecard()` functions
+- Removed `--best-of` CLI argument from both `generate.py` and `seek.py`
+- Deleted `engine/prompts/judge.md` prompt file
+- Files cleaned: `generate.py`, `seek.py`
+
+---
+
 ## Progress - 2026-01-02 (V3-2: Two-Panel Layout Implementation)
 
 **Done:**

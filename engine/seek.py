@@ -163,7 +163,6 @@ def seek_use_case(
     workspace_paths: list[str] | None = None,
     llm: LLMProvider | None = None,
     temperature: float = 0.2,
-    best_of: int = 1,
     dry_run: bool = False,
 ) -> dict:
     """
@@ -177,7 +176,6 @@ def seek_use_case(
         workspace_paths: Optional workspace filter (None = all workspaces)
         llm: LLM provider (if None, creates from config)
         temperature: Sampling temperature
-        best_of: Number of candidates to generate
         dry_run: If True, don't generate or save
     
     Returns:
@@ -284,8 +282,6 @@ def seek_use_case(
         mode,
         llm=llm,
         temperature=temperature,
-        best_of=best_of,
-        rerank=True,
     )
     
     # Step 4: Parse items from content
@@ -435,12 +431,6 @@ def main():
         help="LLM temperature (default: 0.2)",
     )
     parser.add_argument(
-        "--best-of",
-        type=int,
-        default=1,
-        help="Number of candidates to generate (default: 1)",
-    )
-    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Find conversations but don't generate",
@@ -465,7 +455,6 @@ def main():
         top_k=args.top_k,
         min_similarity=args.min_similarity,
         temperature=args.temperature,
-        best_of=args.best_of,
         dry_run=args.dry_run,
     )
     

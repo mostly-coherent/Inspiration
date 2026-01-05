@@ -37,6 +37,54 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 MAX_TOKENS_DEFAULT = 4000
 MAX_TOKENS_JUDGE = 500
 
+# Model context window limits (input tokens)
+# Used for smart routing - pick a model that can handle the request
+MODEL_CONTEXT_LIMITS = {
+    # Anthropic models (200K context)
+    "claude-sonnet-4-20250514": 200000,
+    "claude-3-5-sonnet-20241022": 200000,
+    "claude-3-opus-20240229": 200000,
+    "claude-3-sonnet-20240229": 200000,
+    "claude-3-haiku-20240307": 200000,
+    # OpenAI models
+    "gpt-4o": 128000,
+    "gpt-4o-mini": 128000,
+    "gpt-4-turbo": 128000,
+    "gpt-4": 8192,
+    "gpt-3.5-turbo": 16385,
+    # OpenRouter models (using Claude)
+    "anthropic/claude-sonnet-4": 200000,
+    "anthropic/claude-3.5-sonnet": 200000,
+    "anthropic/claude-3-opus": 200000,
+}
+
+# Tokens per minute (TPM) limits by organization tier
+# These are approximate - actual limits depend on your plan
+MODEL_TPM_LIMITS = {
+    # OpenAI free/low tier is often 30K TPM
+    "gpt-4o": 30000,  # Conservative estimate
+    "gpt-4o-mini": 200000,
+    "gpt-3.5-turbo": 200000,
+    # Anthropic and OpenRouter generally have higher limits
+    "claude-sonnet-4-20250514": 400000,
+    "anthropic/claude-sonnet-4": 400000,
+}
+
+def estimate_tokens(text: str) -> int:
+    """Estimate token count (rough: 4 chars ≈ 1 token)."""
+    return len(text) // 4
+
+def get_model_context_limit(model: str) -> int:
+    """Get context limit for a model, default to conservative 30K if unknown."""
+    return MODEL_CONTEXT_LIMITS.get(model, 30000)
+
+def can_model_handle_request(model: str, estimated_tokens: int) -> bool:
+    """Check if a model can handle a request of given size."""
+    limit = get_model_context_limit(model)
+    # Leave 20% headroom for output tokens
+    effective_limit = int(limit * 0.8)
+    return estimated_tokens <= effective_limit
+
 
 class LLMProvider:
     """Unified LLM provider interface."""
@@ -191,44 +239,64 @@ class LLMProvider:
             # Use generate_stream() method instead
             raise ValueError("Use generate_stream() for streaming. Set stream=False for non-streaming.")
         
-        # Estimate prompt tokens (rough: 4 chars ≈ 1 token)
-        estimated_tokens = (len(prompt) + len(system_prompt or "")) // 4
+        # Estimate prompt tokens
+        estimated_tokens = estimate_tokens(prompt + (system_prompt or ""))
+        
+        # Smart routing: Check if models can handle the request size
+        primary_can_handle = can_model_handle_request(self.model, estimated_tokens)
+        fallback_can_handle = (
+            self.fallback_model and 
+            can_model_handle_request(self.fallback_model, estimated_tokens)
+        )
+        
+        # Log request size for debugging
+        primary_limit = get_model_context_limit(self.model)
         
         # Try primary provider with retry
         primary_error = None
         if self.is_available(self.provider):
-            try:
-                return self._generate_with_retry(
-                    self.provider,
-                    self.model,
-                    prompt,
-                    system_prompt,
-                    max_tokens,
-                    temperature,
-                    max_retries,
-                    base_delay,
-                )
-            except Exception as e:
-                primary_error = e
-                print(f"⚠️  {self.provider} failed after retries: {e}")
-                if self.fallback_provider:
-                    print(f"   Trying fallback: {self.fallback_provider}")
+            if not primary_can_handle:
+                print(f"⚠️  Request too large for {self.model} (~{estimated_tokens:,} tokens, limit: {primary_limit:,})")
+                if fallback_can_handle:
+                    print(f"   Skipping to fallback which can handle it")
+                else:
+                    raise RuntimeError(
+                        f"REQUEST_TOO_LARGE: ~{estimated_tokens:,} tokens exceeds all available models' limits. "
+                        f"Try a smaller date range or fewer days."
+                    )
+            else:
+                try:
+                    return self._generate_with_retry(
+                        self.provider,
+                        self.model,
+                        prompt,
+                        system_prompt,
+                        max_tokens,
+                        temperature,
+                        max_retries,
+                        base_delay,
+                    )
+                except Exception as e:
+                    primary_error = e
+                    print(f"⚠️  {self.provider} failed after retries: {e}")
+                    if self.fallback_provider:
+                        print(f"   Trying fallback: {self.fallback_provider}")
         else:
             print(f"⚠️  Primary provider '{self.provider}' not available (check API key)")
         
         # Try fallback provider with retry
         if self.fallback_provider and self.is_available(self.fallback_provider):
-            # Skip OpenAI fallback for large requests (30K TPM limit is too low)
-            if self.fallback_provider == "openai" and estimated_tokens > 25000:
-                print(f"⚠️  Skipping OpenAI fallback: request too large (~{estimated_tokens:,} tokens, limit ~30K)")
+            if not fallback_can_handle:
+                fallback_limit = get_model_context_limit(self.fallback_model) if self.fallback_model else 0
+                print(f"⚠️  Skipping fallback {self.fallback_model}: request too large (~{estimated_tokens:,} tokens, limit: {fallback_limit:,})")
                 if primary_error:
                     raise RuntimeError(
-                        f"Primary LLM ({self.provider}) failed and fallback (OpenAI) cannot handle large requests. "
-                        f"Error: {primary_error}"
+                        f"MODELS_EXHAUSTED: Primary ({self.provider}) failed and fallback ({self.fallback_provider}) "
+                        f"cannot handle {estimated_tokens:,} tokens. Error: {primary_error}"
                     )
                 raise RuntimeError(
-                    f"Request too large for OpenAI (~{estimated_tokens:,} tokens). "
-                    f"Please ensure ANTHROPIC_API_KEY is set for large context requests."
+                    f"REQUEST_TOO_LARGE: ~{estimated_tokens:,} tokens exceeds fallback model limit ({fallback_limit:,}). "
+                    f"Ensure primary provider ({self.provider}) has credits, or try a smaller date range."
                 )
             
             try:
@@ -243,7 +311,7 @@ class LLMProvider:
                     base_delay,
                 )
             except Exception as e:
-                raise RuntimeError(f"Both primary and fallback LLM failed: {e}")
+                raise RuntimeError(f"BOTH_PROVIDERS_FAILED: Primary and fallback LLM failed: {e}")
         
         # No provider available
         available = self.get_available_providers()
