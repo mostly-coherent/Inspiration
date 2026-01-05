@@ -375,89 +375,8 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              {/* Supabase URL */}
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">
-                  Supabase Project URL
-                </label>
-                <input
-                  type="url"
-                  value={config.vectordb?.url || ""}
-                  onChange={(e) =>
-                    saveConfig({
-                      vectordb: {
-                        ...config.vectordb,
-                        provider: "supabase",
-                        url: e.target.value || null,
-                        anonKey: config.vectordb?.anonKey || null,
-                        serviceRoleKey: config.vectordb?.serviceRoleKey || null,
-                        initialized: config.vectordb?.initialized || false,
-                        lastSync: config.vectordb?.lastSync || null,
-                      },
-                    })
-                  }
-                  placeholder="https://xxxxx.supabase.co"
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
-                />
-              </div>
-
-              {/* Anon Key */}
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">
-                  Supabase Anon Key
-                </label>
-                <input
-                  type="password"
-                  value={config.vectordb?.anonKey || ""}
-                  onChange={(e) =>
-                    saveConfig({
-                      vectordb: {
-                        ...config.vectordb,
-                        provider: "supabase",
-                        url: config.vectordb?.url || null,
-                        anonKey: e.target.value || null,
-                        serviceRoleKey: config.vectordb?.serviceRoleKey || null,
-                        initialized: config.vectordb?.initialized || false,
-                        lastSync: config.vectordb?.lastSync || null,
-                      },
-                    })
-                  }
-                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 font-mono text-sm"
-                />
-                <p className="text-xs text-slate-500 mt-1">
-                  Found in: Supabase Dashboard → Project Settings → API → anon/public key
-                </p>
-              </div>
-
-              {/* Service Role Key (Optional) */}
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">
-                  Service Role Key (Optional)
-                </label>
-                <input
-                  type="password"
-                  value={config.vectordb?.serviceRoleKey || ""}
-                  onChange={(e) =>
-                    saveConfig({
-                      vectordb: {
-                        ...config.vectordb,
-                        provider: "supabase",
-                        url: config.vectordb?.url || null,
-                        anonKey: config.vectordb?.anonKey || null,
-                        serviceRoleKey: e.target.value || null,
-                        initialized: config.vectordb?.initialized || false,
-                        lastSync: config.vectordb?.lastSync || null,
-                      },
-                    })
-                  }
-                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... (optional)"
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 font-mono text-sm"
-                />
-                <p className="text-xs text-slate-500 mt-1">
-                  Only needed for admin operations. Keep this secret!
-                </p>
-              </div>
+              {/* Supabase Credentials (Read-Only) */}
+              <SupabaseCredentialsSection config={config} />
 
               {/* Chat History Auto-Detection */}
               <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
@@ -1030,6 +949,152 @@ function Section({
       <p className="text-sm text-slate-500 mb-4">{description}</p>
       {children}
     </section>
+  );
+}
+
+function SupabaseCredentialsSection({ config }: { config: AppConfig }) {
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    details?: Record<string, unknown>;
+  } | null>(null);
+
+  const testConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/test-supabase");
+      const data = await res.json();
+      setTestResult(data);
+    } catch (err) {
+      setTestResult({
+        success: false,
+        error: err instanceof Error ? err.message : "Connection failed",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <h4 className="text-slate-200 font-medium">🔐 Supabase Credentials</h4>
+          <p className="text-xs text-slate-500 mt-1">
+            Configured in <code className="px-1.5 py-0.5 bg-slate-900 rounded text-amber-400">.env.local</code>
+          </p>
+        </div>
+        <button
+          onClick={testConnection}
+          disabled={testing || !config.vectordb?.url || !config.vectordb?.anonKey}
+          className="text-xs px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded text-blue-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+        >
+          {testing ? (
+            <>
+              <span className="animate-spin">⟳</span>
+              Testing...
+            </>
+          ) : (
+            <>🔌 Test Connection</>
+          )}
+        </button>
+      </div>
+      
+      <div className="space-y-2">
+        {/* Supabase URL */}
+        <div className="flex items-center justify-between px-3 py-2 bg-slate-900/50 border border-slate-700/50 rounded-lg">
+          <span className="text-xs font-medium text-slate-500">SUPABASE_URL</span>
+          {config.vectordb?.url ? (
+            <span className="text-emerald-400 text-sm flex items-center gap-2">
+              <span>✓</span>
+              <span className="font-mono text-slate-400">•••••••••••••••</span>
+            </span>
+          ) : (
+            <span className="text-amber-400 text-xs">Not set</span>
+          )}
+        </div>
+
+        {/* Anon Key */}
+        <div className="flex items-center justify-between px-3 py-2 bg-slate-900/50 border border-slate-700/50 rounded-lg">
+          <span className="text-xs font-medium text-slate-500">SUPABASE_ANON_KEY</span>
+          {config.vectordb?.anonKey ? (
+            <span className="text-emerald-400 text-sm flex items-center gap-2">
+              <span>✓</span>
+              <span className="font-mono text-slate-400">•••••••••••••••</span>
+            </span>
+          ) : (
+            <span className="text-amber-400 text-xs">Not set</span>
+          )}
+        </div>
+
+        {/* Service Role Key */}
+        <div className="flex items-center justify-between px-3 py-2 bg-slate-900/50 border border-slate-700/50 rounded-lg">
+          <span className="text-xs font-medium text-slate-500">
+            SUPABASE_SERVICE_ROLE_KEY <span className="text-slate-600">(optional)</span>
+          </span>
+          {config.vectordb?.serviceRoleKey ? (
+            <span className="text-emerald-400 text-sm flex items-center gap-2">
+              <span>✓</span>
+              <span className="font-mono text-slate-400">•••••••••••••••</span>
+            </span>
+          ) : (
+            <span className="text-slate-500 text-xs">—</span>
+          )}
+        </div>
+      </div>
+
+      {/* Test Result */}
+      {testResult && (
+        <div className={`mt-3 p-3 rounded-lg border ${
+          testResult.success 
+            ? "bg-emerald-500/10 border-emerald-500/30" 
+            : "bg-red-500/10 border-red-500/30"
+        }`}>
+          {testResult.success ? (
+            <div className="flex items-start gap-2">
+              <span className="text-emerald-400">✓</span>
+              <div>
+                <p className="text-sm text-emerald-400 font-medium">Connection successful!</p>
+                {testResult.details && (
+                  <p className="text-xs text-slate-400 mt-1">
+                    {(testResult.details as { messageCount?: number }).messageCount?.toLocaleString() ?? 0} messages indexed
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-2">
+              <span className="text-red-400">✗</span>
+              <div>
+                <p className="text-sm text-red-400 font-medium">{testResult.error}</p>
+                {testResult.details && (testResult.details as { hint?: string }).hint && (
+                  <p className="text-xs text-slate-400 mt-1">
+                    💡 {(testResult.details as { hint?: string }).hint}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Edit Instructions - collapsed by default */}
+      <details className="mt-3">
+        <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-400">
+          📝 How to edit credentials
+        </summary>
+        <div className="mt-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+          <ol className="text-xs text-slate-400 space-y-1 list-decimal list-inside">
+            <li>Open <code className="px-1 bg-slate-800 rounded text-slate-300">.env.local</code> in the project root</li>
+            <li>Add or update the environment variables</li>
+            <li>Restart the app (<code className="px-1 bg-slate-800 rounded text-slate-300">npm run dev</code>)</li>
+          </ol>
+        </div>
+      </details>
+    </div>
   );
 }
 

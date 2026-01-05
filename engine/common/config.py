@@ -103,10 +103,29 @@ def load_config() -> dict[str, Any]:
     """
     Load user configuration.
     
+    Priority order:
+    1. Local file (if exists) - preferred for development
+    2. Supabase (if configured) - for Vercel deployment
+    3. Defaults
+    
     Returns:
         Configuration dict (merged with defaults for missing keys)
     """
-    # Try Supabase first
+    config_path = get_config_path()
+    
+    # Try local file first (preferred for local development)
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                user_config = json.load(f)
+            
+            # Merge with defaults (user config wins)
+            return _deep_merge(DEFAULT_CONFIG.copy(), user_config)
+        
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"⚠️  Failed to load config from local file: {e}")
+    
+    # Fallback to Supabase (for Vercel where local file doesn't exist)
     supabase = get_supabase_client()
     if supabase:
         try:
@@ -116,22 +135,8 @@ def load_config() -> dict[str, Any]:
                 return _deep_merge(DEFAULT_CONFIG.copy(), user_config)
         except Exception as e:
             print(f"⚠️  Failed to load config from Supabase: {e}")
-
-    config_path = get_config_path()
     
-    if not config_path.exists():
-        return DEFAULT_CONFIG.copy()
-    
-    try:
-        with open(config_path) as f:
-            user_config = json.load(f)
-        
-        # Merge with defaults (user config wins)
-        return _deep_merge(DEFAULT_CONFIG.copy(), user_config)
-    
-    except (json.JSONDecodeError, IOError) as e:
-        print(f"⚠️  Failed to load config: {e}")
-        return DEFAULT_CONFIG.copy()
+    return DEFAULT_CONFIG.copy()
 
 
 def save_config(config: dict[str, Any]) -> bool:

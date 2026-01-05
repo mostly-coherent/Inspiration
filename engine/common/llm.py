@@ -191,7 +191,11 @@ class LLMProvider:
             # Use generate_stream() method instead
             raise ValueError("Use generate_stream() for streaming. Set stream=False for non-streaming.")
         
+        # Estimate prompt tokens (rough: 4 chars ≈ 1 token)
+        estimated_tokens = (len(prompt) + len(system_prompt or "")) // 4
+        
         # Try primary provider with retry
+        primary_error = None
         if self.is_available(self.provider):
             try:
                 return self._generate_with_retry(
@@ -205,12 +209,28 @@ class LLMProvider:
                     base_delay,
                 )
             except Exception as e:
+                primary_error = e
                 print(f"⚠️  {self.provider} failed after retries: {e}")
                 if self.fallback_provider:
                     print(f"   Trying fallback: {self.fallback_provider}")
+        else:
+            print(f"⚠️  Primary provider '{self.provider}' not available (check API key)")
         
         # Try fallback provider with retry
         if self.fallback_provider and self.is_available(self.fallback_provider):
+            # Skip OpenAI fallback for large requests (30K TPM limit is too low)
+            if self.fallback_provider == "openai" and estimated_tokens > 25000:
+                print(f"⚠️  Skipping OpenAI fallback: request too large (~{estimated_tokens:,} tokens, limit ~30K)")
+                if primary_error:
+                    raise RuntimeError(
+                        f"Primary LLM ({self.provider}) failed and fallback (OpenAI) cannot handle large requests. "
+                        f"Error: {primary_error}"
+                    )
+                raise RuntimeError(
+                    f"Request too large for OpenAI (~{estimated_tokens:,} tokens). "
+                    f"Please ensure ANTHROPIC_API_KEY is set for large context requests."
+                )
+            
             try:
                 return self._generate_with_retry(
                     self.fallback_provider,
@@ -408,7 +428,12 @@ class LLMProvider:
         error_str = str(error).lower()
         error_type = type(error).__name__
         
-        # Rate limit errors
+        # "Request too large" is NOT retryable - it's a fundamental size issue
+        # This catches OpenAI TPM limits where the request itself exceeds limits
+        if "request too large" in error_str or "tokens must be reduced" in error_str:
+            return False
+        
+        # Rate limit errors (temporary, can be retried after waiting)
         if "rate limit" in error_str or "rate_limit" in error_str or "429" in error_str:
             return True
         

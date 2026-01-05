@@ -1927,6 +1927,12 @@ def main():
         mode_days = days_or_hours if not is_hours else None
         mode_name = "quarter"
         use_aggregated = True
+    elif args.days and args.days > 1:
+        # Custom date range: use aggregated processing (not per-day)
+        # This ensures --item-count produces exactly N items total, not N per day
+        mode_days = args.days
+        mode_name = "custom"
+        use_aggregated = True
     
     # v2: Prefer item_count, fallback to best_of for backward compatibility
     if args.item_count is None:
@@ -2001,10 +2007,16 @@ def main():
         if result["output_file"] and not args.dry_run:
             print(f"📄 Output: {result['output_file']}")
             harmonize_all_outputs(mode, llm)
-            if mode == "insights":
-                sync_posted_status(llm)
-            else:
-                sync_solved_status(llm)
+            # Sync operations are non-critical - don't crash if they fail
+            # The main work (generation + harmonization) is already saved
+            try:
+                if mode == "insights":
+                    sync_posted_status(llm)
+                else:
+                    sync_solved_status(llm)
+            except Exception as e:
+                print(f"⚠️  Sync operation failed (non-critical, items are saved): {e}", file=sys.stderr)
+                print(f"   You can retry sync later via the UI or by running again", file=sys.stderr)
     else:
         for date in dates_to_process:
             result = process_single_date(
@@ -2023,10 +2035,16 @@ def main():
         
         if not args.dry_run:
             harmonize_all_outputs(mode, llm)
-            if mode == "insights":
-                sync_posted_status(llm)
-            else:
-                sync_solved_status(llm)
+            # Sync operations are non-critical - don't crash if they fail
+            # The main work (generation + harmonization) is already saved
+            try:
+                if mode == "insights":
+                    sync_posted_status(llm)
+                else:
+                    sync_solved_status(llm)
+            except Exception as e:
+                print(f"⚠️  Sync operation failed (non-critical, items are saved): {e}", file=sys.stderr)
+                print(f"   You can retry sync later via the UI or by running again", file=sys.stderr)
     
     return 0
 

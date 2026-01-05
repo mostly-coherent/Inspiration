@@ -208,7 +208,28 @@ async function saveConfig(config: AppConfig): Promise<boolean> {
 export async function GET() {
   try {
     const config = await loadConfig();
-    return NextResponse.json({ success: true, config });
+    
+    // Inject environment variable values into vectordb config for display
+    // These are read-only on the frontend - actual values come from .env.local
+    const supabaseUrlEnv = process.env.SUPABASE_URL;
+    const supabaseAnonKeyEnv = process.env.SUPABASE_ANON_KEY;
+    const supabaseServiceRoleKeyEnv = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    const configWithEnvVars = {
+      ...config,
+      vectordb: {
+        ...config.vectordb,
+        provider: "supabase" as const,
+        // Use env var values for display (these are the actual values being used)
+        url: supabaseUrlEnv || config.vectordb?.url || null,
+        anonKey: supabaseAnonKeyEnv || config.vectordb?.anonKey || null,
+        serviceRoleKey: supabaseServiceRoleKeyEnv || config.vectordb?.serviceRoleKey || null,
+        initialized: !!(supabaseUrlEnv && supabaseAnonKeyEnv) || config.vectordb?.initialized || false,
+        lastSync: config.vectordb?.lastSync || null,
+      },
+    };
+    
+    return NextResponse.json({ success: true, config: configWithEnvVars });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: String(error) },

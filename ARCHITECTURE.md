@@ -1155,7 +1155,7 @@ Railway approach:
 - Faster deployment (15 minutes vs days)
 - Better for long-running tasks
 
-See `PIVOTS.md` for detailed decision rationale.
+See `PIVOT_LOG.md` for detailed decision rationale.
 
 ---
 
@@ -1216,7 +1216,7 @@ Harmonize deduplicated items to bank
 
 Users wanting diverse outputs should run multiple queries with different temperature/similarity settings. The bank naturally deduplicates across runs.
 
-<!-- Merged from FLOW_ANALYSIS.md on 2026-01-01 - see PIVOTS.md for full decision rationale -->
+<!-- Merged from FLOW_ANALYSIS.md on 2026-01-01 - see PIVOT_LOG.md for full decision rationale -->
 
 ---
 
