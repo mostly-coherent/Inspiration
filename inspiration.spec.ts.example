@@ -1,0 +1,35 @@
+import { test, expect } from '@playwright/test';
+
+/**
+ * E2E Tests for Inspiration App
+ * 
+ * This is a template file. To use:
+ * 1. Create e2e directory: `mkdir -p e2e`
+ * 2. Copy this file: `cp inspiration.spec.ts.example e2e/inspiration.spec.ts`
+ * 3. Copy config: `cp playwright.config.ts.example playwright.config.ts`
+ * 4. Run tests: `npm test`
+ * 
+ * Tests are optional - the app runs fine without them.
+ */
+
+test.describe('Inspiration App', () => {
+  test('homepage loads successfully', async ({ page }) => {
+    await page.goto('/');
+    
+    // Check for main UI elements
+    await expect(page.locator('text=Memory')).toBeVisible();
+    await expect(page.locator('text=Library')).toBeVisible();
+  });
+
+  test('can navigate to settings', async ({ page }) => {
+    await page.goto('/');
+    
+    // Click settings button
+    await page.click('text=Settings');
+    
+    // Should be on settings page
+    await expect(page).toHaveURL(/\/settings/);
+  });
+
+  // Add more tests as needed
+});
