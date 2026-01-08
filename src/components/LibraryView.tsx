@@ -92,7 +92,7 @@ export const LibraryView = memo(function LibraryView() {
         (item) =>
           item.title.toLowerCase().includes(searchLower) ||
           item.description.toLowerCase().includes(searchLower) ||
-          item.tags.some((t) => t.toLowerCase().includes(searchLower))
+          (item.tags?.some((t) => t.toLowerCase().includes(searchLower)) ?? false)
       );
     }
     
@@ -336,7 +336,7 @@ const ItemCard = memo(function ItemCard({
         {category && (
           <span className="truncate max-w-[60%]">{category.name}</span>
         )}
-        <span>{new Date(item.lastSeen).toLocaleDateString()}</span>
+        <span>{new Date(item.firstSeen).toLocaleDateString()}</span>
       </div>
     </button>
   );
@@ -380,7 +380,7 @@ const ItemDetailPanel = memo(function ItemDetailPanel({
       </div>
       
       {/* Tags */}
-      {item.tags.length > 0 && (
+      {item.tags && item.tags.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-xs font-medium text-adobe-gray-400 uppercase tracking-wider">Tags</h4>
           <div className="flex flex-wrap gap-1">
@@ -411,13 +411,13 @@ const ItemDetailPanel = memo(function ItemDetailPanel({
           </div>
           <div>
             <span className="text-adobe-gray-500">Source dates:</span>
-            <span className="ml-2 text-white">{item.sourceDates.length}</span>
+            <span className="ml-2 text-white">{item.sourceDates?.length ?? 0}</span>
           </div>
         </div>
       </div>
       
       {/* Source Dates */}
-      {item.sourceDates.length > 0 && (
+      {item.sourceDates && item.sourceDates.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-xs font-medium text-adobe-gray-400 uppercase tracking-wider">
             Appeared On ({item.sourceDates.length} dates)

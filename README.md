@@ -6,7 +6,7 @@
 ![Status](https://img.shields.io/badge/Status-Active-green)
 ![Stack](https://img.shields.io/badge/Stack-Next.js%2015%20%7C%20Python%20%7C%20Claude%20%7C%20Supabase-orange)
 
-<img src="e2e-results/01-homepage.png" alt="Inspiration - Main Interface" width="800">
+<img src="public/screenshots/homepage.png" alt="Inspiration - Main Interface" width="800">
 
 *Extract ideas and insights from your Cursor chat history with AI-powered analysis*
 
