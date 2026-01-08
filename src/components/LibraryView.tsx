@@ -9,6 +9,7 @@ interface Item {
   description: string;
   tags: string[];
   status: "active" | "implemented" | "posted" | "archived";
+  quality?: "A" | "B" | "C" | null;
   occurrence: number;
   implementedStatus: string;
   categoryId: string | null;
@@ -40,6 +41,7 @@ interface FilterState {
   search: string;
   itemType: "all" | string;
   status: "all" | "implemented" | "pending";
+  quality: "all" | "A" | "B" | "C" | "unrated";
   tag: "all" | string;
   sort: SortOption;
 }
@@ -50,11 +52,16 @@ export const LibraryView = memo(function LibraryView() {
   const [error, setError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
+  
   // Filter state
   const [filters, setFilters] = useState<FilterState>({
     search: "",
     itemType: "all",
     status: "all",
+    quality: "all",
     tag: "all",
     sort: "recent",
   });
@@ -107,6 +114,15 @@ export const LibraryView = memo(function LibraryView() {
       items = items.filter((item) => item.status === filters.status);
     }
     
+    // Quality filter
+    if (filters.quality !== "all") {
+      if (filters.quality === "unrated") {
+        items = items.filter((item) => !item.quality);
+      } else {
+        items = items.filter((item) => item.quality === filters.quality);
+      }
+    }
+    
     // Tag filter
     if (filters.tag !== "all") {
       items = items.filter((item) => item.tags?.includes(filters.tag));
@@ -146,6 +162,149 @@ export const LibraryView = memo(function LibraryView() {
     return Array.from(tagSet).sort();
   }, [data?.items]);
 
+  // Refetch library data
+  const refetchLibrary = async () => {
+    try {
+      const res = await fetch("/api/items");
+      if (!res.ok) throw new Error("Failed to fetch library");
+      const json = await res.json();
+      if (json.success) {
+        setData(json);
+      }
+    } catch (err) {
+      console.error("Refetch error:", err);
+    }
+  };
+
+  // Toggle item selection
+  const toggleSelection = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // Select all visible items
+  const selectAll = () => {
+    if (selectedIds.size === filteredItems.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredItems.map((item) => item.id)));
+    }
+  };
+
+  // Bulk archive
+  const bulkArchive = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkActionLoading(true);
+    try {
+      const res = await fetch("/api/items/bulk", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedIds), status: "archived" }),
+      });
+      if (res.ok) {
+        setSelectedIds(new Set());
+        await refetchLibrary();
+      }
+    } catch (err) {
+      console.error("Bulk archive error:", err);
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  // Bulk delete
+  const bulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} items? This cannot be undone.`)) return;
+    setBulkActionLoading(true);
+    try {
+      const res = await fetch("/api/items/bulk", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+      if (res.ok) {
+        setSelectedIds(new Set());
+        await refetchLibrary();
+      }
+    } catch (err) {
+      console.error("Bulk delete error:", err);
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  // Bulk status change
+  const bulkSetStatus = async (status: Item["status"]) => {
+    if (selectedIds.size === 0) return;
+    setBulkActionLoading(true);
+    try {
+      const res = await fetch("/api/items/bulk", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedIds), status }),
+      });
+      if (res.ok) {
+        setSelectedIds(new Set());
+        await refetchLibrary();
+      }
+    } catch (err) {
+      console.error("Bulk status change error:", err);
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  // Merge selected items into one
+  const mergeSelected = async () => {
+    if (selectedIds.size < 2) return;
+    if (!confirm(`Merge ${selectedIds.size} items into one? The item with highest occurrence will be kept, others deleted.`)) return;
+    setBulkActionLoading(true);
+    try {
+      const res = await fetch("/api/items/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+      if (res.ok) {
+        setSelectedIds(new Set());
+        await refetchLibrary();
+      }
+    } catch (err) {
+      console.error("Merge error:", err);
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  // Set quality for an item
+  const setItemQuality = async (itemId: string, quality: "A" | "B" | "C" | null) => {
+    try {
+      const res = await fetch("/api/items/quality", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: itemId, quality }),
+      });
+      if (res.ok) {
+        await refetchLibrary();
+        // Update selected item if it's the one being changed
+        if (selectedItem?.id === itemId) {
+          setSelectedItem({ ...selectedItem, quality });
+        }
+      }
+    } catch (err) {
+      console.error("Quality change error:", err);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -183,7 +342,7 @@ export const LibraryView = memo(function LibraryView() {
           </div>
           
           {/* Filter Row */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {/* Type Filter */}
             <select
               value={filters.itemType}
@@ -207,6 +366,20 @@ export const LibraryView = memo(function LibraryView() {
               <option value="all">All Status</option>
               <option value="pending">Pending</option>
               <option value="implemented">Implemented</option>
+            </select>
+            
+            {/* Quality Filter */}
+            <select
+              value={filters.quality}
+              onChange={(e) => setFilters({ ...filters, quality: e.target.value as FilterState["quality"] })}
+              aria-label="Filter by quality"
+              className="px-3 py-2 bg-adobe-gray-800 border border-adobe-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-inspiration-ideas"
+            >
+              <option value="all">All Quality</option>
+              <option value="A">⭐ A-Tier</option>
+              <option value="B">B-Tier</option>
+              <option value="C">C-Tier</option>
+              <option value="unrated">Unrated</option>
             </select>
             
           {/* Tag Filter */}
@@ -237,10 +410,81 @@ export const LibraryView = memo(function LibraryView() {
           </div>
         </div>
         
-        {/* Stats Bar */}
+        {/* Stats Bar + Bulk Actions */}
         <div className="flex items-center justify-between text-sm text-adobe-gray-400 px-2">
-          <span>Showing {filteredItems.length} of {data?.stats.totalItems || 0} items</span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={selectAll}
+              className="flex items-center gap-2 hover:text-white transition-colors"
+            >
+              <input
+                type="checkbox"
+                checked={filteredItems.length > 0 && selectedIds.size === filteredItems.length}
+                onChange={selectAll}
+                className="w-4 h-4 rounded bg-adobe-gray-800 border-adobe-gray-600"
+              />
+              <span>
+                {selectedIds.size > 0 
+                  ? `${selectedIds.size} selected` 
+                  : `Showing ${filteredItems.length} of ${data?.stats.totalItems || 0}`
+                }
+              </span>
+            </button>
+          </div>
+          
+          {/* Bulk Action Buttons */}
+          {selectedIds.size > 0 ? (
+            <div className="flex items-center gap-2">
+              <select
+                onChange={(e) => {
+                  if (e.target.value) {
+                    bulkSetStatus(e.target.value as Item["status"]);
+                    e.target.value = "";
+                  }
+                }}
+                disabled={bulkActionLoading}
+                className="px-2 py-1 bg-adobe-gray-800 border border-adobe-gray-700 rounded text-xs text-white"
+                defaultValue=""
+              >
+                <option value="" disabled>Set Status...</option>
+                <option value="active">Active</option>
+                <option value="implemented">Implemented</option>
+                <option value="posted">Posted</option>
+                <option value="archived">Archived</option>
+              </select>
+              {selectedIds.size >= 2 && (
+                <button
+                  onClick={mergeSelected}
+                  disabled={bulkActionLoading}
+                  className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded text-xs hover:bg-purple-500/30 transition-colors disabled:opacity-50"
+                >
+                  Merge ({selectedIds.size})
+                </button>
+              )}
+              <button
+                onClick={bulkArchive}
+                disabled={bulkActionLoading}
+                className="px-2 py-1 bg-amber-500/20 text-amber-400 rounded text-xs hover:bg-amber-500/30 transition-colors disabled:opacity-50"
+              >
+                Archive
+              </button>
+              <button
+                onClick={bulkDelete}
+                disabled={bulkActionLoading}
+                className="px-2 py-1 bg-red-500/20 text-red-400 rounded text-xs hover:bg-red-500/30 transition-colors disabled:opacity-50"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="px-2 py-1 text-adobe-gray-400 hover:text-white text-xs transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
           <span>{data?.stats.implementedCount || 0} implemented</span>
+          )}
         </div>
         
         {/* Items Grid */}
@@ -250,6 +494,8 @@ export const LibraryView = memo(function LibraryView() {
               key={item.id}
               item={item}
               isSelected={selectedItem?.id === item.id}
+              isChecked={selectedIds.has(item.id)}
+              onCheck={(e) => toggleSelection(item.id, e)}
               onClick={() => setSelectedItem(item)}
               category={categories.find((c) => c.id === item.categoryId)}
             />
@@ -267,7 +513,11 @@ export const LibraryView = memo(function LibraryView() {
       <div className="lg:col-span-1">
         <div className="lg:sticky lg:top-6">
           {selectedItem ? (
-            <ItemDetailPanel item={selectedItem} category={categories.find((c) => c.id === selectedItem.categoryId)} />
+            <ItemDetailPanel 
+              item={selectedItem} 
+              category={categories.find((c) => c.id === selectedItem.categoryId)}
+              onQualityChange={(quality) => setItemQuality(selectedItem.id, quality)}
+            />
           ) : (
             <div className="glass-card p-6 text-center text-adobe-gray-400">
               <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -287,11 +537,15 @@ export const LibraryView = memo(function LibraryView() {
 const ItemCard = memo(function ItemCard({
   item,
   isSelected,
+  isChecked,
+  onCheck,
   onClick,
   category,
 }: {
   item: Item;
   isSelected: boolean;
+  isChecked: boolean;
+  onCheck: (e: React.MouseEvent) => void;
   onClick: () => void;
   category?: Category;
 }) {
@@ -305,16 +559,31 @@ const ItemCard = memo(function ItemCard({
   const isImplemented = item.implementedStatus === "implemented";
   
   return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left p-4 rounded-lg border transition-all ${
+    <div
+      className={`relative w-full text-left p-4 rounded-lg border transition-all cursor-pointer ${
         isSelected
           ? "bg-adobe-gray-700/50 border-inspiration-ideas"
+          : isChecked
+          ? "bg-adobe-gray-700/30 border-amber-500/50"
           : "bg-adobe-gray-800/30 border-adobe-gray-700/50 hover:border-adobe-gray-600"
       }`}
+      onClick={onClick}
     >
+      {/* Checkbox */}
+      <div 
+        className="absolute top-3 right-3 z-10"
+        onClick={onCheck}
+      >
+        <input
+          type="checkbox"
+          checked={isChecked}
+          onChange={() => {}}
+          className="w-4 h-4 rounded bg-adobe-gray-800 border-adobe-gray-600 cursor-pointer"
+        />
+      </div>
+      
       {/* Header */}
-      <div className="flex items-start justify-between gap-2 mb-2">
+      <div className="flex items-start justify-between gap-2 mb-2 pr-6">
         <div className="flex items-center gap-2">
           <span className={`text-xs px-2 py-0.5 rounded-full border ${typeColor}`}>
             {item.itemType}
@@ -345,7 +614,7 @@ const ItemCard = memo(function ItemCard({
         )}
         <span>{new Date(item.firstSeen).toLocaleDateString()}</span>
       </div>
-    </button>
+    </div>
   );
 });
 
@@ -353,9 +622,11 @@ const ItemCard = memo(function ItemCard({
 const ItemDetailPanel = memo(function ItemDetailPanel({
   item,
   category,
+  onQualityChange,
 }: {
   item: Item;
   category?: Category;
+  onQualityChange?: (quality: "A" | "B" | "C" | null) => void;
 }) {
   const isImplemented = item.implementedStatus === "implemented";
   
@@ -372,6 +643,17 @@ const ItemDetailPanel = memo(function ItemDetailPanel({
               ✓ Implemented
             </span>
           )}
+          {item.quality && (
+            <span className={`text-xs px-2 py-1 rounded-full ${
+              item.quality === "A" 
+                ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" 
+                : item.quality === "B"
+                ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
+            }`}>
+              {item.quality === "A" ? "⭐ A-Tier" : `${item.quality}-Tier`}
+            </span>
+          )}
           {category && (
             <span className="text-xs px-2 py-1 rounded-full bg-adobe-gray-700 text-adobe-gray-300">
               {category.name}
@@ -380,6 +662,32 @@ const ItemDetailPanel = memo(function ItemDetailPanel({
         </div>
         <h2 className="text-xl font-semibold text-white">{item.title}</h2>
       </div>
+      
+      {/* Quality Rating */}
+      {onQualityChange && (
+        <div className="space-y-2">
+          <h4 className="text-xs font-medium text-adobe-gray-400 uppercase tracking-wider">Quality</h4>
+          <div className="flex gap-2">
+            {(["A", "B", "C"] as const).map((q) => (
+              <button
+                key={q}
+                onClick={() => onQualityChange(item.quality === q ? null : q)}
+                className={`px-3 py-1.5 rounded text-sm transition-colors ${
+                  item.quality === q
+                    ? q === "A"
+                      ? "bg-yellow-500/30 text-yellow-300 border border-yellow-500/50"
+                      : q === "B"
+                      ? "bg-blue-500/30 text-blue-300 border border-blue-500/50"
+                      : "bg-gray-500/30 text-gray-300 border border-gray-500/50"
+                    : "bg-adobe-gray-800 text-adobe-gray-400 hover:bg-adobe-gray-700"
+                }`}
+              >
+                {q === "A" ? "⭐ A" : q}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       
       {/* Description */}
       <div className="prose prose-invert prose-sm max-w-none">
