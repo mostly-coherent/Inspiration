@@ -426,6 +426,54 @@ inspiration/
 
 ---
 
+## v4 Library Enhancement — From List to Intelligence (2026-01-08)
+
+**Problem:** At 200+ items, the Library becomes noise. Users scroll, don't act. The Library is a collection, not a tool.
+
+**Goal:** Transform Library from "list you search" to "mirror that shows what you're thinking about—and what you're missing."
+
+### Phase 1: Declutter (Low Effort, High Impact)
+
+| ID | Feature | Description | Status |
+|----|---------|-------------|--------|
+| LIB-1 | **Quality Tier (A/B/C)** | Rate items on save; default filter to A-tier only | ✅ Done |
+| LIB-2 | **Merge Similar** | "These 5 items are essentially the same—combine?" Button on category level | ✅ Done |
+| LIB-3 | **Auto-Archive Stale** | Items >90 days old with no action → auto-archive (one-click restore) | Pending |
+| LIB-4 | **Bulk Actions** | Select multiple items → archive, change status, delete | ✅ Done |
+
+### Phase 2: Surface (Medium Effort, High Impact)
+
+| ID | Feature | Description | Status |
+|----|---------|-------------|--------|
+| LIB-5 | **"Top 3 Today"** | AI picks 3 items: recency × occurrence × workspace relevance | Pending |
+| LIB-6 | **Workspace Context** | Highlight items matching current Cursor workspace | Pending |
+| LIB-7 | **"Build Next" / "Share Next"** | Explicit recommendations with reasoning | Pending |
+
+### Phase 3: Synthesize (High Effort, High Novelty)
+
+| ID | Feature | Description | Status |
+|----|---------|-------------|--------|
+| LIB-8 | **Theme Synthesis** | 200 items → 7 meta-themes (AI-generated) | Pending |
+| LIB-9 | **Learning Trajectory** | "Your interests shifted from X → Y → Z over 6 months" | Pending |
+| LIB-10 | **Gap Detection** | "You've explored A and C extensively, but B is absent" | Pending |
+
+### Implementation Order
+
+**Start with Phase 1** — Immediate quality-of-life improvements:
+1. LIB-4: Bulk Actions (enables manual cleanup now)
+2. LIB-2: Merge Similar (reduce item count at category level)
+3. LIB-1: Quality Tier (surface best items)
+4. LIB-3: Auto-Archive (automated cleanup)
+
+**Then Phase 2** — Surfacing:
+5. LIB-5: Top 3 Today
+6. LIB-6: Workspace Context
+7. LIB-7: Build/Share Next
+
+**Finally Phase 3** — Longitudinal intelligence (post-release)
+
+---
+
 ## 🔮 Future Directions
 
 Active development focused on longitudinal intelligence—moving beyond single-session extraction. Roadmap details kept internal.

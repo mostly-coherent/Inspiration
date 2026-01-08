@@ -243,6 +243,7 @@ export type ThemeType = "generation" | "seek";
 export type ModeType = string; // User-defined: "idea", "insight", "use_case", etc.
 export type ItemType = "insight" | "idea" | "use_case";
 export type ItemStatus = "active" | "implemented" | "posted" | "archived";
+export type ItemQuality = "A" | "B" | "C" | null; // A = high value, C = low value, null = unrated
 
 export interface Item {
   id: string;
@@ -252,6 +253,7 @@ export interface Item {
   description: string;
   tags: string[];
   status: ItemStatus;
+  quality?: ItemQuality; // Quality tier for prioritization
   sourceConversations: number; // Number of distinct conversations
   // Core metadata
   occurrence: number;
