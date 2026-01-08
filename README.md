@@ -30,7 +30,7 @@ The more you use Cursor, the more valuable this becomes.
 
 | Aspect | What's Novel | What's Standard |
 |--------|--------------|-----------------|
-| **Cursor DB Extraction** | Reverse-engineered Cursor's undocumented "Bubble" architecture—messages are fragmented across `composerData` and `bubbleId` keys with timestamps requiring interpolation | — |
+| **Cursor DB Extraction** | Reverse-engineered Cursor's internal "Bubble" format (not publicly documented)—messages fragmented across `composerData` and `bubbleId` keys | — |
 | **Semantic Self-Search** | RAG over your own chat history for self-reflection ("Seek" mode) | Standard pgvector + OpenAI embeddings |
 | **Dedup Before Presentation** | Generate N×1.5 items, deduplicate via embedding similarity before returning | Standard cosine similarity |
 | **Hybrid Local/Cloud** | Local SQLite → Supabase Vector DB sync; works offline, scales to 2GB+ | Standard sync pattern |
