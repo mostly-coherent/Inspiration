@@ -438,14 +438,14 @@ inspiration/
 |----|---------|-------------|--------|
 | LIB-1 | **Quality Tier (A/B/C)** | Rate items on save; default filter to A-tier only | ✅ Done |
 | LIB-2 | **Merge Similar** | "These 5 items are essentially the same—combine?" Button on category level | ✅ Done |
-| LIB-3 | **Auto-Archive Stale** | Items >90 days old with no action → auto-archive (one-click restore) | Pending |
+| LIB-3 | **Auto-Archive Stale** | Items >90 days old with no action → auto-archive (one-click restore) | ✅ Done |
 | LIB-4 | **Bulk Actions** | Select multiple items → archive, change status, delete | ✅ Done |
 
 ### Phase 2: Surface (Medium Effort, High Impact)
 
 | ID | Feature | Description | Status |
 |----|---------|-------------|--------|
-| LIB-5 | **"Top 3 Today"** | AI picks 3 items: recency × occurrence × workspace relevance | Pending |
+| LIB-5 | **"Top 3 Today"** | AI picks 3 items: recency × occurrence × workspace relevance | ✅ Done |
 | LIB-6 | **Workspace Context** | Highlight items matching current Cursor workspace | Pending |
 | LIB-7 | **"Build Next" / "Share Next"** | Explicit recommendations with reasoning | Pending |
 

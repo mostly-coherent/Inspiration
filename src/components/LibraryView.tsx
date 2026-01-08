@@ -79,6 +79,22 @@ export const LibraryView = memo(function LibraryView() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   
+  // Cleanup state
+  const [staleCount, setStaleCount] = useState<number>(0);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  
+  // Top 3 recommendations
+  const [topItems, setTopItems] = useState<Array<{
+    id: string;
+    title: string;
+    description: string;
+    itemType: string;
+    quality?: string | null;
+    occurrence: number;
+    score: number;
+  }>>([]);
+  const [showTop3, setShowTop3] = useState(true);
+  
   // Filter state
   const [filters, setFilters] = useState<FilterState>({
     search: "",
@@ -196,6 +212,62 @@ export const LibraryView = memo(function LibraryView() {
       }
     } catch (err) {
       console.error("Refetch error:", err);
+    }
+  };
+
+  // Fetch stale items count
+  const fetchStaleCount = async () => {
+    try {
+      const res = await fetch("/api/items/cleanup");
+      if (res.ok) {
+        const json = await res.json();
+        setStaleCount(json.staleCount || 0);
+      }
+    } catch (err) {
+      console.error("Stale count error:", err);
+    }
+  };
+
+  // Fetch stale count and top items on load
+  useEffect(() => {
+    if (data) {
+      fetchStaleCount();
+      fetchTopItems();
+    }
+  }, [data]);
+
+  // Fetch top 3 recommendations
+  const fetchTopItems = async () => {
+    try {
+      const res = await fetch("/api/items/top");
+      if (res.ok) {
+        const json = await res.json();
+        setTopItems(json.items || []);
+      }
+    } catch (err) {
+      console.error("Top items error:", err);
+    }
+  };
+
+  // Run cleanup
+  const runCleanup = async () => {
+    if (staleCount === 0) return;
+    if (!confirm(`Archive ${staleCount} stale items? (Items >90 days old, not A-tier, not implemented/posted)`)) return;
+    setCleanupLoading(true);
+    try {
+      const res = await fetch("/api/items/cleanup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dryRun: false }),
+      });
+      if (res.ok) {
+        await refetchLibrary();
+        await fetchStaleCount();
+      }
+    } catch (err) {
+      console.error("Cleanup error:", err);
+    } finally {
+      setCleanupLoading(false);
     }
   };
 
@@ -348,6 +420,43 @@ export const LibraryView = memo(function LibraryView() {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Main Items List */}
       <div className="lg:col-span-2 space-y-4">
+        {/* Top 3 Recommendations */}
+        {showTop3 && topItems.length > 0 && (
+          <div className="glass-card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-white flex items-center gap-2">
+                <span className="text-lg">🎯</span> Top 3 Today
+              </h3>
+              <button
+                onClick={() => setShowTop3(false)}
+                className="text-xs text-adobe-gray-500 hover:text-adobe-gray-300"
+              >
+                Hide
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {topItems.map((item, idx) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    const fullItem = data?.items.find((i) => i.id === item.id);
+                    if (fullItem) setSelectedItem(fullItem);
+                  }}
+                  className="text-left p-3 rounded-lg bg-gradient-to-br from-adobe-gray-800/50 to-adobe-gray-900/50 border border-adobe-gray-700/50 hover:border-inspiration-ideas/50 transition-all"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-bold text-inspiration-ideas">#{idx + 1}</span>
+                    {item.quality === "A" && <span className="text-xs">⭐</span>}
+                    <span className="text-xs text-adobe-gray-500">×{item.occurrence}</span>
+                  </div>
+                  <h4 className="text-sm font-medium text-white line-clamp-2 mb-1">{item.title}</h4>
+                  <p className="text-xs text-adobe-gray-400 line-clamp-2">{item.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Search & Filters */}
         <div className="glass-card p-4 space-y-4">
           {/* Search Input */}
@@ -506,7 +615,18 @@ export const LibraryView = memo(function LibraryView() {
               </button>
             </div>
           ) : (
-          <span>{data?.stats.implementedCount || 0} implemented</span>
+            <div className="flex items-center gap-3">
+              <span>{data?.stats.implementedCount || 0} implemented</span>
+              {staleCount > 0 && (
+                <button
+                  onClick={runCleanup}
+                  disabled={cleanupLoading}
+                  className="px-2 py-1 bg-orange-500/20 text-orange-400 rounded text-xs hover:bg-orange-500/30 transition-colors disabled:opacity-50"
+                >
+                  {cleanupLoading ? "Cleaning..." : `🧹 Clean up ${staleCount} stale`}
+                </button>
+              )}
+            </div>
           )}
         </div>
         
