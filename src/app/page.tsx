@@ -366,6 +366,8 @@ export default function Home() {
             daysWithActivity: 0,
             daysWithOutput: 0,
             itemsGenerated: 0,
+            itemsAfterDedup: 0,
+            itemsReturned: 0,
           },
           timestamp: new Date().toISOString(),
         });

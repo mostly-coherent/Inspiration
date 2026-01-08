@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
               tool,
               mode,
               error: `End date cannot be in the future.`,
-              stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, itemsGenerated: 0 },
+              stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, itemsGenerated: 0, itemsAfterDedup: 0, itemsReturned: 0 },
               timestamp: new Date().toISOString(),
             },
             { status: 400 }
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
               tool,
               mode,
               error: `Start date must be before or equal to end date.`,
-              stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, itemsGenerated: 0 },
+              stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, itemsGenerated: 0, itemsAfterDedup: 0, itemsReturned: 0 },
               timestamp: new Date().toISOString(),
             },
             { status: 400 }
@@ -477,16 +477,18 @@ function parseStats(stdout: string): GenerateResult["stats"] {
     ? parseInt(daysProcessedMatch[1]) 
     : (daysWithActivityMatch ? parseInt(daysWithActivityMatch[1]) : 0);
   
-  // v2: Extract items generated/returned
-  const itemsGenerated = itemsReturnedMatch ? parseInt(itemsReturnedMatch[1]) : 
-                        (itemsAfterDedupMatch ? parseInt(itemsAfterDedupMatch[1]) : 
-                        (itemsGeneratedMatch ? parseInt(itemsGeneratedMatch[1]) : 0));
+  // v2: Extract items stats (all three fields)
+  const itemsGenerated = itemsGeneratedMatch ? parseInt(itemsGeneratedMatch[1]) : 0;
+  const itemsAfterDedup = itemsAfterDedupMatch ? parseInt(itemsAfterDedupMatch[1]) : itemsGenerated;
+  const itemsReturned = itemsReturnedMatch ? parseInt(itemsReturnedMatch[1]) : itemsAfterDedup;
   
   return {
     daysProcessed,
     daysWithActivity: daysWithActivityMatch ? parseInt(daysWithActivityMatch[1]) : daysProcessed,
     daysWithOutput: daysWithOutputMatch ? parseInt(daysWithOutputMatch[1]) : 0,
-    itemsGenerated, // v2: Items generated/returned
+    itemsGenerated, // v2: Items initially generated (before dedup)
+    itemsAfterDedup, // v2: Items after deduplication
+    itemsReturned, // v2: Items returned in output file
     conversationsAnalyzed: conversationsMatch ? parseInt(conversationsMatch[1]) : 0,
     harmonization: harmonizationMatch ? {
       itemsProcessed: parseInt(harmonizationMatch[1]),
