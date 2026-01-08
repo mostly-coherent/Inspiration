@@ -39,7 +39,7 @@ interface FilterState {
   search: string;
   itemType: "all" | string;
   status: "all" | "implemented" | "pending";
-  category: "all" | string;
+  tag: "all" | string;
   sort: SortOption;
 }
 
@@ -54,7 +54,7 @@ export const LibraryView = memo(function LibraryView() {
     search: "",
     itemType: "all",
     status: "all",
-    category: "all",
+    tag: "all",
     sort: "recent",
   });
 
@@ -110,9 +110,9 @@ export const LibraryView = memo(function LibraryView() {
       }
     }
     
-    // Category filter
-    if (filters.category !== "all") {
-      items = items.filter((item) => item.categoryId === filters.category);
+    // Tag filter
+    if (filters.tag !== "all") {
+      items = items.filter((item) => item.tags?.includes(filters.tag));
     }
     
     // Sort
@@ -134,10 +134,20 @@ export const LibraryView = memo(function LibraryView() {
     return items;
   }, [data?.items, filters]);
 
-  // Get categories for filter dropdown
+  // Get categories for item display
   const categories = useMemo(() => {
     return data?.categories || [];
   }, [data?.categories]);
+  
+  // Get all unique tags for filter dropdown
+  const allTags = useMemo(() => {
+    if (!data?.items) return [];
+    const tagSet = new Set<string>();
+    data.items.forEach((item) => {
+      item.tags?.forEach((tag) => tagSet.add(tag));
+    });
+    return Array.from(tagSet).sort();
+  }, [data?.items]);
 
   if (loading) {
     return (
@@ -202,16 +212,16 @@ export const LibraryView = memo(function LibraryView() {
               <option value="implemented">Implemented</option>
             </select>
             
-            {/* Category Filter */}
-            <select
-              value={filters.category}
-              onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-              aria-label="Filter by category"
+          {/* Tag Filter */}
+          <select
+              value={filters.tag}
+              onChange={(e) => setFilters({ ...filters, tag: e.target.value })}
+              aria-label="Filter by tag"
               className="px-3 py-2 bg-adobe-gray-800 border border-adobe-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-inspiration-ideas"
             >
-              <option value="all">All Categories</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              <option value="all">All Tags ({allTags.length})</option>
+              {allTags.map((tag) => (
+                <option key={tag} value={tag}>{tag}</option>
               ))}
             </select>
             
