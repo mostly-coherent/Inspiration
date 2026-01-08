@@ -83,6 +83,12 @@ export default function SettingsPage() {
   const [detectingChatHistory, setDetectingChatHistory] = useState(false);
   const [newWorkspace, setNewWorkspace] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  
+  // Local state for Power Features (to avoid saving on every keystroke)
+  const [localLinkedInEnabled, setLocalLinkedInEnabled] = useState(false);
+  const [localLinkedInDirectory, setLocalLinkedInDirectory] = useState("");
+  const [localSolvedStatusEnabled, setLocalSolvedStatusEnabled] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // Load configuration
   useEffect(() => {
@@ -854,18 +860,11 @@ export default function SettingsPage() {
                   <input
                     id="social-sync-toggle"
                     type="checkbox"
-                    checked={config.features.linkedInSync.enabled}
-                    onChange={(e) =>
-                      saveConfig({
-                        features: {
-                          ...config.features,
-                          linkedInSync: {
-                            ...config.features.linkedInSync,
-                            enabled: e.target.checked,
-                          },
-                        },
-                      })
-                    }
+                    checked={localLinkedInEnabled}
+                    onChange={(e) => {
+                      setLocalLinkedInEnabled(e.target.checked);
+                      setHasUnsavedChanges(true);
+                    }}
                     className="w-4 h-4 rounded bg-slate-800 border-slate-700"
                   />
                   Social Media Sync
@@ -873,22 +872,15 @@ export default function SettingsPage() {
                 <p className="text-xs text-slate-500 mt-1 ml-7">
                   Mark insights as &quot;shared&quot; when they match your social media posts
                 </p>
-                {config.features.linkedInSync.enabled && (
+                {localLinkedInEnabled && (
                   <div className="mt-3 ml-7">
                     <input
                       type="text"
-                      value={config.features.linkedInSync.postsDirectory || ""}
-                      onChange={(e) =>
-                        saveConfig({
-                          features: {
-                            ...config.features,
-                            linkedInSync: {
-                              ...config.features.linkedInSync,
-                              postsDirectory: e.target.value || null,
-                            },
-                          },
-                        })
-                      }
+                      value={localLinkedInDirectory}
+                      onChange={(e) => {
+                        setLocalLinkedInDirectory(e.target.value);
+                        setHasUnsavedChanges(true);
+                      }}
                       placeholder="/path/to/social/posts"
                       className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
                     />
@@ -902,15 +894,11 @@ export default function SettingsPage() {
                   <input
                     id="solved-status-sync-toggle"
                     type="checkbox"
-                    checked={config.features.solvedStatusSync.enabled}
-                    onChange={(e) =>
-                      saveConfig({
-                        features: {
-                          ...config.features,
-                          solvedStatusSync: { enabled: e.target.checked },
-                        },
-                      })
-                    }
+                    checked={localSolvedStatusEnabled}
+                    onChange={(e) => {
+                      setLocalSolvedStatusEnabled(e.target.checked);
+                      setHasUnsavedChanges(true);
+                    }}
                     className="w-4 h-4 rounded bg-slate-800 border-slate-700"
                   />
                   Solved Status Sync
@@ -938,10 +926,37 @@ export default function SettingsPage() {
               </div>
             )}
             {config.setupComplete && activeTab === "general" && (
-              <div className="mt-6 flex justify-end">
-                <div className="text-xs text-slate-500 mr-4 self-center">
-                  Changes are saved automatically
-                </div>
+              <div className="mt-6 flex justify-end gap-3">
+                {hasUnsavedChanges && (
+                  <button
+                    onClick={async () => {
+                      const success = await saveConfig({
+                        features: {
+                          ...config.features,
+                          linkedInSync: {
+                            enabled: localLinkedInEnabled,
+                            postsDirectory: localLinkedInDirectory || null,
+                          },
+                          solvedStatusSync: {
+                            enabled: localSolvedStatusEnabled,
+                          },
+                        },
+                      });
+                      if (success) {
+                        setHasUnsavedChanges(false);
+                      }
+                    }}
+                    disabled={saving}
+                    className="px-6 py-2 bg-amber-500 text-slate-900 font-medium rounded-lg hover:bg-amber-400 disabled:opacity-50 transition-colors"
+                  >
+                    {saving ? "Saving..." : "Save Changes"}
+                  </button>
+                )}
+                {!hasUnsavedChanges && (
+                  <div className="text-xs text-slate-500 self-center">
+                    All changes saved
+                  </div>
+                )}
               </div>
             )}
           </Section>
