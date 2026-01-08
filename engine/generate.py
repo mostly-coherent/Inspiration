@@ -2,7 +2,7 @@
 """
 Inspiration Engine — Unified Content Generation
 
-Generate insights (LinkedIn posts) or ideas (prototype briefs) from Cursor chat history.
+Generate insights (shareable learnings) or ideas (prototype briefs) from Cursor chat history.
 Supports both modes via --mode parameter.
 """
 
@@ -139,7 +139,7 @@ def load_synthesize_prompt(mode: Literal["insights", "ideas", "use_case"]) -> st
     # Fallback defaults if files don't exist
     if not combined:
         if mode == "insights":
-            return "Generate 3 LinkedIn post drafts from the following Cursor chat history."
+            return "Generate 3 shareable insight drafts from the following Cursor chat history."
         elif mode == "ideas":
             return "Generate 3 idea briefs from the following Cursor chat history."
         else:  # use_case
@@ -149,12 +149,12 @@ def load_synthesize_prompt(mode: Literal["insights", "ideas", "use_case"]) -> st
 
 
 def load_golden_posts() -> str:
-    """Load user's actual LinkedIn posts as golden examples (insights mode only)."""
+    """Load user's actual posts as golden examples (insights mode only)."""
     # First try custom voice config
     voice_config = get_feature_config("customVoice")
     posts_dir = voice_config.get("goldenExamplesDir")
     
-    # Fall back to LinkedIn sync config
+    # Fall back to social sync config
     if not posts_dir:
         linkedin_config = get_feature_config("linkedInSync")
         posts_dir = linkedin_config.get("postsDirectory")
@@ -1060,9 +1060,9 @@ def _parse_output(content: str, mode: Literal["insights", "ideas"]) -> list[dict
 
 def sync_posted_status(llm: LLMProvider, dry_run: bool = False) -> int:
     """
-    Sync insight bank with LinkedIn posts to mark insights as posted (insights mode only).
+    Sync insight bank with social posts to mark insights as shared (insights mode only).
     Uses unified ItemsBank (v1) with folder-based tracking.
-    Returns number of insights marked as posted.
+    Returns number of insights marked as shared.
     """
     if not is_feature_enabled("linkedInSync"):
         return 0
@@ -1670,7 +1670,7 @@ def process_aggregated_range(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate insights (LinkedIn posts) or ideas (prototype briefs) from Cursor chat history",
+        description="Generate insights (shareable learnings) or ideas (prototype briefs) from Cursor chat history",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     
@@ -1679,7 +1679,7 @@ def main():
         "--mode",
         choices=["insights", "ideas"],
         required=True,
-        help="Generation mode: 'insights' for LinkedIn posts, 'ideas' for prototype briefs",
+        help="Generation mode: 'insights' for shareable learnings, 'ideas' for prototype briefs",
     )
     
     mode_group = parser.add_mutually_exclusive_group()

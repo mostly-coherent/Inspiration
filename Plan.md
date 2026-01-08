@@ -20,9 +20,9 @@
 Each mode serves a distinct purpose:
 
 ### Generate (Insights)
-**Canonical Use Case:** Extract shareable insights from coding sessions to post on social media (e.g., LinkedIn).
+**Canonical Use Case:** Extract shareable insights from coding sessions—for blogs, tweets, posts, or deeper research.
 
-**What it does:** Analyzes chat history for learnings, patterns, and observations worth sharing. Generates 3 social media post drafts that are casual, thoughtful, and helpful.
+**What it does:** Analyzes chat history for learnings, patterns, and observations worth sharing. Generates shareable drafts that are casual, thoughtful, and helpful—use them however you like (social posts, blog material, research sparks, etc.).
 
 **Example:** "What did I learn about AI-assisted coding today that others would find valuable?"
 
@@ -426,6 +426,12 @@ inspiration/
 
 ---
 
+## 🔮 Future Directions
+
+Active development focused on longitudinal intelligence—moving beyond single-session extraction. Roadmap details kept internal.
+
+---
+
 ## 🔮 Improvement Backlog (Post-v3)
 
 **Performance:**
@@ -478,4 +484,4 @@ Users can now edit prompt templates directly in the UI. While we create backups 
 
 ---
 
-**Last Updated:** 2026-01-05
+**Last Updated:** 2026-01-08

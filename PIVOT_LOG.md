@@ -829,7 +829,7 @@ The original "fix" tried to maintain backward compatibility by keeping field nam
 
 5. **Three Banks (clarified):**
    - **Ideas Bank** 💡: Generated ideas; tracks "Implemented" status by scanning Cursor workspaces
-   - **Insights Bank** ✨: Generated insights; tracks "Shared" status by scanning LinkedIn posts folder
+   - **Insights Bank** ✨: Generated insights; tracks "Shared" status by scanning social posts folder
    - **Use Cases Bank** 🔍: Stores user query (the idea/insight seeking evidence) + found evidence from chat history
 
 6. **Configurable Settings (expose in UI):**
