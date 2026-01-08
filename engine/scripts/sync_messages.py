@@ -16,7 +16,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.cursor_db import get_conversations_for_range, _get_conversations_for_date_sqlite
+from common.cursor_db import get_conversations_for_range, _get_conversations_for_date_sqlite, get_cursor_db_path
 from common.vector_db import (
     get_supabase_client,
     get_last_sync_timestamp,
@@ -27,6 +27,7 @@ from common.vector_db import (
 )
 from common.semantic_search import batch_get_embeddings
 from common.prompt_compression import compress_single_message
+from common.db_health_check import detect_schema_version, save_diagnostic_report
 
 
 # Optimization constants
@@ -68,6 +69,32 @@ def sync_new_messages(
     dry_run: bool = False,
 ) -> None:
     """Sync new messages since last sync."""
+    
+    # Health check: Validate database schema before attempting sync
+    try:
+        db_path = get_cursor_db_path()
+        health = detect_schema_version(db_path)
+        
+        if not health.is_healthy:
+            print(f"❌ Database schema incompatible: {health.schema_version}", flush=True)
+            print("", flush=True)
+            for issue in health.issues:
+                print(f"  {issue}", flush=True)
+            print("", flush=True)
+            
+            # Save diagnostic report
+            report_path = save_diagnostic_report(health, db_path)
+            print(f"📄 Diagnostic report saved: {report_path}", flush=True)
+            print("", flush=True)
+            print("⚠️  Please report this issue at:", flush=True)
+            print("   https://github.com/mostly-coherent/Inspiration/issues", flush=True)
+            return
+        else:
+            print(f"✅ Database schema check passed: {health.schema_version}", flush=True)
+    except Exception as e:
+        print(f"⚠️  Warning: Health check failed: {e}", flush=True)
+        print("   Continuing with sync attempt...", flush=True)
+    
     client = get_supabase_client()
     if not client:
         print("❌ Supabase client not available. Check SUPABASE_URL and SUPABASE_ANON_KEY in .env")
