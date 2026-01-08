@@ -131,7 +131,7 @@ async function callPythonEngineLocal(
 ): Promise<ScriptResult> {
   // Safety check: prevent running from wrong directory (e.g., MyPrivateTools/Inspiration)
   const cwd = process.cwd();
-  if (cwd.includes("MyPrivateTools") || cwd.includes("OtherBuilders")) {
+  if (cwd.includes("MyPrivateTools") || cwd.includes("Production_Clones")) {
     logger.error(`[Inspiration] ERROR: Running from invalid directory: ${cwd}`);
     logger.error(`[Inspiration] This can create duplicate directories. Run from the Inspiration project root.`);
     return {

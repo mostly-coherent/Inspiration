@@ -73,7 +73,7 @@ export const RunHistory = memo(function RunHistory() {
       `- Days Processed: ${result.stats.daysProcessed}`,
       `- Days with Activity: ${result.stats.daysWithActivity}`,
       `- Days with Output: ${result.stats.daysWithOutput}`,
-      `- Candidates Generated: ${result.stats.candidatesGenerated}`,
+      `- Items Generated: ${result.stats.itemsGenerated}`,
       result.stats.conversationsAnalyzed
         ? `- Conversations Analyzed: ${result.stats.conversationsAnalyzed}`
         : "",
@@ -166,7 +166,7 @@ export const RunHistory = memo(function RunHistory() {
                   {entry.result.stats && (
                     <div className="flex gap-3 mt-2 text-xs text-adobe-gray-400">
                       <span>{entry.result.stats.daysProcessed} days</span>
-                      <span>{entry.result.stats.candidatesGenerated} candidates</span>
+                      <span>{entry.result.stats.itemsGenerated} items</span>
                       {entry.result.stats.conversationsAnalyzed && (
                         <span>{entry.result.stats.conversationsAnalyzed} conversations</span>
                       )}
@@ -229,9 +229,9 @@ export const RunHistory = memo(function RunHistory() {
               </div>
             </div>
             <div>
-              <div className="text-adobe-gray-400 text-xs mb-1">Candidates</div>
+              <div className="text-adobe-gray-400 text-xs mb-1">Items</div>
               <div className="text-white font-medium">
-                {selectedRun.result.stats.candidatesGenerated}
+                {selectedRun.result.stats.itemsGenerated}
               </div>
             </div>
             <div>

@@ -25,8 +25,8 @@ export function parseRankedItems(
 ): RankedItem[] {
   if (!content) return [];
 
-  // Extract the main content (before "## All Generated Candidates" or "---")
-  const mainContent = content.split("## All Generated Candidates")[0].split("\n---\n")[0];
+  // Extract the main content (before "---")
+  const mainContent = content.split("\n---\n")[0];
   
   const items: RankedItem[] = [];
 
@@ -87,7 +87,7 @@ export function parseRankedItems(
  */
 export function extractEstimatedCost(
   content: string,
-  candidatesGenerated: number
+  itemsGenerated: number
 ): number {
   // Try to extract from content if available
   const costMatch = content.match(/Estimated cost:?\s*\$?([\d.]+)/i);
@@ -95,8 +95,8 @@ export function extractEstimatedCost(
     return parseFloat(costMatch[1]);
   }
   
-  // Fallback: estimate based on candidates
-  // ~$0.023 per candidate + $0.025 for judge
-  return candidatesGenerated * 0.023 + 0.025;
+  // Fallback: estimate based on items generated
+  // v2: Single LLM call (~$0.05-0.10 depending on items)
+  return Math.max(0.05, itemsGenerated * 0.01);
 }
 

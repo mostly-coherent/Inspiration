@@ -174,7 +174,7 @@ async function saveConfig(config: AppConfig): Promise<boolean> {
     try {
       // Safety check: prevent creating files in wrong directory
       const cwd = process.cwd();
-      if (cwd.includes("MyPrivateTools") || cwd.includes("OtherBuilders")) {
+      if (cwd.includes("MyPrivateTools") || cwd.includes("Production_Clones")) {
         console.error("[Config] ERROR: Running from invalid directory:", cwd);
         if (!supabase) {
           return false;

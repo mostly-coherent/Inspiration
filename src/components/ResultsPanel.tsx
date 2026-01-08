@@ -7,6 +7,7 @@ import { copyToClipboard, downloadFile } from "@/lib/utils";
 import { MarkdownContent } from "./MarkdownContent";
 import { parseRankedItems, extractEstimatedCost } from "@/lib/resultParser";
 import { getFriendlyError, FriendlyError } from "@/lib/errorMessages";
+import { validateAndLog } from "@/lib/statsValidator";
 
 interface ResultsPanelProps {
   result: GenerateResult;
@@ -16,6 +17,9 @@ interface ResultsPanelProps {
 export const ResultsPanel = memo(function ResultsPanel({ result, onRetry }: ResultsPanelProps) {
   const [showRaw, setShowRaw] = useState(false);
   const router = useRouter();
+  
+  // Validate stats in development mode
+  validateAndLog(result, 'ResultsPanel');
 
   // Parse ranked items from content
   const rankedItems = useMemo(() => {
@@ -34,10 +38,10 @@ export const ResultsPanel = memo(function ResultsPanel({ result, onRetry }: Resu
       return result.estimatedCost;
     }
     if (result.content) {
-      return extractEstimatedCost(result.content, result.stats.candidatesGenerated ?? 1);
+      return extractEstimatedCost(result.content, result.stats.itemsGenerated);
     }
-    return (result.stats.candidatesGenerated ?? 1) * 0.023 + 0.025; // Fallback estimate
-  }, [result.estimatedCost, result.content, result.stats.candidatesGenerated]);
+    return result.stats.itemsGenerated * 0.01 + 0.05; // Fallback estimate (v2: single LLM call)
+  }, [result.estimatedCost, result.content, result.stats.itemsGenerated]);
 
   const downloadResult = async (content: string) => {
     // Show file picker dialog
@@ -149,10 +153,11 @@ export const ResultsPanel = memo(function ResultsPanel({ result, onRetry }: Resu
     );
   }
 
-  // Show success header only if content was actually generated
+  // Show success if content was generated OR items were harmonized into Library
   const hasContent = result.content && result.content.trim().length > 0;
   const hasItems = result.items && result.items.length > 0;
-  const actuallySuccessful = hasContent || hasItems;
+  const harmonizedItems = result.stats.harmonization?.itemsAdded ?? 0;
+  const actuallySuccessful = hasContent || hasItems || harmonizedItems > 0;
   
   return (
     <section className="glass-card p-6 space-y-4">
@@ -183,16 +188,16 @@ export const ResultsPanel = memo(function ResultsPanel({ result, onRetry }: Resu
               </div>
             </div>
             <div>
-              <div className="text-adobe-gray-400 text-xs mb-1">Days Processed</div>
-              <div className="text-white font-medium">{result.stats.daysProcessed}</div>
+              <div className="text-adobe-gray-400 text-xs mb-1">Days with Activity</div>
+              <div className="text-white font-medium">{result.stats.daysWithActivity} of {result.stats.daysProcessed}</div>
             </div>
             <div>
-              <div className="text-adobe-gray-400 text-xs mb-1">Candidates Generated</div>
-              <div className="text-white font-medium">{result.stats.candidatesGenerated}</div>
+              <div className="text-adobe-gray-400 text-xs mb-1">Items Generated</div>
+              <div className="text-white font-medium">{result.stats.itemsGenerated ?? 0}</div>
             </div>
             <div>
-              <div className="text-adobe-gray-400 text-xs mb-1">Days with Output</div>
-              <div className="text-white font-medium">{result.stats.daysWithOutput}</div>
+              <div className="text-adobe-gray-400 text-xs mb-1">Items in Output File</div>
+              <div className="text-white font-medium">{result.stats.daysWithOutput > 0 ? 'Yes' : 'No'}</div>
             </div>
           </div>
 
@@ -353,11 +358,19 @@ export const ResultsPanel = memo(function ResultsPanel({ result, onRetry }: Resu
         </div>
       )}
 
-      {!result.content && (
+      {!result.content && harmonizedItems === 0 && (
         <p className="text-adobe-gray-400">
           No output generated. The conversations may have been routine work without
           notable patterns.
         </p>
+      )}
+      
+      {!result.content && harmonizedItems > 0 && (
+        <div className="p-4 bg-adobe-blue-900/20 border border-adobe-blue-500/30 rounded-lg">
+          <p className="text-adobe-gray-300">
+            ℹ️ No new items were generated in this run, but <strong>{harmonizedItems} items</strong> from previous runs were successfully harmonized into your Library.
+          </p>
+        </div>
       )}
     </section>
   );

@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
               tool,
               mode,
               error: `End date cannot be in the future.`,
-              stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, candidatesGenerated: 0 },
+              stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, itemsGenerated: 0 },
               timestamp: new Date().toISOString(),
             },
             { status: 400 }
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
               tool,
               mode,
               error: `Start date must be before or equal to end date.`,
-              stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, candidatesGenerated: 0 },
+              stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, itemsGenerated: 0 },
               timestamp: new Date().toISOString(),
             },
             { status: 400 }
@@ -307,7 +307,7 @@ export async function POST(request: NextRequest) {
     const items = content ? parseRankedItems(content, resolvedTool) : undefined;
     
     // Extract estimated cost
-    const estimatedCost = content ? extractEstimatedCost(content, stats.candidatesGenerated ?? 1) : undefined;
+    const estimatedCost = content ? extractEstimatedCost(content, stats.itemsGenerated) : undefined;
 
     // Determine success: script ran successfully AND (content generated OR items harmonized to library)
     const hasContent = !!content && content.trim().length > 0;
@@ -456,13 +456,15 @@ async function runPythonScript(
 
 function parseStats(stdout: string): GenerateResult["stats"] {
   // Parse summary section from output
-  // Handle both "Days processed:" (single date) and "Days with activity:" (aggregated)
+  // v2 Item-Centric Architecture: No more "Candidates", now "Items generated/returned"
   const daysProcessedMatch = stdout.match(/Days processed:\s*(\d+)/i);
   const daysWithActivityMatch = stdout.match(/Days with activity:\s*(\d+)/i);
   const daysWithOutputMatch = stdout.match(/Days with (?:ideas|posts):\s*(\d+)/i);
   
-  // Parse candidates - look for "best-of X" or "best_of X" or from summary
-  const candidatesMatch = stdout.match(/best[-_]of\s*(\d+)/i) || stdout.match(/Candidates generated:\s*(\d+)/i);
+  // v2: Parse items stats (replaces candidates)
+  const itemsGeneratedMatch = stdout.match(/Items generated:\s*(\d+)/i);
+  const itemsAfterDedupMatch = stdout.match(/Items after dedup:\s*(\d+)/i);
+  const itemsReturnedMatch = stdout.match(/Items returned:\s*(\d+)/i);
   
   // Parse conversations - look for "Conversations analyzed:" or "X conversations"
   const conversationsMatch = stdout.match(/Conversations analyzed:\s*(\d+)/i) || stdout.match(/(\d+)\s+conversations/i);
@@ -475,11 +477,16 @@ function parseStats(stdout: string): GenerateResult["stats"] {
     ? parseInt(daysProcessedMatch[1]) 
     : (daysWithActivityMatch ? parseInt(daysWithActivityMatch[1]) : 0);
   
+  // v2: Extract items generated/returned
+  const itemsGenerated = itemsReturnedMatch ? parseInt(itemsReturnedMatch[1]) : 
+                        (itemsAfterDedupMatch ? parseInt(itemsAfterDedupMatch[1]) : 
+                        (itemsGeneratedMatch ? parseInt(itemsGeneratedMatch[1]) : 0));
+  
   return {
     daysProcessed,
     daysWithActivity: daysWithActivityMatch ? parseInt(daysWithActivityMatch[1]) : daysProcessed,
     daysWithOutput: daysWithOutputMatch ? parseInt(daysWithOutputMatch[1]) : 0,
-    candidatesGenerated: candidatesMatch ? parseInt(candidatesMatch[1]) : 1,
+    itemsGenerated, // v2: Items generated/returned
     conversationsAnalyzed: conversationsMatch ? parseInt(conversationsMatch[1]) : 0,
     harmonization: harmonizationMatch ? {
       itemsProcessed: parseInt(harmonizationMatch[1]),
