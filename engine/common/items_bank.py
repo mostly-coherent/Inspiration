@@ -72,6 +72,7 @@ class ItemsBank:
         tags: Optional[list[str]] = None,
         source_conversations: int = 1,
         embedding: Optional[list[float]] = None,
+        first_seen_date: Optional[str] = None,
         # Legacy support - ignore these
         mode: Optional[str] = None,
         theme: Optional[str] = None,
@@ -88,6 +89,7 @@ class ItemsBank:
             tags: Optional list of tags for filtering/discovery
             source_conversations: Number of distinct conversations this came from
             embedding: Optional embedding vector (will be generated if not provided)
+            first_seen_date: Optional date (YYYY-MM-DD) when this item was first seen in chat history
             
             # Legacy parameters (for backward compatibility)
             mode: Deprecated - maps to item_type
@@ -137,6 +139,11 @@ class ItemsBank:
                 item["occurrence"] = item.get("occurrence", 1) + 1
                 item["lastSeen"] = datetime.now().isoformat()[:10]
                 item["sourceConversations"] = item.get("sourceConversations", 1) + source_conversations
+                # Update firstSeen to earliest date (if new date is earlier)
+                if first_seen_date:
+                    existing_first_seen = item.get("firstSeen", "")
+                    if not existing_first_seen or first_seen_date < existing_first_seen:
+                        item["firstSeen"] = first_seen_date
                 # Update description if new one is longer/better
                 if len(description) > len(item.get("description", "")):
                     item["description"] = description
@@ -156,7 +163,7 @@ class ItemsBank:
             "tags": (tags or [])[:10],  # Cap at 10 tags
             "occurrence": 1,
             "sourceConversations": source_conversations,
-            "firstSeen": datetime.now().isoformat()[:10],
+            "firstSeen": first_seen_date or datetime.now().isoformat()[:10],
             "lastSeen": datetime.now().isoformat()[:10],
             "status": "active",
             "categoryId": None,
