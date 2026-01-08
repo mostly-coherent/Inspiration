@@ -881,6 +881,15 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
             content = f.read_text()
             parsed_items = _parse_output(content, mode)
             if parsed_items:
+                # Extract first_seen_date from filename (e.g., "Insights_2026-01-02_to_2026-01-08.judge.md" → "2026-01-02")
+                import re
+                date_match = re.search(r'(\d{4}-\d{2}-\d{2})_to_', f.name)
+                first_seen_date = date_match.group(1) if date_match else None
+                
+                # Attach date to each item for later use
+                for item in parsed_items:
+                    item["_first_seen_date"] = first_seen_date
+                
                 items.extend(parsed_items)
             else:
                 # Diagnose WHY no items were found
@@ -966,6 +975,7 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
                         description=prep["description"],
                         tags=prep["tags"],
                         embedding=embeddings[i],  # Pass pre-computed embedding
+                        first_seen_date=prep.get("_first_seen_date"),  # Pass date from filename
                     )
                     
                     batch_items_processed += 1

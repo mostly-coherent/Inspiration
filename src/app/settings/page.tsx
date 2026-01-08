@@ -82,6 +82,7 @@ export default function SettingsPage() {
   const [chatHistoryExists, setChatHistoryExists] = useState(false);
   const [detectingChatHistory, setDetectingChatHistory] = useState(false);
   const [newWorkspace, setNewWorkspace] = useState("");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
 
   // Load configuration
   useEffect(() => {
@@ -148,6 +149,7 @@ export default function SettingsPage() {
 
   const saveConfig = async (updates: Partial<AppConfig>) => {
     setSaving(true);
+    setSaveStatus("saving");
     try {
       const res = await fetch("/api/config", {
         method: "POST",
@@ -157,13 +159,18 @@ export default function SettingsPage() {
       const data = await res.json();
       if (data.success) {
         setConfig(data.config);
+        setSaveStatus("saved");
+        // Reset save status after 2 seconds
+        setTimeout(() => setSaveStatus("idle"), 2000);
         return true;
       } else {
         setError(data.error);
+        setSaveStatus("idle");
         return false;
       }
     } catch (err) {
       setError(String(err));
+      setSaveStatus("idle");
       return false;
     } finally {
       setSaving(false);
@@ -217,12 +224,26 @@ export default function SettingsPage() {
               ⚙️ Settings
             </h1>
           </div>
-          {config.setupComplete && (
-            <span className="text-xs text-emerald-400 flex items-center gap-1">
-              <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
-              Setup Complete
-            </span>
-          )}
+          <div className="flex items-center gap-3">
+            {saveStatus === "saving" && (
+              <span className="text-xs text-slate-400 flex items-center gap-1">
+                <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
+                Saving...
+              </span>
+            )}
+            {saveStatus === "saved" && (
+              <span className="text-xs text-emerald-400 flex items-center gap-1">
+                <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
+                Saved ✓
+              </span>
+            )}
+            {config.setupComplete && (
+              <span className="text-xs text-emerald-400 flex items-center gap-1">
+                <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
+                Setup Complete
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
@@ -914,6 +935,13 @@ export default function SettingsPage() {
                 >
                   {saving ? "Saving..." : "Complete Setup ✓"}
                 </button>
+              </div>
+            )}
+            {config.setupComplete && activeTab === "general" && (
+              <div className="mt-6 flex justify-end">
+                <div className="text-xs text-slate-500 mr-4 self-center">
+                  Changes are saved automatically
+                </div>
               </div>
             )}
           </Section>
