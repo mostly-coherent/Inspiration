@@ -89,7 +89,7 @@ class ItemsBank:
             tags: Optional list of tags for filtering/discovery
             source_conversations: Number of distinct conversations this came from
             embedding: Optional embedding vector (will be generated if not provided)
-            first_seen_date: Optional date (YYYY-MM-DD) when this item was first seen in chat history
+            first_seen_date: Optional date (YYYY-MM) when this item was first seen in chat history
             
             # Legacy parameters (for backward compatibility)
             mode: Deprecated - maps to item_type
@@ -140,6 +140,7 @@ class ItemsBank:
                 item["lastSeen"] = datetime.now().isoformat()[:10]
                 item["sourceConversations"] = item.get("sourceConversations", 1) + source_conversations
                 # Update firstSeen to earliest date (if new date is earlier)
+                # Supports both YYYY-MM and YYYY-MM-DD formats (string comparison works for both)
                 if first_seen_date:
                     existing_first_seen = item.get("firstSeen", "")
                     if not existing_first_seen or first_seen_date < existing_first_seen:
@@ -163,8 +164,8 @@ class ItemsBank:
             "tags": (tags or [])[:10],  # Cap at 10 tags
             "occurrence": 1,
             "sourceConversations": source_conversations,
-            "firstSeen": first_seen_date or datetime.now().isoformat()[:10],
-            "lastSeen": datetime.now().isoformat()[:10],
+            "firstSeen": first_seen_date or datetime.now().isoformat()[:7],  # YYYY-MM format
+            "lastSeen": datetime.now().isoformat()[:7],  # YYYY-MM format
             "status": "active",
             "categoryId": None,
             "embedding": embedding,
