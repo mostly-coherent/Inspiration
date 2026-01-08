@@ -33,18 +33,56 @@ export async function POST() {
       process.on("close", (code) => {
         if (code !== 0) {
           console.error("Sync script failed:", stderr);
-          // Check for specific "Database not found" error
+          
+          // Enhanced error detection and messaging
+          
+          // 1. Database not found (cloud environment)
           if (stderr.includes("Database not found") || stderr.includes("not found at")) {
-             resolve(NextResponse.json(
+            resolve(NextResponse.json(
               { 
-                success: false, 
-                error: "Cannot sync from cloud environment. The app cannot access your local Cursor database when running on Vercel. Please run the app locally to sync." 
+                success: false,
+                errorType: "database_not_found",
+                error: "Cannot sync from cloud environment. The app cannot access your local Cursor database when running on Vercel. Please run the app locally to sync.",
+                remediation: "Run 'npm run dev' locally to sync your chat history."
               },
               { status: 400 }
             ));
-          } else {
+          }
+          // 2. Schema compatibility issue
+          else if (stderr.includes("CRITICAL: No known extraction strategy") || stderr.includes("schema may have changed")) {
             resolve(NextResponse.json(
-              { success: false, error: stderr || "Unknown error occurred during sync" },
+              { 
+                success: false,
+                errorType: "schema_incompatible",
+                error: "Cursor database schema has changed and is no longer compatible with this version of Inspiration.",
+                remediation: "Please run 'python3 engine/common/db_health_check.py' to generate a diagnostic report, then report the issue at https://github.com/mostly-coherent/Inspiration/issues",
+                diagnosticCommand: "python3 engine/common/db_health_check.py"
+              },
+              { status: 500 }
+            ));
+          }
+          // 3. Extraction failed (partial compatibility)
+          else if (stderr.includes("Extraction failed") || stderr.includes("Failed to parse")) {
+            resolve(NextResponse.json(
+              { 
+                success: false,
+                errorType: "extraction_failed",
+                error: "Failed to extract messages from Cursor database. The database structure may have changed.",
+                remediation: "Try updating Cursor to the latest version, or run diagnostic: 'python3 engine/common/db_health_check.py'",
+                diagnosticCommand: "python3 engine/common/db_health_check.py"
+              },
+              { status: 500 }
+            ));
+          }
+          // 4. Generic error
+          else {
+            resolve(NextResponse.json(
+              { 
+                success: false,
+                errorType: "unknown",
+                error: stderr || "Unknown error occurred during sync",
+                remediation: "Check logs and try again. If issue persists, report at https://github.com/mostly-coherent/Inspiration/issues"
+              },
               { status: 500 }
             ));
           }
