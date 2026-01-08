@@ -446,8 +446,8 @@ inspiration/
 | ID | Feature | Description | Status |
 |----|---------|-------------|--------|
 | LIB-5 | **"Top 3 Today"** | AI picks 3 items: recency × occurrence × workspace relevance | ✅ Done |
-| LIB-6 | **Workspace Context** | Highlight items matching current Cursor workspace | Pending |
-| LIB-7 | **"Build Next" / "Share Next"** | Explicit recommendations with reasoning | Pending |
+| LIB-6 | **Workspace Context** | Highlight items matching current Cursor workspace | Deferred (requires Cursor integration) |
+| LIB-7 | **"Build Next" / "Share Next"** | Explicit recommendations with reasoning | ✅ Done |
 
 ### Phase 3: Synthesize (High Effort, High Novelty)
 
