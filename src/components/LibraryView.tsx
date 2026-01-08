@@ -8,6 +8,7 @@ interface Item {
   title: string;
   description: string;
   tags: string[];
+  status: "active" | "implemented" | "posted" | "archived";
   occurrence: number;
   implementedStatus: string;
   categoryId: string | null;
