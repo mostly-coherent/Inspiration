@@ -453,7 +453,7 @@ inspiration/
 
 | ID | Feature | Description | Status |
 |----|---------|-------------|--------|
-| LIB-8 | **Theme Synthesis** | 200 items → 7 meta-themes (AI-generated) | Pending |
+| LIB-8 | **Theme Synthesis** | Category overview with quality breakdown per theme | ✅ Complete |
 | LIB-9 | **Learning Trajectory** | "Your interests shifted from X → Y → Z over 6 months" | Pending |
 | LIB-10 | **Gap Detection** | "You've explored A and C extensively, but B is absent" | Pending |
 

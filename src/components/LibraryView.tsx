@@ -66,6 +66,7 @@ interface FilterState {
   status: "all" | "implemented" | "pending";
   quality: "all" | "A" | "B" | "C" | "unrated";
   tag: "all" | string;
+  category: "all" | string;
   sort: SortOption;
 }
 
@@ -99,6 +100,25 @@ export const LibraryView = memo(function LibraryView() {
   const [shareNext, setShareNext] = useState<TopItem[]>([]);
   const [showRecommendations, setShowRecommendations] = useState(true);
   
+  // Theme synthesis
+  interface ThemeSummary {
+    name: string;
+    itemCount: number;
+    topTags: string[];
+    recentActivity: string;
+    qualityBreakdown: { A: number; B: number; C: number; unrated: number };
+  }
+  interface ThemeStats {
+    totalItems: number;
+    totalThemes: number;
+    topTheme: string | null;
+    qualityDistribution: { A: number; B: number; C: number; unrated: number };
+    typeDistribution: { ideas: number; insights: number; useCases: number };
+  }
+  const [themes, setThemes] = useState<ThemeSummary[]>([]);
+  const [themeStats, setThemeStats] = useState<ThemeStats | null>(null);
+  const [showThemes, setShowThemes] = useState(true);
+  
   // Filter state
   const [filters, setFilters] = useState<FilterState>({
     search: "",
@@ -106,6 +126,7 @@ export const LibraryView = memo(function LibraryView() {
     status: "all",
     quality: "all",
     tag: "all",
+    category: "all",
     sort: "recent",
   });
 
@@ -169,6 +190,20 @@ export const LibraryView = memo(function LibraryView() {
     // Tag filter
     if (filters.tag !== "all") {
       items = items.filter((item) => item.tags?.includes(filters.tag));
+    }
+    
+    // Category filter (matches items by their category name)
+    if (filters.category !== "all") {
+      if (filters.category === "Uncategorized") {
+        // Match items with no category or null categoryId
+        items = items.filter((item) => !item.categoryId || item.categoryId === "uncategorized");
+      } else {
+        // Find the category ID by name, then filter items
+        const matchingCategory = data?.categories?.find((cat) => cat.name === filters.category);
+        if (matchingCategory) {
+          items = items.filter((item) => item.categoryId === matchingCategory.id);
+        }
+      }
     }
     
     // Sort
@@ -237,6 +272,7 @@ export const LibraryView = memo(function LibraryView() {
     if (data) {
       fetchStaleCount();
       fetchTopItems();
+      fetchThemes();
     }
   }, [data]);
 
@@ -252,6 +288,20 @@ export const LibraryView = memo(function LibraryView() {
       }
     } catch (err) {
       console.error("Top items error:", err);
+    }
+  };
+  
+  // Fetch themes
+  const fetchThemes = async () => {
+    try {
+      const res = await fetch("/api/items/themes");
+      if (res.ok) {
+        const json = await res.json();
+        setThemes(json.themes || []);
+        setThemeStats(json.stats || null);
+      }
+    } catch (err) {
+      console.error("Themes error:", err);
     }
   };
 
@@ -502,6 +552,68 @@ export const LibraryView = memo(function LibraryView() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+        
+        {/* Themes Overview */}
+        {showThemes && themes.length > 0 && (
+          <div className="glass-card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-white flex items-center gap-2">
+                <span className="text-lg">🗺️</span> Themes ({themeStats?.totalThemes || 0} categories)
+              </h3>
+              <button
+                onClick={() => setShowThemes(false)}
+                className="text-xs text-adobe-gray-500 hover:text-adobe-gray-300"
+              >
+                Hide
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+              {themes.slice(0, 8).map((theme) => (
+                <button
+                  key={theme.name}
+                  onClick={() => setFilters({ ...filters, category: filters.category === theme.name ? "all" : theme.name })}
+                  className={`text-left p-2 rounded-lg border transition-all ${
+                    filters.category === theme.name 
+                      ? "bg-adobe-blue-500/20 border-adobe-blue-500/50" 
+                      : "bg-adobe-gray-800/50 border-adobe-gray-700/50 hover:border-adobe-gray-600"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-white truncate max-w-[80%]">{theme.name}</span>
+                    <span className="text-xs text-adobe-gray-500">{theme.itemCount}</span>
+                  </div>
+                  <div className="flex gap-1">
+                    {theme.qualityBreakdown.A > 0 && (
+                      <span className="text-[10px] px-1 rounded bg-yellow-500/20 text-yellow-400">
+                        {theme.qualityBreakdown.A}⭐
+                      </span>
+                    )}
+                    {theme.qualityBreakdown.B > 0 && (
+                      <span className="text-[10px] px-1 rounded bg-blue-500/20 text-blue-400">
+                        {theme.qualityBreakdown.B}B
+                      </span>
+                    )}
+                    {theme.qualityBreakdown.C > 0 && (
+                      <span className="text-[10px] px-1 rounded bg-gray-500/20 text-gray-400">
+                        {theme.qualityBreakdown.C}C
+                      </span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+            
+            {/* Distribution summary */}
+            {themeStats && (
+              <div className="mt-3 pt-3 border-t border-adobe-gray-700/50 flex flex-wrap gap-3 text-xs text-adobe-gray-500">
+                <span>Ideas: {themeStats.typeDistribution.ideas}</span>
+                <span>Insights: {themeStats.typeDistribution.insights}</span>
+                <span>Use Cases: {themeStats.typeDistribution.useCases}</span>
+              </div>
+            )}
           </div>
         )}
 
