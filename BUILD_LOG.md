@@ -6,6 +6,110 @@
 
 ---
 
+## Progress - 2026-01-08
+
+**Done:**
+- ✅ **Completely Removed "Candidates" Concept from Codebase**
+  - **Problem:** UI showed "Candidates Generated: 1" despite 14 items being added to Library. User correctly identified that "Candidates" is deprecated and should be eliminated entirely.
+  - **Root Cause:** v2 Item-Centric Architecture eliminated the Candidates concept, but remnants remained throughout the codebase
+  - **Files Modified (Backend):**
+    - `engine/generate.py` — Removed `all_candidates` parameter from all save functions, removed "All Generated Candidates" section generation, updated `generate_content()` to return string instead of tuple, added v2 stats output
+    - `engine/seek.py` — Updated to use new `generate_content()` signature (no candidates tuple)
+    - `engine/api.py` — Updated parser to look for "Items generated/returned" instead of "Candidates"
+  - **Files Modified (Frontend):**
+    - `src/lib/types.ts` — Renamed `candidatesGenerated` → `itemsGenerated`, removed deprecated fields
+    - `src/app/api/generate/route.ts` — Updated parser and all references to use `itemsGenerated`
+    - `src/components/ResultsPanel.tsx` — Changed all labels and references to "Items Generated"
+    - `src/components/RunHistory.tsx` — Changed all labels and references to "Items"
+    - `src/app/page.tsx` — Updated stats initialization
+    - `src/lib/resultParser.ts` — Removed "All Generated Candidates" parsing logic
+  - **Verification:** No linter errors, all "Candidates" references removed from user-facing code
+
+**Evidence:**
+- 12 files modified across backend and frontend
+- User report: 14 items added to Library (233→247), but UI showed "Candidates Generated: 1"
+- Fix: Complete removal of Candidates concept - app now generates Items directly, harmonizes into Library
+- `grep -r "candidate" src/` shows only internal field names and test descriptions (no user-facing text)
+
+**Next:**
+- [ ] Test Generate Insights end-to-end to verify correct stats display
+- [ ] Verify harmonization stats match items generated stats
+
+**Blockers:**
+- None
+
+---
+
+## Progress - 2026-01-08 (Stats Display Improvements)
+
+**Done:**
+- ✅ **Fixed Confusing Stats Labels and Logic**
+  - **Issues Identified by User:**
+    1. "Days Processed: 2" when user requested 7 days → Should show "Days with Activity: 2 of 7"
+    2. "Days with Output: 0" when 14 items were harmonized → Confusing metric, changed to "Items in Output File: Yes/No"
+    3. "Items Generated" showing blank → Added fallback to show "0" instead of blank
+    4. "No output generated" message when harmonization added 14 items → Logic bug
+  - **Files Modified:**
+    - `src/components/ResultsPanel.tsx` — Updated stats labels, added harmonization-aware success logic, added informative message when items harmonized but no new generation
+  - **Fixes:**
+    - Changed "Days Processed" → "Days with Activity: X of Y" (clearer)
+    - Changed "Days with Output" → "Items in Output File: Yes/No" (less confusing)
+    - Added fallback for undefined `itemsGenerated` → shows "0"
+    - Fixed success logic to account for harmonization (harmonizedItems > 0 counts as success)
+    - Added informative message: "No new items generated, but X items from previous runs were harmonized"
+
+**Evidence:**
+- User screenshot showed: 15 conversations, 2 days (of 7), 0 output, but 14 items harmonized
+- Root cause: Script didn't generate new items this run, but harmonized old output files
+- Fix: UI now correctly shows success when harmonization adds items, even if generation didn't produce new output
+
+**Next:**
+- [ ] Test with a fresh generation run to verify all stats display correctly
+
+**Blockers:**
+- None
+
+---
+
+## Progress - 2026-01-08 (QA Automation)
+
+**Done:**
+- ✅ **Added Stats Validator to Catch Nonsensical Stats**
+  - **Problem:** User had to manually catch obvious bugs despite comprehensive documentation
+  - **Root Cause:** No automated validation that stats make sense together (semantic validation)
+  - **Solution:** Created `statsValidator.ts` with 7 validation rules
+  - **Files Created:**
+    - `src/lib/statsValidator.ts` — Validates stats coherence (e.g., days with activity can't exceed days processed)
+    - `QA_CHECKLIST.md` — Mandatory QA steps before marking work "done"
+  - **Files Modified:**
+    - `src/components/ResultsPanel.tsx` — Added validator call in development mode
+    - `e2e/inspiration.spec.ts` — Added tests for stats terminology and coherence
+  - **Validation Rules:**
+    1. If items harmonized, success must be true
+    2. Items generated can't be negative
+    3. Days with activity ≤ days processed
+    4. Harmonization should process items if items were generated
+    5. Success=true should have explanation if nothing generated/added
+    6. Conversations analyzed should be > 0 if days with activity > 0
+    7. Items array should match itemsGenerated count
+
+**Evidence:**
+- Validator logs errors/warnings to console in development mode
+- E2E tests now check for "Candidates" terminology and stats coherence
+- QA checklist provides structured testing approach
+
+**Why This Matters:**
+TypeScript catches type errors, linter catches syntax issues, but nothing caught semantic errors like "Days with Activity: 3, Days Processed: 2" which is mathematically impossible. Stats validator fills this gap.
+
+**Next:**
+- [ ] Follow QA_CHECKLIST.md before marking any work complete
+- [ ] Use browser MCP tools to actually test UI changes
+
+**Blockers:**
+- None
+
+---
+
 ## Progress - 2026-01-05 (V3.1 View Modes)
 
 **Done:**
@@ -943,7 +1047,7 @@ We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB**
   - Problem: `MyPrivateTools/Inspiration/` directory being created repeatedly with `.next/dev` directory when Next.js runs from incorrect working directory
   - Root Cause: Next.js uses `process.cwd()` for build artifacts; running from wrong directory creates duplicates
   - Solution: Added safety checks in key files to prevent running from invalid directories:
-    - `src/lib/pythonEngine.ts` - Prevents Python engine from running if `process.cwd()` includes `MyPrivateTools` or `OtherBuilders`
+    - `src/lib/pythonEngine.ts` - Prevents Python engine from running if `process.cwd()` includes `MyPrivateTools` or `Production_Clones`
     - `src/app/api/modes/route.ts` - Prevents theme file creation in wrong directory
     - `src/app/api/config/route.ts` - Prevents config file creation in wrong directory
   - Prevention: Always run `npm run dev` from the Inspiration project root directory

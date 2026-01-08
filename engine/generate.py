@@ -694,8 +694,8 @@ def generate_content(
         temperature=temperature,
     )
     
-    # Return in legacy format for compatibility with callers expecting tuple
-    return result, [("C1", result)]
+    # v2: Return content directly (no candidates)
+    return result
 
 
 # =============================================================================
@@ -706,7 +706,6 @@ def save_output(
     content: str,
     target_date: datetime.date,
     mode: Literal["insights", "ideas", "use_case"],
-    all_candidates: list[tuple[str, str]] | None = None,
 ) -> Path:
     """Save generated content to file."""
     # Clean markdown code fences
@@ -761,15 +760,8 @@ Workspaces: {', '.join(workspaces) if workspaces else 'All'}
 
 """
     
-    # Append all candidates section if multiple candidates were generated
-    footer = ""
-    if all_candidates and len(all_candidates) > 1:
-        footer = "\n\n---\n\n## All Generated Candidates\n\n"
-        for cid, candidate_text in all_candidates:
-            footer += f"### {cid}\n\n{candidate_text}\n\n---\n\n"
-    
     # Atomic write: write to temp file first, then rename (prevents partial files)
-    full_content = header + content + footer
+    full_content = header + content
     temp_file = output_file.with_suffix(".tmp")
     try:
         temp_file.write_text(full_content)
@@ -791,7 +783,6 @@ def save_aggregated_output(
     mode_name: str,
     *,
     total_conversations: int = 0,
-    all_candidates: list[tuple[str, str]] | None = None,
 ) -> Path:
     """Save aggregated output for multi-day runs."""
     config = MODE_CONFIG[mode]
@@ -828,15 +819,8 @@ Total conversations analyzed: {total_conversations}
 
 """
     
-    # Append all candidates section if multiple candidates were generated
-    footer = ""
-    if all_candidates and len(all_candidates) > 1:
-        footer = "\n\n---\n\n## All Generated Candidates\n\n"
-        for cid, candidate_text in all_candidates:
-            footer += f"### {cid}\n\n{candidate_text}\n\n---\n\n"
-    
     # Atomic write: write to temp file first, then rename (prevents partial files)
-    full_content = header + content + footer
+    full_content = header + content
     temp_file = output_file.with_suffix(".tmp")
     try:
         temp_file.write_text(full_content)
@@ -1054,19 +1038,8 @@ def _parse_output(content: str, mode: Literal["insights", "ideas"]) -> list[dict
     if not content or not content.strip():
         return []
     
-    # Parse the main/best output (before "## All Generated Candidates")
-    main_section = content.split("## All Generated Candidates")[0]
-    
-    # Use the unified parser
-    items = _parse_items_from_output(main_section, mode)
-    
-    # Also parse candidates section if it exists
-    if "## All Generated Candidates" in content:
-        candidates_section = content.split("## All Generated Candidates")[1]
-        candidate_items = _parse_items_from_output(candidates_section, mode)
-        for item in candidate_items:
-            item["from_candidates"] = True
-        items.extend(candidate_items)
+    # Parse items from content (v2: no more "All Generated Candidates" section)
+    items = _parse_items_from_output(content, mode)
     
     return items
 
@@ -1369,8 +1342,8 @@ def process_single_date(
     content = items_to_markdown(items, mode)
     has_output = len(items) > 0
     
-    # Save with items metadata (no candidates in v2)
-    output_file = save_output(content, target_date, mode, [])
+    # Save with items metadata (v2: no candidates)
+    output_file = save_output(content, target_date, mode)
     
     return {
         "date": target_date,
@@ -1658,7 +1631,7 @@ def process_aggregated_range(
     content = items_to_markdown(items, mode)
     has_output = len(items) > 0
     
-    # Save with no candidates (v2 architecture)
+    # Save output (v2: no candidates)
     output_file = save_aggregated_output(
         content,
         dates[0],
@@ -1666,7 +1639,6 @@ def process_aggregated_range(
         mode,
         mode_name,
         total_conversations=len(all_conversations),
-        all_candidates=[],  # v2: No candidates, just items
     )
     
     return {
@@ -1826,9 +1798,19 @@ def main():
         has_output_key = "has_posts" if mode == "insights" else "has_ideas"
         output_label = "Posts ✅" if mode == "insights" else "Ideas ✅"
         
+        # v2 stats: items_generated, items_after_dedup, items_returned
+        items_generated = result.get('items_generated', 0)
+        items_after_dedup = result.get('items_after_dedup', 0)
+        items_returned = result.get('items_returned', 0)
+        
         print(f"\n📊 SUMMARY:")
         print(f"   Conversations analyzed: {result['total_conversations']}")
+        print(f"   Days processed: {len(dates_to_process)}")
         print(f"   Days with activity: {result['days_with_activity']}")
+        print(f"   Days with {'posts' if mode == 'insights' else 'ideas'}: {1 if result[has_output_key] else 0}")
+        print(f"   Items generated: {items_generated}")
+        print(f"   Items after dedup: {items_after_dedup}")
+        print(f"   Items returned: {items_returned}")
         print(f"   Output: {output_label if result[has_output_key] else 'No output ❌'}")
         
         if result["output_file"] and not args.dry_run:

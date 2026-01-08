@@ -8,7 +8,7 @@ const expectedPaths = [
 ];
 const isValidDirectory = expectedPaths.some(p => cwd.endsWith(p)) && 
   !cwd.includes("MyPrivateTools") && 
-  !cwd.includes("OtherBuilders");
+  !cwd.includes("Production_Clones");
 
 if (!isValidDirectory && process.env.NODE_ENV !== "production") {
   console.error("\n❌ ERROR: Next.js started from wrong directory!");

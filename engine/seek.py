@@ -277,7 +277,7 @@ def seek_use_case(
     conversations_with_query = user_query_section + conversations_text
     
     # Generate content using unified pipeline
-    content, all_candidates = generate_content(
+    content = generate_content(
         conversations_with_query,
         mode,
         llm=llm,
@@ -320,7 +320,6 @@ def seek_use_case(
             content,
             today,
             mode,  # Will need to handle use_case in save_output
-            all_candidates,
         )
         print(f"📄 Saved to: {output_file}", file=sys.stderr)
     

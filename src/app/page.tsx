@@ -365,7 +365,7 @@ export default function Home() {
             daysProcessed: 0,
             daysWithActivity: 0,
             daysWithOutput: 0,
-            candidatesGenerated: 0,
+            itemsGenerated: 0,
           },
           timestamp: new Date().toISOString(),
         });

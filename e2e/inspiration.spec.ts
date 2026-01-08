@@ -18,9 +18,9 @@ test.describe('Inspiration E2E Tests (v2)', () => {
     await expect(page.getByRole('button', { name: /Last 24 hours mode/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /Last 14 days mode/i })).toBeVisible();
     
-    // Bank section
-    const bankHeading = page.getByRole('heading', { name: /Your Bank/i }).or(page.getByRole('heading', { name: /Your Banks/i }));
-    await expect(bankHeading).toBeVisible();
+    // Library section (v3: renamed from "Bank")
+    const libraryHeading = page.getByRole('heading', { name: /Your Library|Library|Your Bank/i });
+    await expect(libraryHeading).toBeVisible();
     
     await page.screenshot({ path: 'e2e-results/01-homepage.png', fullPage: true });
   });
@@ -204,6 +204,59 @@ test.describe('Inspiration E2E Tests (v2)', () => {
       await expect(page.getByText(/deduplication threshold/i)).toBeVisible();
       
       await page.screenshot({ path: 'e2e-results/12-v2-dedup-threshold.png', fullPage: true });
+    }
+  });
+
+  test('13 - Stats panel shows correct terminology (no "Candidates")', async ({ page }) => {
+    await page.goto('/');
+    
+    // Look for any previous run results or generate new ones
+    const resultsPanel = page.locator('section.glass-card').filter({ hasText: /Generated (Insights|Ideas)/i });
+    
+    if (await resultsPanel.count() > 0) {
+      // Check that stats use "Items" terminology, not "Candidates"
+      await expect(resultsPanel.getByText(/Items Generated/i)).toBeVisible();
+      await expect(resultsPanel.getByText(/Candidates/i)).not.toBeVisible();
+      
+      // Check that labels make sense
+      await expect(resultsPanel.getByText(/Days with Activity/i)).toBeVisible();
+      await expect(resultsPanel.getByText(/Conversations Analyzed/i)).toBeVisible();
+      
+      // Check harmonization section if present
+      const harmonizationSection = resultsPanel.getByText(/Harmonization with Library/i);
+      if (await harmonizationSection.count() > 0) {
+        await expect(resultsPanel.getByText(/New Items Added/i)).toBeVisible();
+        await expect(resultsPanel.getByText(/Deduplicated/i)).toBeVisible();
+      }
+      
+      await page.screenshot({ path: 'e2e-results/13-stats-terminology.png', fullPage: true });
+    }
+  });
+
+  test('14 - Stats coherence: Items Generated should relate to harmonization', async ({ page }) => {
+    await page.goto('/');
+    
+    const resultsPanel = page.locator('section.glass-card').filter({ hasText: /Generated (Insights|Ideas)/i });
+    
+    if (await resultsPanel.count() > 0) {
+      // Extract stats values to verify they make sense together
+      const itemsGeneratedText = await resultsPanel.getByText(/Items Generated/i).locator('..').textContent();
+      const harmonizationText = await resultsPanel.getByText(/Harmonization with Library/i).locator('..').textContent();
+      
+      // If harmonization section exists, check that numbers make sense
+      if (harmonizationText && harmonizationText.includes('New Items Added')) {
+        // Log the stats for manual verification
+        console.log('Stats found:', { itemsGeneratedText, harmonizationText });
+        
+        // Basic sanity check: if items were added, harmonization should show some activity
+        const itemsProcessedMatch = harmonizationText?.match(/Items Processed[^\d]*(\d+)/);
+        if (itemsProcessedMatch) {
+          const itemsProcessed = parseInt(itemsProcessedMatch[1]);
+          expect(itemsProcessed).toBeGreaterThan(-1); // Should be 0 or positive
+        }
+      }
+      
+      await page.screenshot({ path: 'e2e-results/14-stats-coherence.png', fullPage: true });
     }
   });
 

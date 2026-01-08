@@ -366,7 +366,7 @@ def parse_generate_stats(stdout: str) -> dict:
     days_processed_match = re.search(r'Days processed:\s*(\d+)', stdout, re.IGNORECASE)
     days_with_activity_match = re.search(r'Days with activity:\s*(\d+)', stdout, re.IGNORECASE)
     days_with_output_match = re.search(r'Days with (?:ideas|posts):\s*(\d+)', stdout, re.IGNORECASE)
-    candidates_match = re.search(r'best[-_]of\s*(\d+)', stdout, re.IGNORECASE) or re.search(r'Candidates generated:\s*(\d+)', stdout, re.IGNORECASE)
+    items_generated_match = re.search(r'Items (?:generated|returned):\s*(\d+)', stdout, re.IGNORECASE)
     conversations_match = re.search(r'Conversations analyzed:\s*(\d+)', stdout, re.IGNORECASE) or re.search(r'(\d+)\s+conversations', stdout, re.IGNORECASE)
     harmonization_match = re.search(r'Harmonization Stats:\s*(\d+)\s+processed,\s*(\d+)\s+added,\s*(\d+)\s+updated,\s*(\d+)\s+deduplicated', stdout, re.IGNORECASE)
     
@@ -376,7 +376,7 @@ def parse_generate_stats(stdout: str) -> dict:
         'daysProcessed': days_processed,
         'daysWithActivity': int(days_with_activity_match.group(1)) if days_with_activity_match else days_processed,
         'daysWithOutput': int(days_with_output_match.group(1)) if days_with_output_match else 0,
-        'candidatesGenerated': int(candidates_match.group(1)) if candidates_match else 1,
+        'itemsGenerated': int(items_generated_match.group(1)) if items_generated_match else 0,
         'conversationsAnalyzed': int(conversations_match.group(1)) if conversations_match else 0,
     }
     

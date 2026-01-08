@@ -89,10 +89,7 @@ export interface GenerateResult {
     daysProcessed: number;
     daysWithActivity: number;
     daysWithOutput: number;
-    candidatesGenerated?: number; // Deprecated: v1 candidate-based
-    itemsGenerated?: number; // v2: Items generated before dedup
-    itemsAfterDedup?: number; // v2: Items after deduplication
-    itemsReturned?: number; // v2: Final items returned
+    itemsGenerated: number; // v2: Items generated/returned
     conversationsAnalyzed?: number;
     harmonization?: {
       itemsProcessed: number;

@@ -7,6 +7,66 @@
 
 ---
 
+## Complete Removal: "Candidates" Concept Eliminated - 2026-01-08
+
+**Problem:** UI showed "Candidates Generated: 1" despite 14 items being added to Library. User correctly identified that "Candidates" is a deprecated concept that should be completely removed from the codebase.
+
+**Root Cause:** The v2 Item-Centric Architecture pivot (2026-01-01) eliminated the "Candidates" concept in principle, but the implementation left remnants throughout the stack:
+- Backend still had `all_candidates` parameters in save functions
+- `generate_content()` returned a tuple `(content, candidates)` for "backward compatibility"
+- "All Generated Candidates" section was still being generated in output files
+- Frontend used `candidatesGenerated` field name
+- UI labels still showed "Candidates Generated"
+- Parsers looked for "Candidates" in output
+
+**Decision:** Complete elimination - no "migration" or "renaming", just removal. The app generates **Items** (insights/ideas/use cases), harmonizes them into the **Library**, and auto-groups them into **Categories**. There is no intermediate "Candidates" concept.
+
+**Code Paths Affected:**
+
+**Backend (Python):**
+- [x] `engine/generate.py` — Removed `all_candidates` parameter from `save_output()` and `save_aggregated_output()`
+- [x] `engine/generate.py` — Removed "All Generated Candidates" section generation code
+- [x] `engine/generate.py` — Changed `generate_content()` return type from `tuple[str, list]` to `str`
+- [x] `engine/generate.py` — Updated `_parse_output()` to remove candidates section parsing
+- [x] `engine/generate.py` — Updated all `save_output()` calls to remove `all_candidates` argument
+- [x] `engine/seek.py` — Updated to use new `generate_content()` signature
+- [x] `engine/api.py` — Updated parser to look for "Items generated/returned" instead of "Candidates"
+
+**Frontend (TypeScript/React):**
+- [x] `src/lib/types.ts` — Renamed `candidatesGenerated` → `itemsGenerated`, removed deprecated fields
+- [x] `src/app/api/generate/route.ts` — Updated parser and all references to use `itemsGenerated`
+- [x] `src/components/ResultsPanel.tsx` — Changed all labels to "Items Generated", updated cost estimation
+- [x] `src/components/RunHistory.tsx` — Changed all labels to "Items", updated all field references
+- [x] `src/app/page.tsx` — Updated stats initialization
+- [x] `src/lib/resultParser.ts` — Removed "All Generated Candidates" parsing logic
+
+**Verification:**
+```bash
+# No linter errors
+npm run build
+
+# No user-facing "Candidates" text
+grep -r "[Cc]andidate" src/ | grep -v "node_modules" | grep -v ".next"
+# Only shows internal field names and test descriptions
+
+# Test end-to-end
+npm run dev
+# Generate Insights → Verify "Items Generated" matches harmonization count
+```
+
+**Status:** ✅ Implemented | **DRI:** AI Assistant
+
+**Lesson Learned:** When eliminating a concept (not just renaming), be ruthless:
+1. **Remove, don't rename:** Delete parameters, not just change names
+2. **Simplify return types:** If function returned tuple for "compatibility", simplify it
+3. **Delete generated sections:** Remove code that generates deprecated output
+4. **Search exhaustively:** `grep -r` for all variations of the term
+5. **Update types first:** TypeScript will catch all references that need updating
+
+The original "fix" tried to maintain backward compatibility by keeping field names. The correct fix was complete removal - the concept doesn't exist, so the code shouldn't reference it anywhere.
+
+---
+
 ## Decision: v3 UX Redesign — Library-Centric Architecture - 2026-01-01
 
 **Decision:** Redesign frontend to center on Library (accumulated items) as core value prop, with full configuration exposure. Rename "Brain" → "Memory" and "Bank" → "Library".
@@ -239,7 +299,7 @@
 **Mitigations Applied:**
 1. **next.config.ts** — Added `validateCwd()` function that:
    - Checks `process.cwd()` at config load time
-   - Exits with error if directory contains "MyPrivateTools" or "OtherBuilders"
+   - Exits with error if directory contains "MyPrivateTools" or "Production_Clones"
 
 2. **package.json** — Added `predev` script that:
    - Runs before `npm run dev`
