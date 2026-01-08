@@ -103,11 +103,7 @@ export const LibraryView = memo(function LibraryView() {
     
     // Status filter
     if (filters.status !== "all") {
-      if (filters.status === "implemented") {
-        items = items.filter((item) => item.implementedStatus === "implemented");
-      } else if (filters.status === "pending") {
-        items = items.filter((item) => item.implementedStatus !== "implemented");
-      }
+      items = items.filter((item) => item.status === filters.status);
     }
     
     // Tag filter
