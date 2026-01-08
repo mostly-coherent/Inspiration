@@ -72,15 +72,16 @@ def index_all_messages(
     
     print(f"📅 Date range: {start_date} to {end_date}")
     
-    # Get all conversations from LOCAL SQLite database (not Vector DB)
-    # We need to read from local DB to index into Vector DB
+    # OPTIMIZED: Get all conversations from entire date range in ONE call
+    # Instead of reading database 190+ times (once per day), read once and filter
     print("📚 Loading conversations from LOCAL Cursor database (SQLite)...")
-    conversations = []
-    current_date = start_date
-    while current_date <= end_date:
-        day_conversations = _get_conversations_for_date_sqlite(current_date, workspace_paths=None, use_cache=False)
-        conversations.extend(day_conversations)
-        current_date += timedelta(days=1)
+    print(f"   Reading database ONCE for entire date range...")
+    conversations = get_conversations_for_range(
+        start_date=start_date,
+        end_date=end_date,
+        workspace_paths=None
+    )
+    print(f"   ✅ Database read complete!")
     
     # Deduplicate conversations by chat_id + workspace
     seen = set()

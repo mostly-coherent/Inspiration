@@ -34,7 +34,7 @@ def find_earliest_message_date(item: dict, client) -> Optional[str]:
         client: Supabase client
         
     Returns:
-        Date string (YYYY-MM-DD) or None if not found
+        Date string (YYYY-MM) or None if not found
     """
     if not item.get("embedding"):
         return None
@@ -62,10 +62,11 @@ def find_earliest_message_date(item: dict, client) -> Optional[str]:
                     earliest_timestamp = timestamp
         
         if earliest_timestamp:
-            # Convert Unix timestamp (milliseconds) to YYYY-MM-DD
+            # Convert Unix timestamp (milliseconds) to YYYY-MM
             # Cursor stores timestamps in milliseconds, not seconds
+            # Using month-year only (no day) for simpler date tracking
             dt = datetime.fromtimestamp(earliest_timestamp / 1000)
-            return dt.strftime("%Y-%m-%d")
+            return dt.strftime("%Y-%m")
         
         return None
         
