@@ -40,6 +40,36 @@
 
 ---
 
+## Progress - 2026-01-08 (Vercel Deployment Fix)
+
+**Done:**
+- ✅ **Fixed TypeScript Build Error Blocking Vercel Deployment**
+  - **Problem:** Vercel deployment failed with TypeScript error: `Property 'itemsAfterDedup' does not exist on type`
+  - **Root Cause:** Frontend code was accessing `result?.stats?.itemsAfterDedup` but the TypeScript interface only defined `itemsGenerated`. Python script outputs three separate stats (`items_generated`, `items_after_dedup`, `items_returned`) but only `itemsGenerated` was in the type definition
+  - **Fix:**
+    1. Updated `GenerateResult["stats"]` interface in `src/lib/types.ts` to include `itemsAfterDedup` and `itemsReturned` fields
+    2. Updated `parseStats()` in `src/app/api/generate/route.ts` to parse and return all three fields separately
+    3. Updated error cases to include new required fields
+  - **Verification:** 
+    - Local build successful: `npm run build` exits with code 0
+    - All TypeScript checks pass
+    - Pushed to GitHub (commit `09a5ae2`)
+    - Vercel will auto-deploy with successful build
+
+**Evidence:**
+- Commit: `09a5ae2` — "Fix TypeScript build error: add missing stats fields"
+- Files modified: `src/lib/types.ts`, `src/app/api/generate/route.ts`, `src/app/page.tsx`
+- Build output: `✓ Compiled successfully` + all route checks pass
+
+**Next:**
+- [ ] Monitor Vercel deployment to confirm successful build
+- [ ] Test deployed app to verify stats display correctly
+
+**Blockers:**
+- None
+
+---
+
 ## Progress - 2026-01-08 (Stats Display Improvements)
 
 **Done:**
