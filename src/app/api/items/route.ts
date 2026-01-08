@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       items: view === "items" ? items : [],
-      categories: view === "categories" ? categories : [],
+      categories, // Always return categories (needed for filter dropdown and item display)
       stats,
       lastUpdated: bank.last_updated || null,
     });
