@@ -57,8 +57,10 @@ data/insight_bank.json
 # For now, ignoring banks and caches.
 
 # Test Results (may contain personal paths)
+e2e/
 e2e-results/
 playwright-report/
+playwright.config.ts
 test-results/
 
 # AI Documentation (Mode A - canonical docs are now published to GitHub)
