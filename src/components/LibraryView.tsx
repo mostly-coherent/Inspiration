@@ -83,8 +83,8 @@ export const LibraryView = memo(function LibraryView() {
   const [staleCount, setStaleCount] = useState<number>(0);
   const [cleanupLoading, setCleanupLoading] = useState(false);
   
-  // Top 3 recommendations
-  const [topItems, setTopItems] = useState<Array<{
+  // Top recommendations
+  interface TopItem {
     id: string;
     title: string;
     description: string;
@@ -92,8 +92,12 @@ export const LibraryView = memo(function LibraryView() {
     quality?: string | null;
     occurrence: number;
     score: number;
-  }>>([]);
-  const [showTop3, setShowTop3] = useState(true);
+    reasons: string[];
+  }
+  const [topItems, setTopItems] = useState<TopItem[]>([]);
+  const [buildNext, setBuildNext] = useState<TopItem[]>([]);
+  const [shareNext, setShareNext] = useState<TopItem[]>([]);
+  const [showRecommendations, setShowRecommendations] = useState(true);
   
   // Filter state
   const [filters, setFilters] = useState<FilterState>({
@@ -236,13 +240,15 @@ export const LibraryView = memo(function LibraryView() {
     }
   }, [data]);
 
-  // Fetch top 3 recommendations
+  // Fetch top recommendations
   const fetchTopItems = async () => {
     try {
       const res = await fetch("/api/items/top");
       if (res.ok) {
         const json = await res.json();
         setTopItems(json.items || []);
+        setBuildNext(json.buildNext || []);
+        setShareNext(json.shareNext || []);
       }
     } catch (err) {
       console.error("Top items error:", err);
@@ -420,39 +426,81 @@ export const LibraryView = memo(function LibraryView() {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Main Items List */}
       <div className="lg:col-span-2 space-y-4">
-        {/* Top 3 Recommendations */}
-        {showTop3 && topItems.length > 0 && (
+        {/* Build Next / Share Next Recommendations */}
+        {showRecommendations && (buildNext.length > 0 || shareNext.length > 0) && (
           <div className="glass-card p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-white flex items-center gap-2">
-                <span className="text-lg">🎯</span> Top 3 Today
+                <span className="text-lg">🎯</span> Recommendations
               </h3>
               <button
-                onClick={() => setShowTop3(false)}
+                onClick={() => setShowRecommendations(false)}
                 className="text-xs text-adobe-gray-500 hover:text-adobe-gray-300"
               >
                 Hide
               </button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {topItems.map((item, idx) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    const fullItem = data?.items.find((i) => i.id === item.id);
-                    if (fullItem) setSelectedItem(fullItem);
-                  }}
-                  className="text-left p-3 rounded-lg bg-gradient-to-br from-adobe-gray-800/50 to-adobe-gray-900/50 border border-adobe-gray-700/50 hover:border-inspiration-ideas/50 transition-all"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold text-inspiration-ideas">#{idx + 1}</span>
-                    {item.quality === "A" && <span className="text-xs">⭐</span>}
-                    <span className="text-xs text-adobe-gray-500">×{item.occurrence}</span>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Build Next */}
+              {buildNext.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-medium text-inspiration-ideas mb-2 flex items-center gap-1">
+                    <span>🔨</span> Build Next
+                  </h4>
+                  <div className="space-y-2">
+                    {buildNext.map((item, idx) => (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          const fullItem = data?.items.find((i) => i.id === item.id);
+                          if (fullItem) setSelectedItem(fullItem);
+                        }}
+                        className="w-full text-left p-3 rounded-lg bg-gradient-to-br from-inspiration-ideas/10 to-adobe-gray-900/50 border border-inspiration-ideas/20 hover:border-inspiration-ideas/50 transition-all"
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-bold text-inspiration-ideas">#{idx + 1}</span>
+                          {item.quality === "A" && <span className="text-xs">⭐</span>}
+                        </div>
+                        <h5 className="text-sm font-medium text-white line-clamp-1 mb-1">{item.title}</h5>
+                        <p className="text-xs text-adobe-gray-500 line-clamp-1">
+                          {item.reasons?.join(" • ") || ""}
+                        </p>
+                      </button>
+                    ))}
                   </div>
-                  <h4 className="text-sm font-medium text-white line-clamp-2 mb-1">{item.title}</h4>
-                  <p className="text-xs text-adobe-gray-400 line-clamp-2">{item.description}</p>
-                </button>
-              ))}
+                </div>
+              )}
+              
+              {/* Share Next */}
+              {shareNext.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-medium text-inspiration-insights mb-2 flex items-center gap-1">
+                    <span>✨</span> Share Next
+                  </h4>
+                  <div className="space-y-2">
+                    {shareNext.map((item, idx) => (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          const fullItem = data?.items.find((i) => i.id === item.id);
+                          if (fullItem) setSelectedItem(fullItem);
+                        }}
+                        className="w-full text-left p-3 rounded-lg bg-gradient-to-br from-inspiration-insights/10 to-adobe-gray-900/50 border border-inspiration-insights/20 hover:border-inspiration-insights/50 transition-all"
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-bold text-inspiration-insights">#{idx + 1}</span>
+                          {item.quality === "A" && <span className="text-xs">⭐</span>}
+                        </div>
+                        <h5 className="text-sm font-medium text-white line-clamp-1 mb-1">{item.title}</h5>
+                        <p className="text-xs text-adobe-gray-500 line-clamp-1">
+                          {item.reasons?.join(" • ") || ""}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

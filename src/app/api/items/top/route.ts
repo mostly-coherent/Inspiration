@@ -8,36 +8,67 @@ const DATA_DIR = path.join(process.cwd(), "data");
 const ITEMS_BANK_PATH = path.join(DATA_DIR, "items_bank.json");
 
 // Scoring function for item relevance
-function scoreItem(item: Item): number {
+function scoreItem(item: Item): { score: number; reasons: string[] } {
   let score = 0;
+  const reasons: string[] = [];
   
   // Base score from occurrence (1-10 points)
-  score += Math.min(item.occurrence * 2, 10);
+  const occurrenceScore = Math.min(item.occurrence * 2, 10);
+  score += occurrenceScore;
+  if (item.occurrence >= 3) {
+    reasons.push(`Appeared ${item.occurrence}× (recurring pattern)`);
+  }
   
   // Quality boost (A = +20, B = +10, C = +5, unrated = 0)
-  if (item.quality === "A") score += 20;
-  else if (item.quality === "B") score += 10;
-  else if (item.quality === "C") score += 5;
+  if (item.quality === "A") {
+    score += 20;
+    reasons.push("⭐ A-tier quality");
+  } else if (item.quality === "B") {
+    score += 10;
+  } else if (item.quality === "C") {
+    score += 5;
+  }
   
   // Recency boost (last 7 days = +15, 30 days = +10, 90 days = +5)
   const daysSinceLastSeen = Math.floor(
     (Date.now() - new Date(item.lastSeen).getTime()) / (24 * 60 * 60 * 1000)
   );
-  if (daysSinceLastSeen <= 7) score += 15;
-  else if (daysSinceLastSeen <= 30) score += 10;
-  else if (daysSinceLastSeen <= 90) score += 5;
+  if (daysSinceLastSeen <= 7) {
+    score += 15;
+    reasons.push("Recent (last 7 days)");
+  } else if (daysSinceLastSeen <= 30) {
+    score += 10;
+    reasons.push("Recent (last 30 days)");
+  } else if (daysSinceLastSeen <= 90) {
+    score += 5;
+  }
   
   // Idea type slight boost (actionable)
   if (item.itemType === "idea") score += 3;
   
-  return score;
+  // If no specific reasons, add a generic one
+  if (reasons.length === 0) {
+    reasons.push("Good potential");
+  }
+  
+  return { score, reasons };
 }
 
-// GET /api/items/top - Get top 3 recommended items
+interface ScoredItem extends Item {
+  score: number;
+  reasons: string[];
+}
+
+// GET /api/items/top - Get top recommendations split by type
 export async function GET() {
   try {
     if (!existsSync(ITEMS_BANK_PATH)) {
-      return NextResponse.json({ success: true, items: [] });
+      return NextResponse.json({ 
+        success: true, 
+        items: [], 
+        buildNext: [],
+        shareNext: [],
+      });
     }
 
     const content = await readFile(ITEMS_BANK_PATH, "utf-8");
@@ -48,16 +79,20 @@ export async function GET() {
       (item) => item.status === "active"
     );
 
-    // Score and sort
-    const scoredItems = activeItems.map((item) => ({
-      ...item,
-      score: scoreItem(item),
-    }));
+    // Score items
+    const scoredItems: ScoredItem[] = activeItems.map((item) => {
+      const { score, reasons } = scoreItem(item);
+      return { ...item, score, reasons };
+    });
 
     scoredItems.sort((a, b) => b.score - a.score);
 
-    // Take top 3
-    const top3 = scoredItems.slice(0, 3).map((item) => ({
+    // Split by type
+    const ideas = scoredItems.filter((item) => item.itemType === "idea");
+    const insights = scoredItems.filter((item) => item.itemType === "insight");
+
+    // Format item for response
+    const formatItem = (item: ScoredItem) => ({
       id: item.id,
       title: item.title,
       description: item.description.substring(0, 150) + (item.description.length > 150 ? "..." : ""),
@@ -66,12 +101,24 @@ export async function GET() {
       occurrence: item.occurrence,
       lastSeen: item.lastSeen,
       score: item.score,
+      reasons: item.reasons,
       tags: item.tags?.slice(0, 3) || [],
-    }));
+    });
+
+    // Take top 3 overall (legacy support)
+    const top3 = scoredItems.slice(0, 3).map(formatItem);
+
+    // Build Next = top 2 ideas
+    const buildNext = ideas.slice(0, 2).map(formatItem);
+
+    // Share Next = top 2 insights
+    const shareNext = insights.slice(0, 2).map(formatItem);
 
     return NextResponse.json({
       success: true,
-      items: top3,
+      items: top3, // Legacy support
+      buildNext,
+      shareNext,
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
