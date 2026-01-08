@@ -2,6 +2,29 @@
 
 import { useState, useEffect, useMemo, memo } from "react";
 
+// Format YYYY-MM date string to readable format (e.g., "2025-12" → "Dec 2025")
+function formatMonthYear(dateStr: string): string {
+  if (!dateStr) return "Unknown";
+  
+  // Handle YYYY-MM format
+  if (dateStr.length === 7) {
+    const [year, month] = dateStr.split("-");
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthIndex = parseInt(month) - 1;
+    return `${monthNames[monthIndex]} ${year}`;
+  }
+  
+  // Handle legacy YYYY-MM-DD format (shouldn't happen, but fallback)
+  if (dateStr.length === 10) {
+    const [year, month] = dateStr.split("-");
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthIndex = parseInt(month) - 1;
+    return `${monthNames[monthIndex]} ${year}`;
+  }
+  
+  return dateStr;
+}
+
 interface Item {
   id: string;
   itemType: string;
@@ -612,7 +635,7 @@ const ItemCard = memo(function ItemCard({
         {category && (
           <span className="truncate max-w-[60%]">{category.name}</span>
         )}
-        <span>{new Date(item.firstSeen).toLocaleDateString()}</span>
+        <span>{formatMonthYear(item.firstSeen)}</span>
       </div>
     </div>
   );
@@ -718,11 +741,11 @@ const ItemDetailPanel = memo(function ItemDetailPanel({
           </div>
           <div>
             <span className="text-adobe-gray-500">First seen:</span>
-            <span className="ml-2 text-white">{new Date(item.firstSeen).toLocaleDateString()}</span>
+            <span className="ml-2 text-white">{formatMonthYear(item.firstSeen)}</span>
           </div>
           <div>
             <span className="text-adobe-gray-500">Last seen:</span>
-            <span className="ml-2 text-white">{new Date(item.lastSeen).toLocaleDateString()}</span>
+            <span className="ml-2 text-white">{formatMonthYear(item.lastSeen)}</span>
           </div>
           <div>
             <span className="text-adobe-gray-500">Source dates:</span>
