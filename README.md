@@ -29,6 +29,11 @@ npm run dev
 
 **→ Open http://localhost:3000**
 
+> **Note:** E2E tests are optional. If you want to run tests:
+> 1. `cp playwright.config.ts.example playwright.config.ts`
+> 2. `mkdir -p e2e && cp inspiration.spec.ts.example e2e/inspiration.spec.ts`
+> 3. `npm test`
+
 ---
 
 <details>
