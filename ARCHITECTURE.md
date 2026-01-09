@@ -1271,4 +1271,58 @@ Users wanting diverse outputs should run multiple queries with different tempera
 | TD-2 | Unused `ReactMarkdown` import in BanksOverview (removed) | Bundle size | DONE |
 | TD-3 | `page.tsx` is 511+ lines (should split into sections) | Maintainability | MEDIUM |
 
-**Last Updated:** 2026-01-02
+---
+
+## Resilience Strategy: Cursor DB Schema Changes (2026-01-08)
+
+<!-- Merged from RESILIENCE_STRATEGY.md on 2026-01-09 -->
+
+### The Problem
+
+Cursor periodically changes its internal chat history database architecture, which can break Inspiration's extraction logic:
+
+- **Before:** Messages stored directly in `composerData` entries
+- **After:** Messages stored as `bubbleId` references, requiring two-step lookup
+- **Impact:** Extraction failed completely until code updated
+
+### Schema Health Check (`engine/common/db_health_check.py`)
+
+**Purpose:** Detect schema changes before attempting extraction
+
+**Features:**
+- **Version Detection:** Identifies schema version (v1-direct, v2-bubbles, unknown)
+- **Strategy Validation:** Tests which extraction strategies are viable
+- **Issue Reporting:** Lists specific incompatibilities found
+- **Diagnostic Data:** Collects full schema information for bug reports
+
+**Usage:**
+```bash
+python3 engine/common/db_health_check.py
+# Output: Diagnostic report saved to db_diagnostic_report_YYYYMMDD_HHMMSS.md
+```
+
+### Detection & Response Matrix
+
+| Scenario | Detection | Response | User Experience |
+|----------|-----------|----------|----------------|
+| **No DB** | File not found | Cloud mode | "☁️ Cloud Mode (Read-only)" |
+| **Schema v1** | composerData has messages | Direct extraction | Normal sync |
+| **Schema v2** | bubbleId references exist | Bubble-based extraction | Normal sync |
+| **Schema v3** | Unknown pattern | Health check fails | "⚠️ DB Schema Changed" + diagnostic |
+| **Partial Compat** | Some strategies work | Use working strategy | Degraded functionality + warning |
+| **Zero Compat** | No strategies work | Abort + report | Alert + remediation steps |
+
+### Schema Version Catalog
+
+| Version | Detection | Extraction Method | Cursor Version | Status |
+|---------|-----------|-------------------|----------------|--------|
+| v1-direct | `messages` field in composerData | Direct message array access | Pre-0.40 | Deprecated |
+| v2-bubbles | `bubbleId` references + `fullConversationHeadersOnly` | Two-step bubble lookup | 0.40+ | Current |
+
+### Related Files
+
+- **Implementation:** `engine/common/db_health_check.py`
+- **Integration:** `engine/scripts/sync_messages.py`
+- **API Errors:** `src/app/api/sync/route.ts`
+
+**Last Updated:** 2026-01-09

@@ -10,7 +10,11 @@ import { LibrarySearch } from "./LibrarySearch";
 
 type ViewMode = "items" | "categories";
 
-export const BanksOverview = memo(function BanksOverview() {
+interface BanksOverviewProps {
+  compact?: boolean;
+}
+
+export const BanksOverview = memo(function BanksOverview({ compact = false }: BanksOverviewProps) {
   const [items, setItems] = useState<Item[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [filteredItems, setFilteredItems] = useState<Item[]>([]);
@@ -233,6 +237,56 @@ export const BanksOverview = memo(function BanksOverview() {
     );
   }
   if (!stats && !error) return null;
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // COMPACT MODE: Show minimal preview for sidebar
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (compact && stats) {
+    // Get top 5 recent items
+    const recentItems = [...filteredItems]
+      .sort((a, b) => new Date(b.lastSeen || b.firstSeen || "").getTime() - new Date(a.lastSeen || a.firstSeen || "").getTime())
+      .slice(0, 5);
+    
+    return (
+      <div className="space-y-4">
+        {/* Quick Stats Row */}
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="text-center p-2 bg-slate-800/50 rounded-lg">
+            <div className="text-lg font-bold text-white">{stats.totalItems}</div>
+            <div className="text-slate-500">items</div>
+          </div>
+          <div className="text-center p-2 bg-slate-800/50 rounded-lg">
+            <div className="text-lg font-bold text-slate-300">{stats.totalCategories}</div>
+            <div className="text-slate-500">themes</div>
+          </div>
+          <div className="text-center p-2 bg-slate-800/50 rounded-lg">
+            <div className="text-lg font-bold text-emerald-400">{stats.implemented}</div>
+            <div className="text-slate-500">done</div>
+          </div>
+        </div>
+        
+        {/* Recent Items Preview */}
+        <div className="space-y-2">
+          <div className="text-xs text-slate-500 uppercase tracking-wide">Recent</div>
+          {recentItems.map((item) => (
+            <div 
+              key={item.id}
+              className="p-2 bg-slate-800/30 rounded-lg text-sm border-l-2 border-indigo-500/50 hover:bg-slate-800/50 transition-colors"
+            >
+              <div className="text-white truncate">{item.title || item.name}</div>
+              <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
+                <span className="capitalize">{item.itemType}</span>
+                {item.quality && <span className={`${item.quality === "A" ? "text-emerald-400" : item.quality === "B" ? "text-amber-400" : "text-slate-400"}`}>{item.quality}</span>}
+              </div>
+            </div>
+          ))}
+          {recentItems.length === 0 && (
+            <div className="text-sm text-slate-500 italic">No items yet. Run Generate!</div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <SectionErrorBoundary sectionName="Library">

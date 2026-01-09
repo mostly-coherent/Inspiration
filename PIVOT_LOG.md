@@ -7,6 +7,75 @@
 
 ---
 
+## Decision: Supabase Made Optional for Small Histories - 2026-01-09
+
+**Problem:** Original design required Supabase Vector DB for all users, creating unnecessary friction for new users with small chat histories (< 50MB). The setup wizard required 3 API keys before users could see any value.
+
+**Decision:** Make Supabase optional based on chat history size:
+
+| Chat DB Size | Supabase Requirement | Rationale |
+|-------------|---------------------|-----------|
+| < 50MB | Optional | Local search works fine, user can add later |
+| 50-500MB | Recommended | Performance benefit, but local works |
+| > 500MB | Required | Local search too slow, Vector DB necessary |
+| Cloud mode | Required | No local file access on Vercel |
+
+**Alternatives Considered:**
+1. **Always require Supabase** — Rejected: Too much friction for new/casual users
+2. **Never require Supabase** — Rejected: Large histories (>500MB) would have terrible UX
+3. **Tiered approach** — ✅ Chosen: Best of both worlds
+
+**Code Paths Affected:**
+- `src/app/onboarding/page.tsx` — Detects DB size, shows skip option for small histories
+- `src/app/api/config/env/route.ts` — Made Supabase keys optional
+- `src/app/page.tsx` — Redirect logic checks `setupComplete` flag
+
+**Impact:**
+- **Scope:** Reduced minimum setup from 3 keys to 1 key (Anthropic only)
+- **Timeline:** No change (onboarding still fast)
+- **Architecture:** Need to handle "no Vector DB" gracefully in search code
+
+**Verification:**
+```bash
+# Test onboarding in preview mode
+http://localhost:3000/onboarding?preview=true
+
+# Run onboarding tests
+npx playwright test --grep "Onboarding"
+```
+
+**Status:** Implemented | **DRI:** AI Assistant
+
+---
+
+## Decision: Resilience Strategy for Cursor DB Schema Changes - 2026-01-08
+
+<!-- Merged from RESILIENCE_STRATEGY.md on 2026-01-09 -->
+
+**Problem:** Cursor periodically changes its internal chat history database architecture, which can break Inspiration's extraction logic. Historical example: "The Bubble Problem" where messages moved from direct `composerData` entries to `bubbleId` references.
+
+**Decision:** Implement multi-layer resilience:
+1. **Schema Health Check** (`db_health_check.py`) — Detect schema changes before extraction
+2. **Enhanced Error Surfacing** — Categorize errors with remediation steps
+3. **Sync-Time Validation** — Abort early if schema incompatible
+4. **Diagnostic Report Generation** — Auto-generate bug reports
+
+**Alternatives Considered:**
+1. **Just fix when it breaks** — Rejected: Poor UX, users get cryptic errors
+2. **Multi-strategy extraction with fallbacks** — Deferred: Complex, may extract bad data silently
+3. **Schema health check + clear errors** — ✅ Chosen: Best balance of safety and UX
+
+**Trade-off:** Prioritize clear errors over silent degradation. Users should know when something is wrong rather than getting incomplete/incorrect data.
+
+**Code Paths Affected:**
+- `engine/common/db_health_check.py` — Schema detection and diagnostics
+- `engine/scripts/sync_messages.py` — Health check integration
+- `src/app/api/sync/route.ts` — Enhanced error responses
+
+**Status:** Implemented | **DRI:** AI Assistant
+
+---
+
 ## Complete Removal: "Candidates" Concept Eliminated - 2026-01-08
 
 **Problem:** UI showed "Candidates Generated: 1" despite 14 items being added to Library. User correctly identified that "Candidates" is a deprecated concept that should be completely removed from the codebase.

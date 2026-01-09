@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   ToolType,
   PresetMode,
@@ -29,6 +30,45 @@ import { loadThemesAsync } from "@/lib/themes";
 import { saveRunToHistory } from "@/lib/runHistory";
 
 export default function Home() {
+  const router = useRouter();
+  const [isCheckingSetup, setIsCheckingSetup] = useState(true);
+
+  // Check if user has completed onboarding
+  useEffect(() => {
+    const checkSetup = async () => {
+      try {
+        // First check if environment variables are configured
+        const envRes = await fetch("/api/config/env");
+        const envData = await envRes.json();
+        
+        if (!envData.allRequired) {
+          // Missing required API keys → redirect to onboarding
+          router.push("/onboarding");
+          return;
+        }
+        
+        // Then check if setup is complete
+        const configRes = await fetch("/api/config");
+        const configData = await configRes.json();
+        
+        if (!configData.success || !configData.config?.setupComplete) {
+          // Setup not complete → redirect to onboarding
+          router.push("/onboarding");
+          return;
+        }
+        
+        // All good, show the app
+        setIsCheckingSetup(false);
+      } catch (e) {
+        console.error("Failed to check setup:", e);
+        // On error, still show the app (might be first load)
+        setIsCheckingSetup(false);
+      }
+    };
+    
+    checkSetup();
+  }, [router]);
+
   // View mode state (Library View vs Comprehensive View)
   const [viewMode, setViewMode] = useState<ViewMode>("comprehensive");
   
@@ -431,54 +471,102 @@ export default function Home() {
     };
   }, []);
 
+  // Show loading state while checking setup
+  if (isCheckingSetup) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-indigo-950/30 to-slate-950">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto"></div>
+          <p className="text-slate-400">Loading...</p>
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <main id="main-content" className="min-h-screen p-8">
+    <main id="main-content" className="min-h-screen p-6 md:p-8">
       {/* Background gradient */}
       <div className="fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-gradient-to-br from-adobe-gray-900 via-adobe-gray-800 to-adobe-gray-900" />
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-inspiration-ideas/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-inspiration-insights/10 rounded-full blur-3xl" />
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-indigo-950/30 to-slate-950" />
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl" />
       </div>
 
       <a 
         href="#main-content" 
-        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-inspiration-ideas focus:text-white focus:rounded-lg focus:outline-none focus:ring-2 focus:ring-inspiration-ideas focus:ring-offset-2 focus:ring-offset-adobe-gray-900"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-indigo-500 focus:text-white focus:rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-950"
       >
         Skip to main content
       </a>
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <header className="text-center space-y-3 pt-6 relative">
-          {/* Settings & Logout - Top Right */}
-          <div className="absolute right-0 top-6 flex items-center gap-2">
+      <div className="max-w-6xl mx-auto space-y-8">
+        {/* Minimal Header */}
+        <header className="flex items-center justify-between pt-4">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">✨</span>
+            <h1 className="text-2xl font-bold text-white">Inspiration</h1>
+          </div>
+          <div className="flex items-center gap-2">
             <a 
               href="/settings" 
               className="p-2 text-slate-400 hover:text-amber-400 transition-colors"
               title="Settings"
               aria-label="Open settings"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             </a>
             <LogoutButton />
           </div>
-          
-          <h1 className="text-4xl font-bold gradient-text mt-8">Inspiration</h1>
-          <p className="text-adobe-gray-400 text-base">
-            Turn your Cursor conversations into ideas and insights
-          </p>
         </header>
-        
-        {/* v3: Scoreboard Header - Always Visible */}
+
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {/* HERO: Theme Explorer — The Forest View */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600/20 via-purple-600/10 to-slate-900/50 border border-indigo-500/20 p-8 md:p-10">
+          {/* Decorative elements */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-purple-500/10 rounded-full blur-2xl translate-y-1/2 -translate-x-1/2" />
+          
+          <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex-1 text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start gap-3 mb-3">
+                <span className="text-4xl">🔭</span>
+                <h2 className="text-3xl md:text-4xl font-bold text-white">Theme Explorer</h2>
+              </div>
+              <p className="text-lg text-slate-300 max-w-lg">
+                Zoom out to see patterns in your thinking. Discover the <strong className="text-indigo-300">forests</strong>, not just the trees.
+              </p>
+              <p className="text-sm text-slate-400 mt-2">
+                AI-powered synthesis reveals hidden themes across your ideas and insights.
+              </p>
+            </div>
+            
+            <a
+              href="/themes"
+              className="group flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold text-lg rounded-2xl shadow-xl shadow-indigo-500/25 transition-all hover:scale-105 hover:shadow-indigo-500/40"
+            >
+              <span>Explore Themes</span>
+              <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+            </a>
+          </div>
+        </section>
+
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {/* MEMORY & LIBRARY — Side by Side Stats */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <ScoreboardHeader
           onSyncClick={handleSync}
           isSyncing={isSyncing}
           syncStatus={syncStatus}
         />
 
-        {/* View Toggle */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {/* VIEW MODE: Library Browse vs Generate New */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <ViewToggle currentView={viewMode} onViewChange={setViewMode} />
 
         {/* Conditional Layout based on View Mode */}
@@ -486,19 +574,10 @@ export default function Home() {
           /* Library View - Full width, focused on exploring items */
           <LibraryView />
         ) : (
-          /* Comprehensive View - Two-Panel Layout */
+          /* Comprehensive View - Generate-focused Layout */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* LEFT PANEL: Library */}
-            <aside className="lg:col-span-5 xl:col-span-4 order-2 lg:order-1">
-              <div className="lg:sticky lg:top-6 space-y-4">
-                <div id="library-section">
-                  <BanksOverview />
-                </div>
-              </div>
-            </aside>
-
-            {/* RIGHT PANEL: Generate/Seek Actions */}
-            <main className="lg:col-span-7 xl:col-span-8 order-1 lg:order-2 space-y-6">
+            {/* LEFT PANEL: Generate Actions (Primary) */}
+            <main className="lg:col-span-8 space-y-6">
             {/* Mode Selection */}
             <section className="glass-card p-5 space-y-4">
               <h2 className="text-lg font-medium text-adobe-gray-300">
@@ -643,6 +722,27 @@ export default function Home() {
               </>
             )}
           </main>
+
+            {/* RIGHT PANEL: Library Preview (Compact) */}
+            <aside className="lg:col-span-4">
+              <div className="lg:sticky lg:top-6">
+                <div id="library-section" className="bg-slate-800/30 border border-slate-700/50 rounded-2xl p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">📚</span>
+                      <h3 className="text-sm font-semibold text-slate-300">Library Preview</h3>
+                    </div>
+                    <button
+                      onClick={() => setViewMode("library")}
+                      className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                    >
+                      Full View →
+                    </button>
+                  </div>
+                  <BanksOverview compact />
+                </div>
+              </div>
+            </aside>
         </div>
         )}
       </div>

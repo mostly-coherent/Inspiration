@@ -113,6 +113,20 @@ The engine combines these into a comprehensive system prompt that helps Claude m
 | U4 | **Bank Viewer** | View Idea Bank and Insight Bank in the UI | ✅ Done |
 | U5 | **Export to Markdown** | Download ideas/insights as standalone .md files | ✅ Done |
 
+### New User Onboarding
+
+| ID | Feature | Description | Status |
+|----|---------|-------------|--------|
+| ONB-1 | **Smart DB Detection** | Auto-detect chat history size to determine Vector DB requirement | ✅ Done |
+| ONB-2 | **Tiered Setup** | < 50MB: Supabase optional • 50-500MB: recommended • > 500MB: required | ✅ Done |
+| ONB-3 | **3-Step Wizard** | Welcome → API Keys → Sync → Theme Explorer | ✅ Done |
+| ONB-4 | **Preview Mode** | `?preview=true` to test onboarding without resetting data | ✅ Done |
+| ONB-5 | **Auto-Redirect** | New users (missing keys or setupComplete=false) redirect to /onboarding | ✅ Done |
+| ONB-6 | **API Key Validation** | Test API keys before saving to catch typos | Pending |
+| ONB-7 | **Demo Mode** | Pre-populated sample data for exploring before committing | Pending |
+
+**Verification:** Visit `/onboarding?preview=true` to test the flow without affecting your data.
+
 ---
 
 ## MVP: Chat History Search Across All Workspaces
@@ -506,6 +520,10 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 | IMP-13 | Prompt template validation (syntax check before save) | MEDIUM | MEDIUM |
 | IMP-16 | **Resume generation from partial progress** — Save intermediate state, not just final output | MEDIUM | HIGH |
 | IMP-17 | **Streaming progress per-day** — Show which day is being processed during generation | LOW | MEDIUM |
+| IMP-18 | **Multi-strategy extraction** — Fallback logic for Cursor DB schema changes | MEDIUM | HIGH |
+| IMP-19 | **Auto-adaptation** — Discover new schema patterns automatically (conceptual) | LOW | HIGH |
+
+<!-- IMP-18/19 merged from RESILIENCE_STRATEGY.md on 2026-01-09 -->
 
 **Error Handling (Implemented 2026-01-05):**
 | ID | Improvement | Status | Notes |

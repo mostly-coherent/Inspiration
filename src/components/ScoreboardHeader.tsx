@@ -109,58 +109,34 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
   const isCloudMode = syncStatus === "☁️ Cloud Mode (Read-only)";
 
   return (
-    <div className="w-full bg-gradient-to-r from-white/5 to-white/10 border border-white/10 rounded-2xl p-4 mb-6">
-      <div className="grid grid-cols-2 gap-6">
-        {/* Memory Section */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">🧠</span>
-            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
-              Memory
-            </h2>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-            {/* Size */}
-            {(memoryStats.localSize || memoryStats.vectorSize) ? (
-              <div className="flex items-center gap-2">
-                {memoryStats.localSize && (
-                  <span className="text-white font-medium">{memoryStats.localSize}</span>
-                )}
-                {memoryStats.localSize && memoryStats.vectorSize && (
-                  <span className="text-slate-500">→</span>
-                )}
-                {memoryStats.vectorSize && (
-                  <span className="text-emerald-400 font-medium">{memoryStats.vectorSize}</span>
-                )}
-                <span className="text-slate-500 text-xs">indexed</span>
-              </div>
-            ) : (
-              <span className="text-slate-500">—</span>
-            )}
-
-            {/* Date Coverage */}
-            {memoryStats.earliestDate && memoryStats.latestDate && (
-              <>
-                <span className="text-slate-600">|</span>
-                <div className="flex items-center gap-1">
-                  <span className="text-slate-400">{memoryStats.earliestDate}</span>
-                  <span className="text-slate-500">→</span>
-                  <span className="text-slate-400">{memoryStats.latestDate}</span>
-                </div>
-              </>
-            )}
-
+    <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {/* MEMORY CARD — The Source of Inspiration */}
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-800/60 to-slate-900/80 border border-slate-700/50 rounded-2xl p-5">
+        {/* Subtle glow */}
+        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl" />
+        
+        <div className="relative z-10 space-y-3">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🧠</span>
+              <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+                Memory
+              </h2>
+            </div>
+            
             {/* Sync Button */}
             <button
               onClick={onSyncClick}
               disabled={isSyncing}
-              className={`ml-auto flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                 isSyncing
                   ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait"
                   : isCloudMode
                   ? "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
-                  : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white"
+                  : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30"
               }`}
               title={
                 isCloudMode
@@ -171,89 +147,143 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
               <span className={isSyncing ? "animate-spin" : ""}>
                 {isCloudMode ? "☁️" : "🔄"}
               </span>
-              {isSyncing ? "Syncing..." : isCloudMode ? "Cloud Mode" : "Sync"}
+              {isSyncing ? "Syncing..." : isCloudMode ? "Cloud" : "Sync"}
             </button>
           </div>
 
-          {/* Sync Status */}
-          {syncStatus && !isCloudMode && (
-            <p className="text-xs text-slate-500">{syncStatus}</p>
-          )}
-        </div>
-
-        {/* Library Section */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">📚</span>
-            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
-              Library
-            </h2>
+          {/* Size Transformation: GB → MB */}
+          <div className="flex items-center gap-3">
+            {(memoryStats.localSize || memoryStats.vectorSize) ? (
+              <>
+                {/* Raw size */}
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-slate-300">
+                    {memoryStats.localSize || "—"}
+                  </div>
+                  <div className="text-xs text-slate-500">raw chats</div>
+                </div>
+                
+                {/* Arrow transformation */}
+                <div className="flex flex-col items-center">
+                  <span className="text-emerald-400 text-lg">→</span>
+                  <span className="text-[10px] text-slate-500">distilled</span>
+                </div>
+                
+                {/* Indexed size */}
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-emerald-400">
+                    {memoryStats.vectorSize || "—"}
+                  </div>
+                  <div className="text-xs text-slate-500">indexed</div>
+                </div>
+              </>
+            ) : (
+              <div className="text-slate-500 text-sm">Loading...</div>
+            )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-            {/* Total Items */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-2xl font-bold text-white">
-                {isLoading ? "—" : libraryStats.totalItems}
-              </span>
-              <span className="text-slate-500 text-xs">items</span>
-            </div>
-
-            {/* This Week */}
-            {libraryStats.thisWeek > 0 && (
-              <div className="flex items-center gap-1">
-                <span className="text-emerald-400 font-medium">
-                  +{libraryStats.thisWeek}
-                </span>
-                <span className="text-slate-500 text-xs">this week</span>
+          {/* Date Coverage & Sync Status */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {memoryStats.earliestDate && memoryStats.latestDate && (
+              <div className="flex items-center gap-1 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
+                <span>📅</span>
+                <span>{memoryStats.earliestDate}</span>
+                <span className="text-slate-600">→</span>
+                <span>{memoryStats.latestDate}</span>
               </div>
             )}
-
-            {/* Categories */}
-            {libraryStats.totalCategories > 0 && (
-              <>
-                <span className="text-slate-600">|</span>
-                <div className="flex items-center gap-1">
-                  <span className="text-slate-300">{libraryStats.totalCategories}</span>
-                  <span className="text-slate-500 text-xs">themes</span>
-                </div>
-              </>
+            
+            {syncStatus && !isCloudMode && (
+              <span className={`px-2 py-1 rounded-full ${
+                syncStatus.startsWith("✓") 
+                  ? "bg-emerald-500/10 text-emerald-400" 
+                  : "bg-amber-500/10 text-amber-400"
+              }`}>
+                {syncStatus}
+              </span>
             )}
+          </div>
+        </div>
+      </div>
 
-            {/* Implemented */}
-            {libraryStats.implemented > 0 && (
-              <>
-                <span className="text-slate-600">|</span>
-                <div className="flex items-center gap-1">
-                  <span className="text-purple-400">{libraryStats.implemented}</span>
-                  <span className="text-slate-500 text-xs">implemented ✓</span>
-                </div>
-              </>
-            )}
-
-            {/* View Library Link */}
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {/* LIBRARY CARD — Growing Repository */}
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-800/60 to-slate-900/80 border border-slate-700/50 rounded-2xl p-5">
+        {/* Subtle glow */}
+        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl" />
+        
+        <div className="relative z-10 space-y-3">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">📚</span>
+              <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+                Library
+              </h2>
+            </div>
+            
+            {/* View All Link */}
             <a
               href="#library-section"
-              className="ml-auto text-xs text-inspiration-ideas hover:text-inspiration-ideas/80 transition-colors"
+              className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
               onClick={(e) => {
                 e.preventDefault();
                 document.getElementById("library-section")?.scrollIntoView({ behavior: "smooth" });
               }}
             >
-              View All →
+              Browse →
             </a>
           </div>
 
-          {/* Mode Breakdown (subtle) */}
-          {Object.keys(libraryStats.byMode).length > 0 && (
-            <div className="flex gap-3 text-xs text-slate-500">
-              {Object.entries(libraryStats.byMode).map(([mode, count]) => (
-                <span key={mode}>
-                  {mode}: {count}
-                </span>
-              ))}
+          {/* Main Stats */}
+          <div className="flex items-end gap-4">
+            {/* Total Items - Big Number */}
+            <div>
+              <div className="text-4xl font-bold text-white">
+                {isLoading ? "—" : libraryStats.totalItems}
+              </div>
+              <div className="text-xs text-slate-500">total items</div>
             </div>
-          )}
+            
+            {/* This Week Delta */}
+            {libraryStats.thisWeek > 0 && (
+              <div className="pb-1">
+                <div className="text-lg font-semibold text-emerald-400">
+                  +{libraryStats.thisWeek}
+                </div>
+                <div className="text-xs text-slate-500">this week</div>
+              </div>
+            )}
+          </div>
+
+          {/* Secondary Stats */}
+          <div className="flex flex-wrap gap-3 text-xs">
+            {libraryStats.totalCategories > 0 && (
+              <div className="flex items-center gap-1 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
+                <span>🏷️</span>
+                <span>{libraryStats.totalCategories} themes</span>
+              </div>
+            )}
+            
+            {libraryStats.implemented > 0 && (
+              <div className="flex items-center gap-1 text-purple-400 bg-purple-500/10 px-2 py-1 rounded-full">
+                <span>✓</span>
+                <span>{libraryStats.implemented} implemented</span>
+              </div>
+            )}
+            
+            {/* Mode Breakdown */}
+            {Object.keys(libraryStats.byMode).length > 0 && (
+              <div className="flex items-center gap-2 text-slate-500">
+                {Object.entries(libraryStats.byMode).map(([mode, count]) => (
+                  <span key={mode} className="capitalize">
+                    {mode}: {count}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
