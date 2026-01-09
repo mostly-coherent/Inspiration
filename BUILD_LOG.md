@@ -6,6 +6,45 @@
 
 ---
 
+## Progress - 2026-01-09
+
+**Done:**
+- ✅ **New User Onboarding Flow (ONB-1 through ONB-5)**
+  - **Problem:** New users had to manually configure API keys and understand complex settings before seeing any value. No "aha moment" path.
+  - **Solution:** Created a 3-step onboarding wizard that gets users to Theme Explorer ASAP
+  
+  **Features Implemented:**
+  | Feature | Description |
+  |---------|-------------|
+  | Smart DB Detection | Auto-detects Cursor chat history size before asking for API keys |
+  | Tiered Setup | < 50MB: Supabase optional • 50-500MB: recommended • > 500MB: required |
+  | 3-Step Wizard | Welcome → API Keys → Sync → Theme Explorer |
+  | Preview Mode | `?preview=true` to test flow without resetting data |
+  | Redirect Logic | New users auto-redirect to `/onboarding` |
+  
+  **Files Created:**
+  - `src/app/onboarding/page.tsx` — 3-step onboarding wizard
+  - `src/app/api/config/env/route.ts` — API to save/check environment variables
+  
+  **Files Modified:**
+  - `src/app/page.tsx` — Added setup check and redirect logic
+  - `e2e/inspiration.spec.ts` — Added 5 new onboarding tests (22-26)
+
+**Evidence:**
+- 26 Playwright tests pass (5 new onboarding tests)
+- Preview mode tested at `/onboarding?preview=true`
+- Screenshots saved to `e2e-results/22-26-*.png`
+
+**Next:**
+- [ ] Add onboarding analytics (which step users drop off)
+- [ ] Add API key validation before saving
+- [ ] Consider demo mode with sample data
+
+**Blockers:**
+- None
+
+---
+
 ## Progress - 2026-01-08
 
 **Done:**

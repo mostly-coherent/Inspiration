@@ -25,6 +25,24 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 - **Seek (Use Case Mode)** — Find chat history evidence for use cases
 - **Library** — Items and Categories with automatic grouping via cosine similarity
 - **Memory** — Indexed chat history with sync status and date coverage
+- **Theme Explorer** — Interactive theme grouping with LLM-powered synthesis
+
+### New User Onboarding
+
+| Step | What Happens | Required? |
+|------|-------------|-----------|
+| **1. Welcome** | Detect chat DB size, explain value prop | — |
+| **2. API Keys** | Anthropic key required; Supabase optional for < 500MB | ✅ Anthropic |
+| **3. Sync** | Index chat history to Vector DB (if Supabase configured) | Auto |
+| **4. Theme Explorer** | First "aha moment" — see patterns in thinking | — |
+
+**Testing Onboarding:** Visit `/onboarding?preview=true` to test without resetting data.
+
+**Supabase Requirement Thresholds:**
+- < 50MB: Optional (local search works)
+- 50-500MB: Recommended
+- \> 500MB: Required (local too slow)
+- Cloud mode: Required (no local file access)
 
 ### User Mental Model
 
@@ -41,13 +59,17 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 ```
 inspiration/
 ├── src/app/              # Next.js 15 App Router
-│   ├── page.tsx          # Main generation UI (v1: Theme/Mode selectors)
+│   ├── page.tsx          # Main generation UI (redirects to onboarding if new user)
+│   ├── onboarding/       # New user onboarding wizard (3 steps)
+│   ├── themes/           # Theme Explorer (dedicated page)
 │   ├── settings/         # Settings wizard (v1: Mode Settings section)
 │   └── api/
 │       ├── generate/     # Calls Python engine (v1: theme/mode support)
 │       ├── generate-stream/ # Streaming generation
 │       ├── config/       # Config CRUD
+│       │   └── env/      # Environment variables API (onboarding)
 │       ├── items/        # Unified Items/Categories API (v1)
+│       │   └── themes/   # Theme grouping + synthesis API
 │       ├── themes/       # Themes configuration API (v1)
 │       ├── modes/        # Mode CRUD API (v1)
 │       └── reverse-match/ # Semantic search chat history
@@ -108,12 +130,15 @@ npm run dev
 
 | File | Purpose |
 |------|---------|
-| `src/app/page.tsx` | Main UI — Theme/Mode selection, presets, unified bank viewer, reverse match, run history |
+| `src/app/page.tsx` | Main UI — redirects to onboarding if new user, Theme Explorer hero, Generate actions |
+| `src/app/onboarding/page.tsx` | 3-step onboarding wizard (Welcome → API Keys → Sync) |
+| `src/app/themes/page.tsx` | Theme Explorer — interactive theme grouping with LLM synthesis |
 | `src/app/settings/page.tsx` | Settings wizard (workspaces, VectorDB, voice, LLM, mode settings, features) |
-| `src/components/ThemeSelector.tsx` | Theme selection component (v1) |
-| `src/components/ModeSelector.tsx` | Mode selection component (v1) |
+| `src/app/api/config/env/route.ts` | Environment variables API for onboarding |
+| `src/app/api/items/themes/synthesize/route.ts` | LLM-powered theme synthesis API |
 | `src/components/ModeSettingsManager.tsx` | Mode management UI (create/edit/delete modes) (v1) |
 | `src/components/BanksOverview.tsx` | Unified Items/Categories bank viewer (v1) |
+| `src/components/ScoreboardHeader.tsx` | Memory + Library stats header (v3) |
 | `src/components/RunHistory.tsx` | Run history display component (v1) |
 | `engine/generate.py` | Unified generation CLI (v1: replaces ideas.py/insights.py) |
 | `engine/common/cursor_db.py` | Core DB extraction (Mac/Windows only, handles "Bubble" architecture) |
