@@ -551,10 +551,10 @@ export default function Home() {
                 <h2 className="text-3xl md:text-4xl font-bold text-white">Theme Explorer</h2>
               </div>
               <p className="text-lg text-slate-300 max-w-lg">
-                Zoom out to see patterns in your thinking. Discover the <strong className="text-indigo-300">forests</strong>, not just the trees.
+                See your own thinking from 10,000 feet. Discover the <strong className="text-indigo-300">forests</strong>, not just the trees.
               </p>
               <p className="text-sm text-slate-400 mt-2">
-                AI-powered synthesis reveals hidden themes across your ideas and insights.
+                For pattern seekers: AI synthesis reveals recurring themes you didn't notice—ideas worth building, insights worth sharing.
               </p>
             </div>
             
