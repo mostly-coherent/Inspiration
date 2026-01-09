@@ -177,11 +177,10 @@ export async function GET(request: Request) {
     
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch items from Supabase
-    // Note: embedding column may not exist yet - we'll handle missing embeddings gracefully
+    // Fetch items from Supabase (including embeddings for dynamic theme grouping)
     let query = supabase
       .from("library_items")
-      .select("id, title, description, item_type, category_id");
+      .select("id, title, description, item_type, category_id, embedding");
     
     // Filter by item type if specified
     if (itemType) {
@@ -199,15 +198,30 @@ export async function GET(request: Request) {
     }
     
     // Transform Supabase data to Item format
-    // Note: embeddings are not stored in Supabase - theme grouping falls back to categories
-    const items: Item[] = (itemsData || []).map((item: any) => ({
-      id: item.id,
-      title: item.title,
-      description: item.description,
-      itemType: item.item_type,
-      embedding: undefined, // Embeddings not available in Supabase
-      categoryId: item.category_id,
-    }));
+    const items: Item[] = (itemsData || []).map((item: any) => {
+      // Parse embedding from JSONB (stored as array)
+      let embedding: number[] | undefined;
+      if (item.embedding) {
+        if (Array.isArray(item.embedding)) {
+          embedding = item.embedding;
+        } else if (typeof item.embedding === 'string') {
+          try {
+            embedding = JSON.parse(item.embedding);
+          } catch {
+            embedding = undefined;
+          }
+        }
+      }
+      
+      return {
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        itemType: item.item_type,
+        embedding,
+        categoryId: item.category_id,
+      };
+    });
 
     // Check if any items have embeddings
     const itemsWithEmbeddings = items.filter(i => i.embedding && i.embedding.length > 0);

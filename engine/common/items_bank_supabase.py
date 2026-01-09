@@ -51,6 +51,14 @@ class ItemsBankSupabase:
         """
         item_id = f"item-{uuid.uuid4().hex[:8]}"
         
+        # Generate embedding if not provided
+        if embedding is None:
+            try:
+                query_text = f"{title} {description}"
+                embedding = get_embedding(query_text)
+            except Exception:
+                embedding = None  # Proceed without embedding if generation fails
+        
         # Prepare item data
         item_data = {
             "id": item_id,
@@ -65,6 +73,7 @@ class ItemsBankSupabase:
             "first_seen": first_seen_date or datetime.now().strftime("%Y-%m"),
             "last_seen": datetime.now().strftime("%Y-%m"),
             "category_id": None,
+            "embedding": embedding,  # Store embedding for theme grouping
             # Legacy fields for backward compatibility
             "mode": mode or item_type,
             "theme": theme or "generation",
