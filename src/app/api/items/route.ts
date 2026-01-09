@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile } from "fs/promises";
-import path from "path";
-import { existsSync } from "fs";
+import { createClient } from "@supabase/supabase-js";
 import { ItemsBank } from "@/lib/types";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const ITEMS_BANK_PATH = path.join(DATA_DIR, "items_bank.json");
+export const maxDuration = 10; // 10 seconds (much faster than JSON parsing)
 
-// GET /api/items?theme=generation&mode=idea&view=items|categories&implemented=false&page=1&pageSize=50
+// GET /api/items-supabase?theme=generation&mode=idea&view=items|categories&implemented=false&page=1&pageSize=50
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -21,118 +18,161 @@ export async function GET(request: NextRequest) {
     const pageSize = parseInt(searchParams.get("pageSize") || "50", 10);
     const paginateItems = searchParams.get("paginate") !== "false"; // Default to paginated
     
-    if (!existsSync(ITEMS_BANK_PATH)) {
+    // Initialize Supabase client
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
       return NextResponse.json({
-        success: true,
-        items: [],
-        categories: [],
-        stats: {
-          totalItems: 0,
-          totalCategories: 0,
-          byMode: {},
-          byTheme: {},
-          implemented: 0,
-        },
-      });
+        success: false,
+        error: "Supabase not configured",
+      }, { status: 500 });
     }
     
-    const content = await readFile(ITEMS_BANK_PATH, "utf-8");
-    const bank: ItemsBank = JSON.parse(content);
+    const supabase = createClient(supabaseUrl, supabaseKey);
     
-    // Filter items
-    let items = bank.items || [];
+    // Build items query
+    let itemsQuery = supabase
+      .from("library_items")
+      .select("*", { count: "exact" });
+    
+    // Apply filters
     if (theme) {
-      items = items.filter((item) => item.theme === theme);
+      itemsQuery = itemsQuery.eq("theme", theme);
     }
     if (mode) {
-      items = items.filter((item) => item.mode === mode);
+      itemsQuery = itemsQuery.eq("mode", mode);
     }
     if (implemented !== null) {
       const isImplemented = implemented === "true";
-      items = items.filter((item) => {
-        // Support both new status field and legacy implemented field
-        if (item.status) {
-          return isImplemented 
-            ? (item.status === "implemented" || item.status === "posted")
-            : (item.status === "active" || item.status === "archived");
-        }
-        // Legacy format
-        return item.implemented === isImplemented;
-      });
+      itemsQuery = itemsQuery.eq("status", isImplemented ? "implemented" : "active");
     }
     
-    // Sort by occurrence (highest first)
-    items.sort((a, b) => (b.occurrence || 0) - (a.occurrence || 0));
+    // Apply sorting
+    itemsQuery = itemsQuery.order("occurrence", { ascending: false });
     
-    // Calculate pagination before slicing
-    const totalItems = items.length;
-    const totalPages = Math.ceil(totalItems / pageSize);
-    const startIndex = (page - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
+    // Apply pagination if requested
+    if (paginateItems) {
+      const startIndex = (page - 1) * pageSize;
+      itemsQuery = itemsQuery.range(startIndex, startIndex + pageSize - 1);
+    }
     
-    // Apply pagination if enabled
-    const paginatedItems = paginateItems ? items.slice(startIndex, endIndex) : items;
+    // Execute items query
+    const { data: itemsData, count: totalItems, error: itemsError } = await itemsQuery;
     
-    // Filter categories
-    let categories = bank.categories || [];
+    if (itemsError) {
+      console.error("[Items Supabase] Error fetching items:", itemsError);
+      return NextResponse.json({
+        success: false,
+        error: itemsError.message,
+      }, { status: 500 });
+    }
+    
+    // Transform Supabase data to match frontend Item type
+    const items = (itemsData || []).map((item: any) => ({
+      id: item.id,
+      itemType: item.item_type,
+      title: item.title,
+      description: item.description,
+      tags: item.tags || [],
+      status: item.status,
+      quality: item.quality,
+      sourceConversations: item.source_conversations,
+      occurrence: item.occurrence,
+      firstSeen: item.first_seen,
+      lastSeen: item.last_seen,
+      categoryId: item.category_id,
+      // Legacy fields
+      mode: item.mode,
+      theme: item.theme,
+      name: item.name,
+      content: item.content,
+      implemented: item.implemented,
+    }));
+    
+    // Build categories query
+    let categoriesQuery = supabase
+      .from("library_categories")
+      .select("*");
+    
+    // Apply filters
     if (theme) {
-      categories = categories.filter((cat) => cat.theme === theme);
+      categoriesQuery = categoriesQuery.eq("theme", theme);
     }
     if (mode) {
-      categories = categories.filter((cat) => cat.mode === mode);
+      categoriesQuery = categoriesQuery.eq("mode", mode);
     }
     
-    // Sort categories by number of items (largest first)
-    categories.sort((a, b) => (b.itemIds?.length || 0) - (a.itemIds?.length || 0));
+    // Sort by item count (derived from item_ids array length)
+    categoriesQuery = categoriesQuery.order("created_date", { ascending: false });
+    
+    // Execute categories query
+    const { data: categoriesData, error: categoriesError } = await categoriesQuery;
+    
+    if (categoriesError) {
+      console.error("[Items Supabase] Error fetching categories:", categoriesError);
+      return NextResponse.json({
+        success: false,
+        error: categoriesError.message,
+      }, { status: 500 });
+    }
+    
+    // Transform Supabase data to match frontend Category type
+    const categories = (categoriesData || []).map((category: any) => ({
+      id: category.id,
+      name: category.name,
+      theme: category.theme,
+      mode: category.mode,
+      itemIds: category.item_ids || [],
+      itemCount: (category.item_ids || []).length,
+      similarityThreshold: category.similarity_threshold,
+      createdDate: category.created_date,
+    }));
+    
+    // Sort categories by itemCount (descending)
+    categories.sort((a, b) => b.itemCount - a.itemCount);
     
     // Calculate stats
-    const allItems = bank.items || [];
     const stats = {
-      totalItems: allItems.length,
-      totalCategories: bank.categories?.length || 0,
+      totalItems: totalItems || 0,
+      totalCategories: categories.length,
       byMode: {} as Record<string, number>,
       byTheme: {} as Record<string, number>,
-      implemented: allItems.filter((item) => {
-        // Support both new status field and legacy implemented field
-        return item.status === "implemented" || item.status === "posted" || item.implemented === true;
-      }).length,
+      implemented: items.filter((item) => item.status === "implemented").length,
     };
     
-    // Count by mode
-    for (const item of allItems) {
-      const mode = item.mode || "unknown";
-      stats.byMode[mode] = (stats.byMode[mode] || 0) + 1;
-    }
+    // Count by mode and theme
+    items.forEach((item) => {
+      if (item.mode) {
+        stats.byMode[item.mode] = (stats.byMode[item.mode] || 0) + 1;
+      }
+      if (item.theme) {
+        stats.byTheme[item.theme] = (stats.byTheme[item.theme] || 0) + 1;
+      }
+    });
     
-    // Count by theme
-    for (const item of allItems) {
-      const theme = item.theme || "unknown";
-      stats.byTheme[theme] = (stats.byTheme[theme] || 0) + 1;
-    }
+    // Calculate pagination metadata
+    const totalPages = paginateItems ? Math.ceil((totalItems || 0) / pageSize) : 1;
     
     return NextResponse.json({
       success: true,
-      items: view === "items" ? paginatedItems : [],
-      categories, // Always return categories (needed for filter dropdown and item display)
+      items: view === "items" ? items : [],
+      categories,
       stats,
-      lastUpdated: bank.last_updated || null,
+      lastUpdated: new Date().toISOString(),
       // Pagination metadata
-      pagination: paginateItems ? {
-        page,
-        pageSize,
-        totalItems,
-        totalPages,
-        hasNextPage: page < totalPages,
-        hasPrevPage: page > 1,
-      } : null,
+      currentPage: page,
+      pageSize,
+      totalItems: totalItems || 0,
+      totalPages,
+      hasNextPage: paginateItems && page < totalPages,
+      hasPreviousPage: paginateItems && page > 1,
     });
-    
   } catch (error) {
-    console.error("[Items] Error:", error);
+    console.error("[Items Supabase] Error:", error);
     return NextResponse.json(
       { success: false, error: String(error) },
       { status: 500 }
     );
   }
 }
-

@@ -139,15 +139,44 @@ export function getFriendlyError(rawError: string): FriendlyError {
   }
   
   // Parsing Errors
-  if (errorLower.includes("no items found") || errorLower.includes("failed to parse")) {
+  if (errorLower.includes("no items found") || errorLower.includes("failed to parse") || errorLower.includes("couldn't be parsed")) {
     return {
-      title: "No Content Generated",
-      message: "The AI didn't produce parseable content for this date range. This can happen for days with minimal chat activity.",
+      title: "No Items Parsed",
+      message: "The AI generated a response but it couldn't be parsed into structured items. Try a different date range or adjust the temperature.",
       cta: {
         label: "Try Different Dates",
         action: "retry",
       },
       severity: "warning",
+    };
+  }
+  
+  // No output generated (conversations found but no items)
+  if (errorLower.includes("relevant chat session") && errorLower.includes("no") && (errorLower.includes("ideas") || errorLower.includes("insights"))) {
+    // Extract conversation count from message
+    const countMatch = errorLower.match(/(\d+)\s+relevant/);
+    const count = countMatch ? countMatch[1] : "some";
+    return {
+      title: "No Items Generated",
+      message: `${count} relevant conversations were analyzed, but no items were extracted. This is normal for routine work (debugging, configuration). Try a different date range or higher temperature.`,
+      cta: {
+        label: "Adjust Settings",
+        action: "retry",
+      },
+      severity: "info",
+    };
+  }
+  
+  // All duplicates
+  if (errorLower.includes("duplicates") && errorLower.includes("library")) {
+    return {
+      title: "All Items Already in Library",
+      message: "Items were generated but they're all already in your Library. Great coverage! Try a different date range for new content.",
+      cta: {
+        label: "Try Different Dates",
+        action: "retry",
+      },
+      severity: "info",
     };
   }
   

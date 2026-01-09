@@ -211,7 +211,7 @@ def seek_use_case(
                 "daysSearched": days_back,
                 "useCasesFound": 0,
             },
-            "error": "No relevant conversations found",
+            "error": f"No relevant conversations found for '{query}' in the last {days_back} days. The app uses semantic search to find chat sessions related to your query, but none matched. Try: (1) different keywords, (2) broader phrasing, or (3) a longer date range.",
         }
     
     # Step 2: Compress conversations if needed (same as generate.py)

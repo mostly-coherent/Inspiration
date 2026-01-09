@@ -332,11 +332,11 @@ export async function POST(request: NextRequest) {
     };
     
     // If no content generated, add helpful error message with context
+    // Note: "conversations" here means individual Cursor chat sessions (not message count).
+    // The count reflects RELEVANT conversations found via semantic search, not the total in the date range.
     if (!actuallySuccessful) {
       const conversationsCount = stats.conversationsAnalyzed ?? 0;
-      const conversationsText = conversationsCount === 0 
-        ? "No conversations were found" 
-        : `${conversationsCount} conversation${conversationsCount === 1 ? '' : 's'} were analyzed`;
+      const itemType = resolvedTool === "ideas" ? "ideas" : "insights";
       
       const harmonization = stats.harmonization;
       const itemsProcessed = harmonization?.itemsProcessed ?? 0;
@@ -345,16 +345,16 @@ export async function POST(request: NextRequest) {
       
       if (hasContent && !hasItems) {
         // Content exists but couldn't be parsed into items
-        response.error = `Output file was generated but contains no parseable items. ${conversationsText}. The content may not match the expected format, or the LLM may have generated empty results.`;
+        response.error = `The AI generated a response, but it couldn't be parsed into ${itemType}. ${conversationsCount} relevant chat sessions were analyzed. This sometimes happens when the conversations don't contain clear ${itemType}-worthy patterns. Try a different date range or adjust the temperature.`;
       } else if (itemsProcessed > 0 && itemsAdded === 0 && itemsDeduplicated > 0) {
         // All items were duplicates of existing library items
-        response.error = `Items were generated but all were duplicates of existing library items. ${conversationsText}. ${itemsProcessed} item${itemsProcessed === 1 ? '' : 's'} were processed, but ${itemsDeduplicated} were deduplicated (already in library).`;
+        response.error = `${itemsProcessed} ${itemType} ${itemsProcessed === 1 ? 'was' : 'were'} generated from ${conversationsCount} chat sessions, but all ${itemsDeduplicated} ${itemsDeduplicated === 1 ? 'was' : 'were'} duplicates of items already in your Library. This means you've already captured these ${itemType} in previous runs — great coverage!`;
       } else if (conversationsCount === 0) {
-        // No conversations found - user didn't use Cursor during this period
-        response.error = `No conversations found in the selected date range. This suggests you may not have used Cursor during this period, or the chat history hasn't been synced yet.`;
+        // No conversations found - semantic search found nothing relevant
+        response.error = `No relevant conversations found in the selected date range. The app uses semantic search to find chat sessions likely to contain ${itemType}, and none matched the search criteria. This could mean: (1) you didn't use Cursor during this period, (2) the chat history hasn't been synced yet, or (3) the conversations were routine work without ${itemType}-worthy patterns.`;
       } else {
-        // No output file generated - conversations found but no items generated pre-harmonization
-        response.error = `No output generated. ${conversationsText}, but no ${resolvedTool === "ideas" ? "ideas" : "insights"} were generated. The conversations may have been routine work without notable patterns, or the date range had no relevant activity.`;
+        // Conversations found but LLM generated no items
+        response.error = `${conversationsCount} relevant chat session${conversationsCount === 1 ? ' was' : 's were'} found via semantic search, but no ${itemType} were generated. This is not a bug — it means the AI analyzed the conversations but didn't find content worth extracting as ${itemType}. The conversations may have been routine work (debugging, configuration, etc.) without notable patterns. Try: (1) a different date range, (2) higher temperature for more creative extraction, or (3) check that your semantic search queries in Settings match the type of ${itemType} you're looking for.`;
       }
     }
 
