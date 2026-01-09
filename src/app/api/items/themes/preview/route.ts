@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import path from "path";
-import fs from "fs/promises";
 
 interface Item {
   id: string;
@@ -139,19 +137,12 @@ function generateThemeName(items: Item[], threshold: number): string {
   return items.length > 1 ? `${baseName} (+${items.length - 1})` : baseName;
 }
 
-// Load config for theme explorer settings
-async function loadThemeExplorerConfig() {
-  try {
-    const configPath = path.join(process.cwd(), "data", "config.json");
-    const configContent = await fs.readFile(configPath, "utf-8");
-    const config = JSON.parse(configContent);
-    return {
-      maxThemesToDisplay: config.themeExplorer?.maxThemesToDisplay ?? 20,
-      largeThemeThreshold: config.themeExplorer?.largeThemeThreshold ?? 5,
-    };
-  } catch {
-    return { maxThemesToDisplay: 20, largeThemeThreshold: 5 };
-  }
+// Theme explorer config (defaults - no file system access on Vercel)
+function getThemeExplorerConfig() {
+  return { 
+    maxThemesToDisplay: 20, 
+    largeThemeThreshold: 5 
+  };
 }
 
 export const maxDuration = 30; // 30 seconds for theme computation
@@ -171,7 +162,7 @@ export async function GET(request: Request) {
     }
 
     // Load config for display settings
-    const explorerConfig = await loadThemeExplorerConfig();
+    const explorerConfig = getThemeExplorerConfig();
 
     // Initialize Supabase client
     const supabaseUrl = process.env.SUPABASE_URL;
@@ -187,9 +178,10 @@ export async function GET(request: Request) {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Fetch items from Supabase
+    // Note: embedding column may not exist yet - we'll handle missing embeddings gracefully
     let query = supabase
       .from("library_items")
-      .select("id, title, description, item_type, embedding, category_id");
+      .select("id, title, description, item_type, category_id");
     
     // Filter by item type if specified
     if (itemType) {
@@ -207,31 +199,61 @@ export async function GET(request: Request) {
     }
     
     // Transform Supabase data to Item format
+    // Note: embeddings are not stored in Supabase - theme grouping falls back to categories
     const items: Item[] = (itemsData || []).map((item: any) => ({
       id: item.id,
       title: item.title,
       description: item.description,
       itemType: item.item_type,
-      embedding: item.embedding ? (typeof item.embedding === 'string' ? JSON.parse(item.embedding) : item.embedding) : undefined,
+      embedding: undefined, // Embeddings not available in Supabase
       categoryId: item.category_id,
     }));
 
-    // Group by threshold
-    const groupedThemes = groupItemsByThreshold(items, threshold);
-
-    // Convert to preview format - include ALL items for each theme with descriptions
-    const themes: ThemePreview[] = [];
-    for (const [themeId, themeItems] of groupedThemes.entries()) {
-      themes.push({
-        id: themeId,
-        name: generateThemeName(themeItems, threshold),
-        itemCount: themeItems.length,
-        items: themeItems.map((i) => ({ 
-          id: i.id, 
-          title: i.title,
-          description: i.description,
-        })),
-      });
+    // Check if any items have embeddings
+    const itemsWithEmbeddings = items.filter(i => i.embedding && i.embedding.length > 0);
+    
+    let themes: ThemePreview[] = [];
+    
+    if (itemsWithEmbeddings.length > 0) {
+      // Use embedding-based grouping
+      const groupedThemes = groupItemsByThreshold(items, threshold);
+      
+      for (const [themeId, themeItems] of groupedThemes.entries()) {
+        themes.push({
+          id: themeId,
+          name: generateThemeName(themeItems, threshold),
+          itemCount: themeItems.length,
+          items: themeItems.map((i) => ({ 
+            id: i.id, 
+            title: i.title,
+            description: i.description,
+          })),
+        });
+      }
+    } else {
+      // Fallback: group by category_id when no embeddings available
+      const categoryMap = new Map<string, Item[]>();
+      
+      for (const item of items) {
+        const catId = item.categoryId || "uncategorized";
+        if (!categoryMap.has(catId)) {
+          categoryMap.set(catId, []);
+        }
+        categoryMap.get(catId)!.push(item);
+      }
+      
+      for (const [catId, catItems] of categoryMap.entries()) {
+        themes.push({
+          id: catId,
+          name: generateThemeName(catItems, threshold),
+          itemCount: catItems.length,
+          items: catItems.map((i) => ({ 
+            id: i.id, 
+            title: i.title,
+            description: i.description,
+          })),
+        });
+      }
     }
 
     // Sort by item count (largest themes first)
