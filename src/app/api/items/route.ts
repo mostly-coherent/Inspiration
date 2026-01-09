@@ -7,7 +7,7 @@ import { ItemsBank } from "@/lib/types";
 const DATA_DIR = path.join(process.cwd(), "data");
 const ITEMS_BANK_PATH = path.join(DATA_DIR, "items_bank.json");
 
-// GET /api/items?theme=generation&mode=idea&view=items|categories&implemented=false
+// GET /api/items?theme=generation&mode=idea&view=items|categories&implemented=false&page=1&pageSize=50
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -15,6 +15,11 @@ export async function GET(request: NextRequest) {
     const mode = searchParams.get("mode");
     const view = searchParams.get("view") || "items"; // "items" or "categories"
     const implemented = searchParams.get("implemented");
+    
+    // Pagination parameters
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const pageSize = parseInt(searchParams.get("pageSize") || "50", 10);
+    const paginateItems = searchParams.get("paginate") !== "false"; // Default to paginated
     
     if (!existsSync(ITEMS_BANK_PATH)) {
       return NextResponse.json({
@@ -59,6 +64,15 @@ export async function GET(request: NextRequest) {
     // Sort by occurrence (highest first)
     items.sort((a, b) => (b.occurrence || 0) - (a.occurrence || 0));
     
+    // Calculate pagination before slicing
+    const totalItems = items.length;
+    const totalPages = Math.ceil(totalItems / pageSize);
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    
+    // Apply pagination if enabled
+    const paginatedItems = paginateItems ? items.slice(startIndex, endIndex) : items;
+    
     // Filter categories
     let categories = bank.categories || [];
     if (theme) {
@@ -98,10 +112,19 @@ export async function GET(request: NextRequest) {
     
     return NextResponse.json({
       success: true,
-      items: view === "items" ? items : [],
+      items: view === "items" ? paginatedItems : [],
       categories, // Always return categories (needed for filter dropdown and item display)
       stats,
       lastUpdated: bank.last_updated || null,
+      // Pagination metadata
+      pagination: paginateItems ? {
+        page,
+        pageSize,
+        totalItems,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      } : null,
     });
     
   } catch (error) {

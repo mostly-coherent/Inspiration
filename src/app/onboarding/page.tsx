@@ -66,9 +66,18 @@ function OnboardingContent() {
   
   // API Keys state
   const [anthropicKey, setAnthropicKey] = useState("");
+  const [openaiKey, setOpenaiKey] = useState("");
   const [supabaseUrl, setSupabaseUrl] = useState("");
   const [supabaseKey, setSupabaseKey] = useState("");
   const [skipSupabase, setSkipSupabase] = useState(false);
+  
+  // Validation state
+  const [validating, setValidating] = useState(false);
+  const [validationResults, setValidationResults] = useState<{
+    anthropic: { valid: boolean; error?: string } | null;
+    openai: { valid: boolean; error?: string } | null;
+    supabase: { valid: boolean; error?: string } | null;
+  }>({ anthropic: null, openai: null, supabase: null });
   
   // Sync state
   const [syncProgress, setSyncProgress] = useState<SyncProgress>({
@@ -153,6 +162,71 @@ function OnboardingContent() {
     checkOnboarding();
   }, [router, isPreviewMode]);
 
+  // Validate API keys before saving
+  const validateKeys = useCallback(async (): Promise<boolean> => {
+    setValidating(true);
+    setValidationResults({ anthropic: null, openai: null, supabase: null });
+    setError(null);
+    
+    try {
+      const payload: Record<string, string> = {
+        ANTHROPIC_API_KEY: anthropicKey,
+      };
+      
+      // OpenAI is optional but validate if provided
+      if (openaiKey) {
+        payload.OPENAI_API_KEY = openaiKey;
+      }
+      
+      if (!skipSupabase && supabaseUrl && supabaseKey) {
+        payload.SUPABASE_URL = supabaseUrl;
+        payload.SUPABASE_ANON_KEY = supabaseKey;
+      }
+      
+      const res = await fetch("/api/config/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      
+      const data = await res.json();
+      
+      if (data.success) {
+        setValidationResults({
+          anthropic: data.results.anthropic,
+          openai: data.results.openai || null,
+          supabase: data.results.supabase,
+        });
+        
+        if (!data.valid) {
+          // Build error message from failed validations
+          const errors: string[] = [];
+          if (!data.results.anthropic?.valid) {
+            errors.push(`Anthropic: ${data.results.anthropic?.error || "Invalid"}`);
+          }
+          // OpenAI is optional - only show error if provided and invalid
+          if (data.results.openai && !data.results.openai.valid) {
+            errors.push(`OpenAI: ${data.results.openai?.error || "Invalid"}`);
+          }
+          if (data.results.supabase && !data.results.supabase.valid) {
+            errors.push(`Supabase: ${data.results.supabase?.error || "Invalid"}`);
+          }
+          setError(errors.join(" • "));
+          return false;
+        }
+        return true;
+      } else {
+        setError("Validation failed. Please check your keys.");
+        return false;
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Validation failed");
+      return false;
+    } finally {
+      setValidating(false);
+    }
+  }, [anthropicKey, openaiKey, supabaseUrl, supabaseKey, skipSupabase]);
+
   // Save API keys and create initial config
   const saveApiKeys = useCallback(async () => {
     if (isPreviewMode) {
@@ -162,6 +236,13 @@ function OnboardingContent() {
     }
     
     setError(null);
+    
+    // Validate keys first
+    const isValid = await validateKeys();
+    if (!isValid) {
+      return; // Stop if validation failed
+    }
+    
     setSaving(true);
     
     try {
@@ -169,6 +250,11 @@ function OnboardingContent() {
       const envVars: Record<string, string> = {
         ANTHROPIC_API_KEY: anthropicKey,
       };
+      
+      // Include OpenAI key if provided (enables embeddings, dedup, search)
+      if (openaiKey) {
+        envVars.OPENAI_API_KEY = openaiKey;
+      }
       
       // Only include Supabase if not skipping
       if (!skipSupabase && supabaseUrl && supabaseKey) {
@@ -245,7 +331,7 @@ function OnboardingContent() {
     } finally {
       setSaving(false);
     }
-  }, [anthropicKey, supabaseUrl, supabaseKey, skipSupabase, isPreviewMode, router]);
+  }, [anthropicKey, openaiKey, supabaseUrl, supabaseKey, skipSupabase, isPreviewMode, router, validateKeys]);
 
   // Run first sync
   const runSync = useCallback(async () => {
@@ -490,15 +576,34 @@ function OnboardingContent() {
                 <label htmlFor="anthropic-key" className="block text-sm font-medium text-slate-300">
                   Anthropic API Key <span className="text-red-400">*</span>
                 </label>
-                <input
-                  id="anthropic-key"
-                  type="password"
-                  value={anthropicKey}
-                  onChange={(e) => setAnthropicKey(e.target.value)}
-                  placeholder="sk-ant-..."
-                  autoComplete="off"
-                  className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+                <div className="relative">
+                  <input
+                    id="anthropic-key"
+                    type="password"
+                    value={anthropicKey}
+                    onChange={(e) => {
+                      setAnthropicKey(e.target.value);
+                      // Clear validation on change
+                      if (validationResults.anthropic) {
+                        setValidationResults(prev => ({ ...prev, anthropic: null }));
+                      }
+                    }}
+                    placeholder="sk-ant-..."
+                    autoComplete="off"
+                    className={`w-full px-4 py-3 pr-10 bg-slate-800/50 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                      validationResults.anthropic?.valid === true
+                        ? "border-emerald-500"
+                        : validationResults.anthropic?.valid === false
+                        ? "border-red-500"
+                        : "border-slate-700"
+                    }`}
+                  />
+                  {validationResults.anthropic && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-lg">
+                      {validationResults.anthropic.valid ? "✅" : "❌"}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-500">
                   Get one at{" "}
                   <a
@@ -510,6 +615,59 @@ function OnboardingContent() {
                     console.anthropic.com
                   </a>
                 </p>
+              </div>
+
+              {/* OpenAI Key - Optional but enables embeddings/dedup/search */}
+              <div className="space-y-2 pt-3 border-t border-slate-700/50">
+                <div className="flex items-center gap-2 mb-1">
+                  <label htmlFor="openai-key" className="block text-sm font-medium text-slate-300">
+                    OpenAI API Key
+                  </label>
+                  <span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-400">Optional</span>
+                </div>
+                <div className="relative">
+                  <input
+                    id="openai-key"
+                    type="password"
+                    value={openaiKey}
+                    onChange={(e) => {
+                      setOpenaiKey(e.target.value);
+                      if (validationResults.openai) {
+                        setValidationResults(prev => ({ ...prev, openai: null }));
+                      }
+                    }}
+                    placeholder="sk-..."
+                    autoComplete="off"
+                    className={`w-full px-4 py-3 pr-10 bg-slate-800/50 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                      validationResults.openai?.valid === true
+                        ? "border-emerald-500"
+                        : validationResults.openai?.valid === false
+                        ? "border-red-500"
+                        : "border-slate-700"
+                    }`}
+                  />
+                  {validationResults.openai && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-lg">
+                      {validationResults.openai.valid ? "✅" : "❌"}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500">
+                  Enables embeddings for deduplication, search, and sync.{" "}
+                  <a
+                    href="https://platform.openai.com/api-keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-indigo-400 hover:underline"
+                  >
+                    platform.openai.com
+                  </a>
+                </p>
+                {!openaiKey && (
+                  <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-300">
+                    <strong>Without OpenAI:</strong> Limited to basic generation. No deduplication, semantic search, or library sync.
+                  </div>
+                )}
               </div>
 
               {/* Supabase fields - Only show if not skipping */}
@@ -530,15 +688,33 @@ function OnboardingContent() {
                     <label htmlFor="supabase-url" className="block text-sm font-medium text-slate-300">
                       Supabase Project URL {chatDb.requiresVectorDb && <span className="text-red-400">*</span>}
                     </label>
-                    <input
-                      id="supabase-url"
-                      type="url"
-                      value={supabaseUrl}
-                      onChange={(e) => setSupabaseUrl(e.target.value)}
-                      placeholder="https://your-project.supabase.co"
-                      autoComplete="off"
-                      className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
+                    <div className="relative">
+                      <input
+                        id="supabase-url"
+                        type="url"
+                        value={supabaseUrl}
+                        onChange={(e) => {
+                          setSupabaseUrl(e.target.value);
+                          if (validationResults.supabase) {
+                            setValidationResults(prev => ({ ...prev, supabase: null }));
+                          }
+                        }}
+                        placeholder="https://your-project.supabase.co"
+                        autoComplete="off"
+                        className={`w-full px-4 py-3 pr-10 bg-slate-800/50 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                          validationResults.supabase?.valid === true
+                            ? "border-emerald-500"
+                            : validationResults.supabase?.valid === false
+                            ? "border-red-500"
+                            : "border-slate-700"
+                        }`}
+                      />
+                      {validationResults.supabase && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-lg">
+                          {validationResults.supabase.valid ? "✅" : "❌"}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Supabase Key */}
@@ -550,10 +726,21 @@ function OnboardingContent() {
                       id="supabase-key"
                       type="password"
                       value={supabaseKey}
-                      onChange={(e) => setSupabaseKey(e.target.value)}
+                      onChange={(e) => {
+                        setSupabaseKey(e.target.value);
+                        if (validationResults.supabase) {
+                          setValidationResults(prev => ({ ...prev, supabase: null }));
+                        }
+                      }}
                       placeholder="eyJ..."
                       autoComplete="off"
-                      className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className={`w-full px-4 py-3 bg-slate-800/50 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                        validationResults.supabase?.valid === true
+                          ? "border-emerald-500"
+                          : validationResults.supabase?.valid === false
+                          ? "border-red-500"
+                          : "border-slate-700"
+                      }`}
                     />
                     <p className="text-xs text-slate-500">
                       Find both at{" "}
@@ -575,19 +762,28 @@ function OnboardingContent() {
             <div className="flex gap-3">
               <button
                 onClick={() => setStep("welcome")}
-                className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg transition-colors"
+                disabled={validating || saving}
+                className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
               >
                 ← Back
               </button>
               <button
                 onClick={saveApiKeys}
-                disabled={saving || (!isPreviewMode && (
+                disabled={validating || saving || (!isPreviewMode && (
                   !anthropicKey || 
                   (!skipSupabase && chatDb.requiresVectorDb && (!supabaseUrl || !supabaseKey))
                 ))}
-                className="flex-[2] py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all"
+                className="flex-[2] py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all flex items-center justify-center gap-2"
               >
-                {saving ? "Saving..." : "Continue →"}
+                {validating ? (
+                  <>
+                    <span className="animate-spin">⏳</span> Validating...
+                  </>
+                ) : saving ? (
+                  "Saving..."
+                ) : (
+                  "Continue →"
+                )}
               </button>
             </div>
 

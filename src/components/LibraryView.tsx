@@ -49,6 +49,15 @@ interface Category {
   itemCount: number;
 }
 
+interface PaginationInfo {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
 interface LibraryData {
   items: Item[];
   categories: Category[];
@@ -57,6 +66,7 @@ interface LibraryData {
     totalCategories: number;
     implementedCount: number;
   };
+  pagination: PaginationInfo | null;
 }
 
 type SortOption = "recent" | "oldest" | "occurrence" | "alphabetical";
@@ -76,6 +86,10 @@ export const LibraryView = memo(function LibraryView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(50); // Fixed page size
   
   // Bulk selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -131,11 +145,15 @@ export const LibraryView = memo(function LibraryView() {
     sort: "recent",
   });
 
-  // Fetch library data
+  // Fetch library data with pagination
   useEffect(() => {
     const fetchLibrary = async () => {
       try {
-        const res = await fetch("/api/items");
+        const params = new URLSearchParams({
+          page: currentPage.toString(),
+          pageSize: pageSize.toString(),
+        });
+        const res = await fetch(`/api/items?${params}`);
         if (!res.ok) throw new Error("Failed to fetch library");
         const json = await res.json();
         if (json.success) {
@@ -150,7 +168,7 @@ export const LibraryView = memo(function LibraryView() {
       }
     };
     fetchLibrary();
-  }, []);
+  }, [currentPage, pageSize]);
 
   // Filter and sort items
   const filteredItems = useMemo(() => {
@@ -244,7 +262,11 @@ export const LibraryView = memo(function LibraryView() {
   // Refetch library data
   const refetchLibrary = async () => {
     try {
-      const res = await fetch("/api/items");
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        pageSize: pageSize.toString(),
+      });
+      const res = await fetch(`/api/items?${params}`);
       if (!res.ok) throw new Error("Failed to fetch library");
       const json = await res.json();
       if (json.success) {
@@ -803,6 +825,50 @@ export const LibraryView = memo(function LibraryView() {
             </div>
           )}
         </div>
+        
+        {/* Pagination Controls */}
+        {data?.pagination && data.pagination.totalPages > 1 && (
+          <div className="mt-6 flex items-center justify-between">
+            <div className="text-sm text-adobe-gray-400">
+              Showing {((currentPage - 1) * pageSize) + 1}–{Math.min(currentPage * pageSize, data.pagination.totalItems)} of {data.pagination.totalItems} items
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={!data.pagination.hasPrevPage}
+                className="px-3 py-1.5 text-sm bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors"
+                aria-label="First page"
+              >
+                ⏮
+              </button>
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={!data.pagination.hasPrevPage}
+                className="px-4 py-1.5 text-sm bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors"
+              >
+                ← Previous
+              </button>
+              <span className="px-4 py-1.5 text-sm bg-white/10 rounded-lg">
+                Page {currentPage} of {data.pagination.totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(data.pagination!.totalPages, p + 1))}
+                disabled={!data.pagination.hasNextPage}
+                className="px-4 py-1.5 text-sm bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors"
+              >
+                Next →
+              </button>
+              <button
+                onClick={() => setCurrentPage(data.pagination!.totalPages)}
+                disabled={!data.pagination.hasNextPage}
+                className="px-3 py-1.5 text-sm bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors"
+                aria-label="Last page"
+              >
+                ⏭
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Item Detail Panel */}
