@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -25,7 +25,27 @@ interface ChatDbInfo {
 const VECTOR_DB_REQUIRED_THRESHOLD = 500 * 1024 * 1024; // 500MB
 const VECTOR_DB_RECOMMENDED_THRESHOLD = 50 * 1024 * 1024; // 50MB
 
+// Wrapper component to handle Suspense for useSearchParams
 export default function OnboardingPage() {
+  return (
+    <Suspense fallback={<OnboardingLoadingFallback />}>
+      <OnboardingContent />
+    </Suspense>
+  );
+}
+
+function OnboardingLoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-indigo-950/30 to-slate-950">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-500 mx-auto mb-4"></div>
+        <p className="text-white text-lg">Loading...</p>
+      </div>
+    </div>
+  );
+}
+
+function OnboardingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isPreviewMode = searchParams.get("preview") === "true";
