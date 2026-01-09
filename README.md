@@ -47,9 +47,7 @@ That's it. The **onboarding wizard** handles everything else:
 | 3. Sync | Indexes your chats (< 1 min for most users) | Nothing |
 | **Done!** | → Theme Explorer shows patterns in your thinking | 🎉 |
 
-> **Supabase?** Only needed if your history is > 500MB. Most Cursor users don't need it.
-
-> **Preview the wizard:** Visit `/onboarding?preview=true` to test without affecting data.
+> **Supabase?** Heavy users with 500MB+ history unlock instant semantic search across everything. Takes 5 minutes to set up.
 
 ---
 
@@ -113,14 +111,9 @@ Active development focused on moving beyond single-session extraction toward lon
 
 ---
 
-## 📚 Documentation
+## 📚 Going Deeper
 
-| File | Purpose |
-|------|---------|
-| `CLAUDE.md` | Technical context for AI assistants |
-| `PLAN.md` | Product requirements and roadmap |
-| `ARCHITECTURE.md` | System architecture and workflows |
-| `BUILD_LOG.md` | Development progress |
+See `ARCHITECTURE.md` for system design, data flow, and technical details.
 
 ---
 
