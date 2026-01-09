@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile, writeFile } from "fs/promises";
-import path from "path";
-import { existsSync } from "fs";
-import { ItemsBank, Item } from "@/lib/types";
+import { createClient } from "@supabase/supabase-js";
+import { Item } from "@/lib/types";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const ITEMS_BANK_PATH = path.join(DATA_DIR, "items_bank.json");
+export const maxDuration = 10; // 10 seconds
 
 // Extended item type for runtime data that may have additional fields
 type RuntimeItem = Item & { sourceDates?: string[] };
@@ -23,31 +20,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!existsSync(ITEMS_BANK_PATH)) {
-      return NextResponse.json(
-        { success: false, error: "Items bank not found" },
-        { status: 404 }
-      );
+    // Initialize Supabase client
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({
+        success: false,
+        error: "Supabase not configured",
+      }, { status: 500 });
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Fetch items to merge from Supabase
+    const { data: itemsData, error: itemsError } = await supabase
+      .from("library_items")
+      .select("*")
+      .in("id", ids);
+    
+    if (itemsError) {
+      console.error("Error fetching items from Supabase:", itemsError);
+      return NextResponse.json({
+        success: false,
+        error: "Failed to fetch items from database",
+      }, { status: 500 });
     }
 
-    const content = await readFile(ITEMS_BANK_PATH, "utf-8");
-    const bank: ItemsBank = JSON.parse(content);
-
-    const idSet = new Set(ids);
-    const itemsToMerge: RuntimeItem[] = [];
-
-    for (const item of bank.items) {
-      if (idSet.has(item.id)) {
-        itemsToMerge.push(item as RuntimeItem);
-      }
-    }
-
-    if (itemsToMerge.length < 2) {
+    if (!itemsData || itemsData.length < 2) {
       return NextResponse.json(
         { success: false, error: "Could not find enough items to merge" },
         { status: 400 }
       );
     }
+
+    // Transform Supabase data to Item format
+    const itemsToMerge: RuntimeItem[] = itemsData.map((item: any) => ({
+      id: item.id,
+      itemType: item.item_type,
+      title: item.title,
+      description: item.description,
+      tags: item.tags || [],
+      status: item.status,
+      quality: item.quality,
+      occurrence: item.occurrence,
+      sourceConversations: item.source_conversations,
+      firstSeen: item.first_seen,
+      lastSeen: item.last_seen,
+      categoryId: item.category_id,
+      sourceDates: item.source_dates || [],
+      // Legacy fields
+      mode: item.mode,
+      theme: item.theme,
+    }));
 
     // Sort by occurrence (highest first) to pick the "primary" item
     itemsToMerge.sort((a, b) => (b.occurrence || 0) - (a.occurrence || 0));
@@ -82,34 +107,70 @@ export async function POST(request: NextRequest) {
       if (itemLastSeen > latestLastSeen) latestLastSeen = itemLastSeen;
     }
 
-    // Update primary item
-    if (allSourceDates.size > 0) {
-      primary.sourceDates = Array.from(allSourceDates).sort();
+    // Update primary item in Supabase
+    const { error: updateError } = await supabase
+      .from("library_items")
+      .update({
+        source_dates: Array.from(allSourceDates).sort(),
+        tags: Array.from(allTags),
+        occurrence: totalOccurrence,
+        source_conversations: totalSourceConversations,
+        first_seen: earliestFirstSeen.toISOString(),
+        last_seen: latestLastSeen.toISOString(),
+      })
+      .eq("id", primary.id);
+    
+    if (updateError) {
+      console.error("Error updating primary item in Supabase:", updateError);
+      return NextResponse.json({
+        success: false,
+        error: "Failed to merge items",
+      }, { status: 500 });
     }
-    primary.tags = Array.from(allTags);
-    primary.occurrence = totalOccurrence;
-    primary.sourceConversations = totalSourceConversations;
-    primary.firstSeen = earliestFirstSeen.toISOString();
-    primary.lastSeen = latestLastSeen.toISOString();
 
     // Remove merged items (keep primary)
-    const otherIds = new Set(others.map((i) => i.id));
-    bank.items = bank.items.filter((item) => !otherIds.has(item.id));
-
-    // Update category itemIds
-    for (const category of bank.categories) {
-      if (category.itemIds) {
-        category.itemIds = category.itemIds.filter((id) => !otherIds.has(id));
-      }
+    const otherIds = others.map((i) => i.id);
+    const { error: deleteError } = await supabase
+      .from("library_items")
+      .delete()
+      .in("id", otherIds);
+    
+    if (deleteError) {
+      console.error("Error deleting merged items from Supabase:", deleteError);
+      return NextResponse.json({
+        success: false,
+        error: "Failed to delete merged items",
+      }, { status: 500 });
     }
 
-    // Remove empty categories
-    bank.categories = bank.categories.filter(
-      (cat) => cat.itemIds && cat.itemIds.length > 0
-    );
-
-    bank.last_updated = new Date().toISOString();
-    await writeFile(ITEMS_BANK_PATH, JSON.stringify(bank, null, 2));
+    // Update category itemIds (remove deleted items)
+    const { data: categories, error: categoriesError } = await supabase
+      .from("library_categories")
+      .select("*");
+    
+    if (!categoriesError && categories) {
+      const otherIdSet = new Set(otherIds);
+      for (const category of categories) {
+        if (category.item_ids && category.item_ids.length > 0) {
+          const updatedItemIds = category.item_ids.filter((id: string) => !otherIdSet.has(id));
+          if (updatedItemIds.length !== category.item_ids.length) {
+            if (updatedItemIds.length > 0) {
+              // Update category with new itemIds
+              await supabase
+                .from("library_categories")
+                .update({ item_ids: updatedItemIds })
+                .eq("id", category.id);
+            } else {
+              // Delete empty category
+              await supabase
+                .from("library_categories")
+                .delete()
+                .eq("id", category.id);
+            }
+          }
+        }
+      }
+    }
 
     return NextResponse.json({
       success: true,
