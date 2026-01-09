@@ -24,6 +24,56 @@ export interface GlobalThresholds {
   compressionDateThreshold: number; // Default: 7 - skip compression for ranges under this
 }
 
+// v3: Generation Defaults - Control how AI generates content
+export interface GenerationDefaults {
+  temperature: number; // 0.0-1.0, how creative the AI should be
+  deduplicationThreshold: number; // 0.0-1.0, similarity to count as duplicate
+  maxTokens: number; // Maximum tokens for generation
+  maxTokensJudge: number; // Maximum tokens for judging
+}
+
+// v3: Seek Mode Defaults - Control how Seek searches
+export interface SeekDefaults {
+  daysBack: number; // Days of history to search
+  topK: number; // Maximum results
+  minSimilarity: number; // Minimum relevance score
+}
+
+// v3: Quality Scoring - Item grading thresholds
+export interface QualityScoring {
+  tierA: number; // Score >= this = Grade A
+  tierB: number; // Score >= this = Grade B
+  tierC: number; // Score >= this = Grade C
+}
+
+// v3: Semantic Search defaults
+export interface SemanticSearchDefaults {
+  defaultTopK: number; // Default number of results
+  defaultMinSimilarity: number; // Default minimum relevance
+}
+
+// v3: File Tracking configuration
+export interface FileTrackingConfig {
+  textExtensions: string[]; // Extensions to scan
+  implementedMatchThreshold: number; // Similarity for "implemented" match
+}
+
+// v3: Theme Explorer configuration
+export interface ThemeExplorerConfig {
+  defaultZoom: number; // Initial similarity level (0.5-0.9)
+  sliderMin: number; // Minimum slider value
+  sliderMax: number; // Maximum slider value
+  maxThemesToDisplay: number; // Max themes in list
+  largeThemeThreshold: number; // Items needed for "major theme"
+}
+
+// v3: Theme Synthesis configuration
+export interface ThemeSynthesisConfig {
+  maxItemsToSynthesize: number; // Max items in AI analysis
+  maxTokens: number; // Max length of AI insights
+  maxDescriptionLength: number; // Max chars per item description
+}
+
 // v3: Time Preset Configuration
 export interface TimePreset {
   id: string;

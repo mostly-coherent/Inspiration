@@ -215,7 +215,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 <span className="text-slate-600">|</span>
                 <div className="flex items-center gap-1">
                   <span className="text-slate-300">{libraryStats.totalCategories}</span>
-                  <span className="text-slate-500 text-xs">categories</span>
+                  <span className="text-slate-500 text-xs">themes</span>
                 </div>
               </>
             )}

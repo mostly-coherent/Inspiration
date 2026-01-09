@@ -189,9 +189,9 @@ export const LibrarySearch = memo(function LibrarySearch({
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
           className="bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-inspiration-ideas/50"
-          aria-label="Filter by category"
+          aria-label="Filter by theme"
         >
-          <option value="all">All Categories</option>
+          <option value="all">All Themes</option>
           {categories.slice(0, 20).map((cat) => (
             <option key={cat.id} value={cat.id}>
               {cat.name.length > 15 ? cat.name.slice(0, 15) + "..." : cat.name}

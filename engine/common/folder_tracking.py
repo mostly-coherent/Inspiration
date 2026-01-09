@@ -15,6 +15,15 @@ from .semantic_search import get_embedding, cosine_similarity
 from .items_bank import ItemsBank
 
 
+def get_text_extensions_from_config() -> set[str]:
+    """Get text file extensions from config or fallback to defaults."""
+    try:
+        from .config import get_text_extensions
+        return set(get_text_extensions())
+    except Exception:
+        return {".md", ".txt", ".py", ".ts", ".tsx", ".js", ".jsx", ".json", ".yaml", ".yml"}
+
+
 def scan_folder_for_files(folder_path: Path, extensions: list[str] = None) -> list[tuple[Path, str]]:
     """
     Scan a folder recursively for files and return their paths and content.
@@ -22,7 +31,7 @@ def scan_folder_for_files(folder_path: Path, extensions: list[str] = None) -> li
     Args:
         folder_path: Path to folder to scan
         extensions: Optional list of file extensions to include (e.g., [".md", ".py"])
-                    If None, includes all text files
+                    If None, uses extensions from config (Settings → Advanced → File Tracking)
     
     Returns:
         List of (file_path, content) tuples
@@ -33,8 +42,8 @@ def scan_folder_for_files(folder_path: Path, extensions: list[str] = None) -> li
     files: list[tuple[Path, str]] = []
     extensions_set = set(extensions) if extensions else None
     
-    # Common text file extensions
-    text_extensions = {".md", ".txt", ".py", ".ts", ".tsx", ".js", ".jsx", ".json", ".yaml", ".yml"}
+    # Get text extensions from config (Settings → Advanced → File Tracking)
+    text_extensions = get_text_extensions_from_config()
     
     for file_path in folder_path.rglob("*"):
         if not file_path.is_file():
@@ -126,10 +135,19 @@ def match_items_to_files(
     return matches
 
 
+def get_implemented_threshold_from_config() -> float:
+    """Get implemented match threshold from config or fallback to default."""
+    try:
+        from .config import get_implemented_match_threshold
+        return get_implemented_match_threshold()
+    except Exception:
+        return 0.75
+
+
 def sync_implemented_status_from_folder(
     folder_path: Path,
     mode: str,
-    similarity_threshold: float = 0.75,
+    similarity_threshold: float = None,  # If None, uses config value
     dry_run: bool = False,
 ) -> int:
     """
@@ -138,12 +156,16 @@ def sync_implemented_status_from_folder(
     Args:
         folder_path: Path to folder containing implemented items
         mode: Mode to filter items (e.g., "idea", "insight")
-        similarity_threshold: Minimum similarity to consider a match
+        similarity_threshold: Minimum similarity to consider a match (uses config if None)
         dry_run: If True, don't actually update items
     
     Returns:
         Number of items marked as implemented
     """
+    # Use config value if threshold not specified
+    if similarity_threshold is None:
+        similarity_threshold = get_implemented_threshold_from_config()
+    
     if not folder_path.exists():
         print(f"⚠️  Folder not found: {folder_path}")
         return 0

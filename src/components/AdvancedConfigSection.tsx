@@ -6,6 +6,13 @@ import {
   AdvancedLLMConfig,
   GlobalThresholds,
   TimePreset,
+  GenerationDefaults,
+  SeekDefaults,
+  QualityScoring,
+  SemanticSearchDefaults,
+  FileTrackingConfig,
+  ThemeExplorerConfig,
+  ThemeSynthesisConfig,
 } from "@/lib/types";
 
 interface AdvancedConfigSectionProps {
@@ -64,10 +71,67 @@ const DEFAULT_TIME_PRESETS: TimePreset[] = [
   { id: "7d", label: "Last week", days: 7, isCustom: true },
 ];
 
+// v3: Generation Defaults
+const DEFAULT_GENERATION: GenerationDefaults = {
+  temperature: 0.2,
+  deduplicationThreshold: 0.85,
+  maxTokens: 4000,
+  maxTokensJudge: 500,
+};
+
+// v3: Seek Mode Defaults
+const DEFAULT_SEEK: SeekDefaults = {
+  daysBack: 90,
+  topK: 10,
+  minSimilarity: 0.0,
+};
+
+// v3: Quality Scoring
+const DEFAULT_QUALITY: QualityScoring = {
+  tierA: 13,
+  tierB: 9,
+  tierC: 5,
+};
+
+// v3: Semantic Search
+const DEFAULT_SEMANTIC: SemanticSearchDefaults = {
+  defaultTopK: 50,
+  defaultMinSimilarity: 0.3,
+};
+
+// v3: File Tracking
+const DEFAULT_FILE_TRACKING: FileTrackingConfig = {
+  textExtensions: [".md", ".txt", ".py", ".ts", ".tsx", ".js", ".jsx", ".json", ".yaml", ".yml"],
+  implementedMatchThreshold: 0.75,
+};
+
+// v3: Theme Explorer
+const DEFAULT_THEME_EXPLORER: ThemeExplorerConfig = {
+  defaultZoom: 0.7,
+  sliderMin: 0.45,
+  sliderMax: 0.92,
+  maxThemesToDisplay: 20,
+  largeThemeThreshold: 5,
+};
+
+// v3: Theme Synthesis
+const DEFAULT_THEME_SYNTHESIS: ThemeSynthesisConfig = {
+  maxItemsToSynthesize: 15,
+  maxTokens: 800,
+  maxDescriptionLength: 200,
+};
+
 export function AdvancedConfigSection({ onSave }: AdvancedConfigSectionProps) {
   const [llmConfig, setLlmConfig] = useState<AdvancedLLMConfig>(DEFAULT_LLM_CONFIG);
   const [thresholds, setThresholds] = useState<GlobalThresholds>(DEFAULT_THRESHOLDS);
   const [timePresets, setTimePresets] = useState<TimePreset[]>(DEFAULT_TIME_PRESETS);
+  const [generationDefaults, setGenerationDefaults] = useState<GenerationDefaults>(DEFAULT_GENERATION);
+  const [seekDefaults, setSeekDefaults] = useState<SeekDefaults>(DEFAULT_SEEK);
+  const [qualityScoring, setQualityScoring] = useState<QualityScoring>(DEFAULT_QUALITY);
+  const [semanticSearch, setSemanticSearch] = useState<SemanticSearchDefaults>(DEFAULT_SEMANTIC);
+  const [fileTracking, setFileTracking] = useState<FileTrackingConfig>(DEFAULT_FILE_TRACKING);
+  const [themeExplorer, setThemeExplorer] = useState<ThemeExplorerConfig>(DEFAULT_THEME_EXPLORER);
+  const [themeSynthesis, setThemeSynthesis] = useState<ThemeSynthesisConfig>(DEFAULT_THEME_SYNTHESIS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -119,6 +183,41 @@ export function AdvancedConfigSection({ onSave }: AdvancedConfigSectionProps) {
         if (data.config.timePresets) {
           setTimePresets(data.config.timePresets);
         }
+
+        // Load generation defaults
+        if (data.config.generationDefaults) {
+          setGenerationDefaults(data.config.generationDefaults);
+        }
+
+        // Load seek defaults
+        if (data.config.seekDefaults) {
+          setSeekDefaults(data.config.seekDefaults);
+        }
+
+        // Load quality scoring
+        if (data.config.qualityScoring) {
+          setQualityScoring(data.config.qualityScoring);
+        }
+
+        // Load semantic search
+        if (data.config.semanticSearch) {
+          setSemanticSearch(data.config.semanticSearch);
+        }
+
+        // Load file tracking
+        if (data.config.fileTracking) {
+          setFileTracking(data.config.fileTracking);
+        }
+
+        // Load theme explorer
+        if (data.config.themeExplorer) {
+          setThemeExplorer(data.config.themeExplorer);
+        }
+
+        // Load theme synthesis
+        if (data.config.themeSynthesis) {
+          setThemeSynthesis(data.config.themeSynthesis);
+        }
       }
     } catch (err) {
       setError(`Failed to load config: ${err}`);
@@ -139,6 +238,13 @@ export function AdvancedConfigSection({ onSave }: AdvancedConfigSectionProps) {
           advancedLLM: llmConfig,
           thresholds,
           timePresets,
+          generationDefaults,
+          seekDefaults,
+          qualityScoring,
+          semanticSearch,
+          fileTracking,
+          themeExplorer,
+          themeSynthesis,
         }),
       });
       const data = await res.json();
@@ -449,6 +555,556 @@ export function AdvancedConfigSection({ onSave }: AdvancedConfigSectionProps) {
             >
               + Add Time Preset
             </button>
+          </div>
+        )}
+      </div>
+
+      {/* Generation Defaults Section */}
+      <div className="border border-slate-700/50 rounded-lg overflow-hidden">
+        <button
+          onClick={() => toggleSection("generation")}
+          className="w-full p-4 flex items-center justify-between bg-slate-800/30 hover:bg-slate-800/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">✨</span>
+            <div className="text-left">
+              <h3 className="font-medium text-slate-200">Generation Defaults</h3>
+              <p className="text-xs text-slate-500">Control how AI creates ideas and insights</p>
+            </div>
+          </div>
+          <span className="text-slate-400">{expandedSection === "generation" ? "▼" : "▶"}</span>
+        </button>
+
+        {expandedSection === "generation" && (
+          <div className="p-4 space-y-4 border-t border-slate-700/50">
+            <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20 text-xs text-slate-400">
+              <strong className="text-blue-400">What is this?</strong> These settings control how the AI generates content. 
+              Lower temperature = more focused & predictable. Higher = more creative & varied.
+            </div>
+
+            {/* Temperature */}
+            <ThresholdSlider
+              label="Generation Temperature"
+              description="How creative should the AI be? Lower = focused/consistent, Higher = varied/creative"
+              value={generationDefaults.temperature}
+              min={0}
+              max={1}
+              step={0.1}
+              format={(v) => v.toFixed(1)}
+              onChange={(value) =>
+                setGenerationDefaults((prev) => ({ ...prev, temperature: value }))
+              }
+            />
+
+            {/* Deduplication Threshold */}
+            <ThresholdSlider
+              label="Duplicate Detection Sensitivity"
+              description="How similar items need to be to count as duplicates. Higher = stricter (fewer removed)"
+              value={generationDefaults.deduplicationThreshold}
+              min={0.5}
+              max={0.99}
+              step={0.01}
+              format={(v) => `${(v * 100).toFixed(0)}%`}
+              onChange={(value) =>
+                setGenerationDefaults((prev) => ({ ...prev, deduplicationThreshold: value }))
+              }
+            />
+
+            {/* Max Tokens */}
+            <ThresholdSlider
+              label="Max Generation Length"
+              description="Maximum length of generated content (in tokens, ~4 characters each)"
+              value={generationDefaults.maxTokens}
+              min={1000}
+              max={8000}
+              step={500}
+              format={(v) => `${(v / 1000).toFixed(1)}K`}
+              onChange={(value) =>
+                setGenerationDefaults((prev) => ({ ...prev, maxTokens: value }))
+              }
+            />
+
+            {/* Max Tokens Judge */}
+            <ThresholdSlider
+              label="Max Judging Length"
+              description="Maximum length for quality scoring responses (usually shorter)"
+              value={generationDefaults.maxTokensJudge}
+              min={100}
+              max={2000}
+              step={100}
+              format={(v) => `${v}`}
+              onChange={(value) =>
+                setGenerationDefaults((prev) => ({ ...prev, maxTokensJudge: value }))
+              }
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Seek Mode Defaults Section */}
+      <div className="border border-slate-700/50 rounded-lg overflow-hidden">
+        <button
+          onClick={() => toggleSection("seek")}
+          className="w-full p-4 flex items-center justify-between bg-slate-800/30 hover:bg-slate-800/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">🔍</span>
+            <div className="text-left">
+              <h3 className="font-medium text-slate-200">Seek Mode Defaults</h3>
+              <p className="text-xs text-slate-500">Default settings when using &quot;Seek&quot; to find use cases</p>
+            </div>
+          </div>
+          <span className="text-slate-400">{expandedSection === "seek" ? "▼" : "▶"}</span>
+        </button>
+
+        {expandedSection === "seek" && (
+          <div className="p-4 space-y-4 border-t border-slate-700/50">
+            <div className="p-3 bg-purple-500/10 rounded-lg border border-purple-500/20 text-xs text-slate-400">
+              <strong className="text-purple-400">What is Seek?</strong> Seek searches your chat history for evidence 
+              matching a query (like &quot;AI debugging&quot;). These settings control the defaults for that search.
+            </div>
+
+            {/* Days Back */}
+            <ThresholdSlider
+              label="Days to Search"
+              description="How many days of chat history to look through"
+              value={seekDefaults.daysBack}
+              min={7}
+              max={365}
+              step={7}
+              format={(v) => `${v} days`}
+              onChange={(value) =>
+                setSeekDefaults((prev) => ({ ...prev, daysBack: value }))
+              }
+            />
+
+            {/* Top K */}
+            <ThresholdSlider
+              label="Maximum Results"
+              description="Maximum number of matching conversations to return"
+              value={seekDefaults.topK}
+              min={1}
+              max={50}
+              step={1}
+              format={(v) => `${v}`}
+              onChange={(value) =>
+                setSeekDefaults((prev) => ({ ...prev, topK: value }))
+              }
+            />
+
+            {/* Min Similarity */}
+            <ThresholdSlider
+              label="Minimum Relevance"
+              description="Only show results this relevant or higher. 0% = show all, 100% = exact match only"
+              value={seekDefaults.minSimilarity}
+              min={0}
+              max={0.9}
+              step={0.1}
+              format={(v) => `${(v * 100).toFixed(0)}%`}
+              onChange={(value) =>
+                setSeekDefaults((prev) => ({ ...prev, minSimilarity: value }))
+              }
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Quality Scoring Section */}
+      <div className="border border-slate-700/50 rounded-lg overflow-hidden">
+        <button
+          onClick={() => toggleSection("quality")}
+          className="w-full p-4 flex items-center justify-between bg-slate-800/30 hover:bg-slate-800/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">⭐</span>
+            <div className="text-left">
+              <h3 className="font-medium text-slate-200">Quality Scoring Thresholds</h3>
+              <p className="text-xs text-slate-500">How items get graded (A/B/C)</p>
+            </div>
+          </div>
+          <span className="text-slate-400">{expandedSection === "quality" ? "▼" : "▶"}</span>
+        </button>
+
+        {expandedSection === "quality" && (
+          <div className="p-4 space-y-4 border-t border-slate-700/50">
+            <div className="p-3 bg-amber-500/10 rounded-lg border border-amber-500/20 text-xs text-slate-400">
+              <strong className="text-amber-400">How grading works:</strong> Each item gets a quality score (0-15). 
+              Grade A = excellent (share-worthy), Grade B = good (needs polish), Grade C = okay (needs work).
+            </div>
+
+            {/* Tier A */}
+            <ThresholdSlider
+              label="Grade A Threshold"
+              description="Score needed for Grade A (Excellent - ready to share)"
+              value={qualityScoring.tierA}
+              min={10}
+              max={15}
+              step={1}
+              format={(v) => `≥ ${v}`}
+              onChange={(value) =>
+                setQualityScoring((prev) => ({ ...prev, tierA: value }))
+              }
+            />
+
+            {/* Tier B */}
+            <ThresholdSlider
+              label="Grade B Threshold"
+              description="Score needed for Grade B (Good - needs minor polish)"
+              value={qualityScoring.tierB}
+              min={5}
+              max={12}
+              step={1}
+              format={(v) => `≥ ${v}`}
+              onChange={(value) =>
+                setQualityScoring((prev) => ({ ...prev, tierB: value }))
+              }
+            />
+
+            {/* Tier C */}
+            <ThresholdSlider
+              label="Grade C Threshold"
+              description="Score needed for Grade C (Okay - needs work)"
+              value={qualityScoring.tierC}
+              min={1}
+              max={8}
+              step={1}
+              format={(v) => `≥ ${v}`}
+              onChange={(value) =>
+                setQualityScoring((prev) => ({ ...prev, tierC: value }))
+              }
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Semantic Search Section */}
+      <div className="border border-slate-700/50 rounded-lg overflow-hidden">
+        <button
+          onClick={() => toggleSection("semantic")}
+          className="w-full p-4 flex items-center justify-between bg-slate-800/30 hover:bg-slate-800/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">🧠</span>
+            <div className="text-left">
+              <h3 className="font-medium text-slate-200">Semantic Search Settings</h3>
+              <p className="text-xs text-slate-500">How the AI searches your chat history</p>
+            </div>
+          </div>
+          <span className="text-slate-400">{expandedSection === "semantic" ? "▼" : "▶"}</span>
+        </button>
+
+        {expandedSection === "semantic" && (
+          <div className="p-4 space-y-4 border-t border-slate-700/50">
+            <div className="p-3 bg-cyan-500/10 rounded-lg border border-cyan-500/20 text-xs text-slate-400">
+              <strong className="text-cyan-400">What is semantic search?</strong> Unlike keyword search, 
+              semantic search understands meaning. &quot;debugging tools&quot; will find chats about &quot;fixing errors&quot; 
+              even if those exact words aren&apos;t used.
+            </div>
+
+            {/* Default Top K */}
+            <ThresholdSlider
+              label="Conversations to Consider"
+              description="How many conversations to pull from memory for analysis"
+              value={semanticSearch.defaultTopK}
+              min={10}
+              max={200}
+              step={10}
+              format={(v) => `${v}`}
+              onChange={(value) =>
+                setSemanticSearch((prev) => ({ ...prev, defaultTopK: value }))
+              }
+            />
+
+            {/* Default Min Similarity */}
+            <ThresholdSlider
+              label="Relevance Threshold"
+              description="Minimum relevance score for including a conversation. Lower = cast wider net"
+              value={semanticSearch.defaultMinSimilarity}
+              min={0}
+              max={0.8}
+              step={0.05}
+              format={(v) => `${(v * 100).toFixed(0)}%`}
+              onChange={(value) =>
+                setSemanticSearch((prev) => ({ ...prev, defaultMinSimilarity: value }))
+              }
+            />
+          </div>
+        )}
+      </div>
+
+      {/* File Tracking Section */}
+      <div className="border border-slate-700/50 rounded-lg overflow-hidden">
+        <button
+          onClick={() => toggleSection("files")}
+          className="w-full p-4 flex items-center justify-between bg-slate-800/30 hover:bg-slate-800/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">📁</span>
+            <div className="text-left">
+              <h3 className="font-medium text-slate-200">File Tracking</h3>
+              <p className="text-xs text-slate-500">Configure folder scanning for implemented items</p>
+            </div>
+          </div>
+          <span className="text-slate-400">{expandedSection === "files" ? "▼" : "▶"}</span>
+        </button>
+
+        {expandedSection === "files" && (
+          <div className="p-4 space-y-4 border-t border-slate-700/50">
+            <div className="p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20 text-xs text-slate-400">
+              <strong className="text-emerald-400">What is file tracking?</strong> When you point to a folder 
+              (like your blog or code repo), Inspiration scans files to mark matching ideas as &quot;implemented&quot;. 
+              This helps track which ideas you&apos;ve already built or written about.
+            </div>
+
+            {/* Text Extensions */}
+            <div className="p-3 bg-slate-800/30 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h4 className="text-sm font-medium text-slate-300">File Extensions to Scan</h4>
+                  <p className="text-xs text-slate-500">Which file types to look at when scanning folders</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {fileTracking.textExtensions.map((ext, i) => (
+                  <span
+                    key={ext}
+                    className="px-2 py-1 bg-slate-700 rounded text-xs text-slate-300 flex items-center gap-1"
+                  >
+                    {ext}
+                    <button
+                      onClick={() => {
+                        setFileTracking((prev) => ({
+                          ...prev,
+                          textExtensions: prev.textExtensions.filter((_, idx) => idx !== i),
+                        }));
+                      }}
+                      className="text-slate-500 hover:text-red-400 ml-1"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder=".extension"
+                  className="flex-1 px-3 py-1 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const input = e.currentTarget;
+                      let ext = input.value.trim();
+                      if (ext && !ext.startsWith(".")) ext = "." + ext;
+                      if (ext && !fileTracking.textExtensions.includes(ext)) {
+                        setFileTracking((prev) => ({
+                          ...prev,
+                          textExtensions: [...prev.textExtensions, ext],
+                        }));
+                        input.value = "";
+                      }
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    setFileTracking(DEFAULT_FILE_TRACKING);
+                  }}
+                  className="px-3 py-1 text-xs text-slate-400 hover:text-slate-200 border border-slate-700 rounded"
+                >
+                  Reset
+                </button>
+              </div>
+              <p className="text-xs text-slate-600 mt-2">
+                💡 Common: .md (blogs), .txt (notes), .py/.ts/.js (code)
+              </p>
+            </div>
+
+            {/* Implemented Match Threshold */}
+            <ThresholdSlider
+              label="Match Sensitivity"
+              description="How similar an idea needs to be to a file to mark it as 'implemented'"
+              value={fileTracking.implementedMatchThreshold}
+              min={0.5}
+              max={0.95}
+              step={0.05}
+              format={(v) => `${(v * 100).toFixed(0)}%`}
+              onChange={(value) =>
+                setFileTracking((prev) => ({ ...prev, implementedMatchThreshold: value }))
+              }
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Theme Explorer Section */}
+      <div className="border border-slate-700/50 rounded-lg overflow-hidden">
+        <button
+          onClick={() => toggleSection("themeExplorer")}
+          className="w-full p-4 flex items-center justify-between bg-slate-800/30 hover:bg-slate-800/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">🔭</span>
+            <div className="text-left">
+              <h3 className="font-medium text-slate-200">Theme Explorer</h3>
+              <p className="text-xs text-slate-500">Pattern discovery and grouping settings</p>
+            </div>
+          </div>
+          <span className="text-slate-400">{expandedSection === "themeExplorer" ? "▼" : "▶"}</span>
+        </button>
+
+        {expandedSection === "themeExplorer" && (
+          <div className="p-4 space-y-4 border-t border-slate-700/50">
+            <div className="p-3 bg-indigo-500/10 rounded-lg border border-indigo-500/20 text-xs text-slate-400">
+              <strong className="text-indigo-400">What is Theme Explorer?</strong> It groups your ideas and insights 
+              into themes based on similarity. &quot;Zoom out&quot; to see broad patterns, &quot;zoom in&quot; for specific details.
+            </div>
+
+            {/* Default Zoom */}
+            <ThresholdSlider
+              label="Default Zoom Level"
+              description="Where the slider starts when you open Theme Explorer (lower = broader themes)"
+              value={themeExplorer.defaultZoom}
+              min={0.4}
+              max={0.95}
+              step={0.05}
+              format={(v) => `${(v * 100).toFixed(0)}%`}
+              onChange={(value) =>
+                setThemeExplorer((prev) => ({ ...prev, defaultZoom: value }))
+              }
+            />
+
+            {/* Slider Range */}
+            <div className="p-3 bg-slate-800/30 rounded-lg">
+              <h4 className="text-sm font-medium text-slate-300 mb-2">Zoom Slider Range</h4>
+              <p className="text-xs text-slate-500 mb-3">Controls how far you can zoom in/out</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1">Min (Broad)</label>
+                  <input
+                    type="number"
+                    value={themeExplorer.sliderMin}
+                    onChange={(e) =>
+                      setThemeExplorer((prev) => ({ ...prev, sliderMin: parseFloat(e.target.value) || 0.3 }))
+                    }
+                    step="0.05"
+                    min="0.3"
+                    max="0.6"
+                    className="w-full px-3 py-1 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1">Max (Specific)</label>
+                  <input
+                    type="number"
+                    value={themeExplorer.sliderMax}
+                    onChange={(e) =>
+                      setThemeExplorer((prev) => ({ ...prev, sliderMax: parseFloat(e.target.value) || 0.95 }))
+                    }
+                    step="0.05"
+                    min="0.7"
+                    max="0.99"
+                    className="w-full px-3 py-1 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Max Themes to Display */}
+            <ThresholdSlider
+              label="Max Themes to Show"
+              description="Limit how many themes appear in the list (largest shown first)"
+              value={themeExplorer.maxThemesToDisplay}
+              min={5}
+              max={50}
+              step={5}
+              format={(v) => `${v}`}
+              onChange={(value) =>
+                setThemeExplorer((prev) => ({ ...prev, maxThemesToDisplay: value }))
+              }
+            />
+
+            {/* Large Theme Threshold */}
+            <ThresholdSlider
+              label="Major Theme Threshold"
+              description="Items needed to count as a 'major theme' in stats"
+              value={themeExplorer.largeThemeThreshold}
+              min={2}
+              max={20}
+              step={1}
+              format={(v) => `${v}+ items`}
+              onChange={(value) =>
+                setThemeExplorer((prev) => ({ ...prev, largeThemeThreshold: value }))
+              }
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Theme Synthesis Section */}
+      <div className="border border-slate-700/50 rounded-lg overflow-hidden">
+        <button
+          onClick={() => toggleSection("themeSynthesis")}
+          className="w-full p-4 flex items-center justify-between bg-slate-800/30 hover:bg-slate-800/50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">✨</span>
+            <div className="text-left">
+              <h3 className="font-medium text-slate-200">Theme Synthesis (AI Insights)</h3>
+              <p className="text-xs text-slate-500">Control AI-generated pattern insights</p>
+            </div>
+          </div>
+          <span className="text-slate-400">{expandedSection === "themeSynthesis" ? "▼" : "▶"}</span>
+        </button>
+
+        {expandedSection === "themeSynthesis" && (
+          <div className="p-4 space-y-4 border-t border-slate-700/50">
+            <div className="p-3 bg-violet-500/10 rounded-lg border border-violet-500/20 text-xs text-slate-400">
+              <strong className="text-violet-400">What is Theme Synthesis?</strong> When you click a theme in 
+              Theme Explorer, AI analyzes the items and generates insights about the pattern. These settings 
+              control the analysis.
+            </div>
+
+            {/* Max Items to Synthesize */}
+            <ThresholdSlider
+              label="Max Items to Analyze"
+              description="How many items from the theme to include in AI analysis (more = more context, higher cost)"
+              value={themeSynthesis.maxItemsToSynthesize}
+              min={5}
+              max={30}
+              step={1}
+              format={(v) => `${v}`}
+              onChange={(value) =>
+                setThemeSynthesis((prev) => ({ ...prev, maxItemsToSynthesize: value }))
+              }
+            />
+
+            {/* Max Tokens */}
+            <ThresholdSlider
+              label="Max Insight Length"
+              description="Maximum length of AI-generated insights (in tokens, ~4 chars each)"
+              value={themeSynthesis.maxTokens}
+              min={200}
+              max={2000}
+              step={100}
+              format={(v) => `${v}`}
+              onChange={(value) =>
+                setThemeSynthesis((prev) => ({ ...prev, maxTokens: value }))
+              }
+            />
+
+            {/* Max Description Length */}
+            <ThresholdSlider
+              label="Item Description Length"
+              description="How much of each item's description to include (longer = more context)"
+              value={themeSynthesis.maxDescriptionLength}
+              min={50}
+              max={500}
+              step={50}
+              format={(v) => `${v} chars`}
+              onChange={(value) =>
+                setThemeSynthesis((prev) => ({ ...prev, maxDescriptionLength: value }))
+              }
+            />
           </div>
         )}
       </div>

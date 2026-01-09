@@ -45,8 +45,8 @@ def find_earliest_message_date(item: dict, client) -> Optional[str]:
             "search_cursor_messages",
             {
                 "query_embedding": item["embedding"],
-                "match_threshold": 0.75,  # Lower threshold to catch more matches
-                "match_count": 10,
+                "match_threshold": 0.45,  # Much lower threshold - items are abstractions of chat content
+                "match_count": 20,
             }
         ).execute()
         

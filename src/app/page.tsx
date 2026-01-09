@@ -54,6 +54,25 @@ export default function Home() {
   const [reverseTopK, setReverseTopK] = useState(10);
   const [reverseMinSimilarity, setReverseMinSimilarity] = useState(0.0);
   const seekAbortController = useRef<AbortController | null>(null);
+  
+  // Load seek defaults from config on mount
+  useEffect(() => {
+    const loadSeekDefaults = async () => {
+      try {
+        const res = await fetch("/api/config");
+        const data = await res.json();
+        if (data.success && data.config?.seekDefaults) {
+          const { daysBack, topK, minSimilarity } = data.config.seekDefaults;
+          if (daysBack !== undefined) setReverseDaysBack(daysBack);
+          if (topK !== undefined) setReverseTopK(topK);
+          if (minSimilarity !== undefined) setReverseMinSimilarity(minSimilarity);
+        }
+      } catch (err) {
+        console.error("Failed to load seek defaults:", err);
+      }
+    };
+    loadSeekDefaults();
+  }, []);
 
   // Sync state
   const [isSyncing, setIsSyncing] = useState(false);

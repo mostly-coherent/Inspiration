@@ -34,6 +34,24 @@ DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4"  # OpenRouter model ID
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # Token limits
+# Max tokens - now loaded from config with fallbacks
+def get_max_tokens_default() -> int:
+    """Get max tokens from config or fallback to default."""
+    try:
+        from .config import get_max_tokens
+        return get_max_tokens()
+    except Exception:
+        return 4000
+
+def get_max_tokens_judge_default() -> int:
+    """Get max tokens for judge from config or fallback to default."""
+    try:
+        from .config import get_max_tokens_judge
+        return get_max_tokens_judge()
+    except Exception:
+        return 500
+
+# Legacy constants for backward compatibility
 MAX_TOKENS_DEFAULT = 4000
 MAX_TOKENS_JUDGE = 500
 
