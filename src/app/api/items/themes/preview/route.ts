@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import fs from "fs/promises";
+import { createClient } from "@supabase/supabase-js";
 import path from "path";
+import fs from "fs/promises";
 
 interface Item {
   id: string;
@@ -153,6 +154,8 @@ async function loadThemeExplorerConfig() {
   }
 }
 
+export const maxDuration = 30; // 30 seconds for theme computation
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -170,16 +173,48 @@ export async function GET(request: Request) {
     // Load config for display settings
     const explorerConfig = await loadThemeExplorerConfig();
 
-    // Load items bank
-    const dataPath = path.join(process.cwd(), "data", "items_bank.json");
-    const fileContent = await fs.readFile(dataPath, "utf-8");
-    const bank = JSON.parse(fileContent);
-
-    // Filter items
-    let items: Item[] = bank.items || [];
-    if (itemType) {
-      items = items.filter((item: Item) => item.itemType === itemType);
+    // Initialize Supabase client
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({
+        success: false,
+        error: "Supabase not configured",
+      }, { status: 500 });
     }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Fetch items from Supabase
+    let query = supabase
+      .from("library_items")
+      .select("id, title, description, item_type, embedding, category_id");
+    
+    // Filter by item type if specified
+    if (itemType) {
+      query = query.eq("item_type", itemType);
+    }
+    
+    const { data: itemsData, error: itemsError } = await query;
+    
+    if (itemsError) {
+      console.error("Error fetching items from Supabase:", itemsError);
+      return NextResponse.json({
+        success: false,
+        error: "Failed to fetch items from database",
+      }, { status: 500 });
+    }
+    
+    // Transform Supabase data to Item format
+    const items: Item[] = (itemsData || []).map((item: any) => ({
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      itemType: item.item_type,
+      embedding: item.embedding ? (typeof item.embedding === 'string' ? JSON.parse(item.embedding) : item.embedding) : undefined,
+      categoryId: item.category_id,
+    }));
 
     // Group by threshold
     const groupedThemes = groupItemsByThreshold(items, threshold);
