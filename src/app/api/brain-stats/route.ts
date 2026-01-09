@@ -5,8 +5,81 @@ import { getPythonPath } from "@/lib/pythonPath";
 
 export const maxDuration = 10; // 10 seconds max (fail fast on cloud)
 
+// Detect cloud environment (Vercel, Railway, etc.)
+function isCloudEnvironment(): boolean {
+  return !!(
+    process.env.VERCEL || 
+    process.env.RAILWAY_ENVIRONMENT || 
+    process.env.RENDER ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME
+  );
+}
+
 export async function GET() {
   try {
+    // Fast path: If running in cloud, return immediately (no 8s wait)
+    if (isCloudEnvironment()) {
+      console.log("Cloud environment detected - skipping local DB access");
+      
+      // Try to get Vector DB stats from Supabase
+      try {
+        const { createClient } = await import("@supabase/supabase-js");
+        const supabaseUrl = process.env.SUPABASE_URL;
+        const supabaseKey = process.env.SUPABASE_ANON_KEY;
+        
+        if (supabaseUrl && supabaseKey) {
+          const supabase = createClient(supabaseUrl, supabaseKey);
+          
+          // Get earliest and latest message dates
+          const { data: messages, error } = await supabase
+            .from("cursor_messages")
+            .select("timestamp")
+            .order("timestamp", { ascending: true })
+            .limit(1);
+            
+          const { data: latestMessages } = await supabase
+            .from("cursor_messages")
+            .select("timestamp")
+            .order("timestamp", { ascending: false })
+            .limit(1);
+          
+          // Get table size via RPC
+          const { data: sizeData } = await supabase
+            .rpc("get_table_size", { table_name: "cursor_messages" });
+          
+          const earliestDate = messages?.[0]?.timestamp 
+            ? new Date(messages[0].timestamp).toISOString().slice(0, 10) 
+            : null;
+          const latestDate = latestMessages?.[0]?.timestamp 
+            ? new Date(latestMessages[0].timestamp).toISOString().slice(0, 10) 
+            : null;
+          
+          return NextResponse.json({
+            success: true,
+            localSize: null,
+            vectorSize: sizeData?.total_size || null,
+            vectorSizeBytes: sizeData?.total_size_bytes || null,
+            earliestDate,
+            latestDate,
+            cloudMode: true,
+          });
+        }
+      } catch (supabaseError) {
+        console.error("Failed to get Supabase stats:", supabaseError);
+      }
+      
+      // Fallback: return cloud mode with null stats
+      return NextResponse.json({
+        success: true,
+        localSize: null,
+        vectorSize: null,
+        earliestDate: null,
+        latestDate: null,
+        cloudMode: true,
+      }, { status: 200 });
+    }
+
+    // Local environment: spawn Python process as before
     const enginePath = path.resolve(process.cwd(), "engine");
     const scriptPath = path.join(enginePath, "scripts", "get_brain_stats.py");
     const pythonPath = getPythonPath();
@@ -20,16 +93,16 @@ export async function GET() {
       let stderr = "";
       let resolved = false;
 
-      // Timeout after 8 seconds (within maxDuration limit)
+      // Timeout after 5 seconds (reduced from 8s)
       const timeout = setTimeout(() => {
         if (!resolved) {
           resolved = true;
           process.kill();
-          console.error("Brain stats timeout - likely cloud environment");
+          console.error("Brain stats timeout - likely no local DB");
           resolve(NextResponse.json(
             { 
               success: false, 
-              error: "Cloud environment detected - cannot access local Cursor database",
+              error: "Cannot access local Cursor database",
               localSize: null,
               vectorSize: null,
               earliestDate: null,
@@ -38,7 +111,7 @@ export async function GET() {
             { status: 200 } // Return 200 so UI can handle gracefully
           ));
         }
-      }, 8000);
+      }, 5000);
 
       process.stdout.on("data", (data) => {
         stdout += data.toString();

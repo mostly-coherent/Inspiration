@@ -219,6 +219,126 @@ export function getFriendlyError(rawError: string): FriendlyError {
     };
   }
   
+  // OpenAI Embedding Errors (required for semantic search, deduplication, and sync)
+  if (errorLower.includes("openai_api_key") && errorLower.includes("embedding")) {
+    return {
+      title: "Embeddings Not Configured",
+      message: "OpenAI API key is required for semantic search, deduplication, and syncing your chat history. The app uses OpenAI embeddings to understand meaning and find similar content.",
+      cta: {
+        label: "Add OpenAI Key →",
+        action: "settings",
+      },
+      severity: "error",
+    };
+  }
+  
+  // OpenAI Authentication Error
+  if (errorLower.includes("openai") && (errorLower.includes("401") || errorLower.includes("authentication") || errorLower.includes("invalid_api_key"))) {
+    return {
+      title: "OpenAI Authentication Failed",
+      message: "Your OpenAI API key is invalid or expired. Get a new key from the OpenAI dashboard.",
+      cta: {
+        label: "Get API Key →",
+        action: "external_link",
+        url: "https://platform.openai.com/account/api-keys",
+      },
+      severity: "error",
+    };
+  }
+  
+  // Anthropic Authentication Error
+  if (errorLower.includes("anthropic") && (errorLower.includes("401") || errorLower.includes("authentication") || errorLower.includes("invalid"))) {
+    return {
+      title: "Anthropic Authentication Failed",
+      message: "Your Anthropic API key is invalid or expired. Get a new key from the Anthropic console.",
+      cta: {
+        label: "Get API Key →",
+        action: "external_link",
+        url: "https://console.anthropic.com/settings/keys",
+      },
+      severity: "error",
+    };
+  }
+  
+  // Cloud Environment (can't access local Cursor DB)
+  if (errorLower.includes("cloud environment") || errorLower.includes("cannot sync from cloud") || errorLower.includes("database not found")) {
+    return {
+      title: "Running in Cloud Mode",
+      message: "The app is deployed to the cloud and cannot access your local Cursor database. To sync new conversations, run the app locally with 'npm run dev'.",
+      cta: {
+        label: "Learn More",
+        action: "retry",
+      },
+      severity: "info",
+    };
+  }
+  
+  // Schema/Cursor Update Incompatibility
+  if (errorLower.includes("schema") || errorLower.includes("extraction strategy") || errorLower.includes("extraction failed")) {
+    return {
+      title: "Cursor Database Changed",
+      message: "Cursor has updated its internal database format and this version of Inspiration may not be compatible. Check for app updates or report an issue.",
+      cta: {
+        label: "Check GitHub →",
+        action: "external_link",
+        url: "https://github.com/mostly-coherent/Inspiration/issues",
+      },
+      severity: "error",
+    };
+  }
+  
+  // Seek (Use Case) - No matches for query
+  if (errorLower.includes("no relevant conversations found for") && errorLower.includes("days")) {
+    return {
+      title: "No Matches Found",
+      message: "No conversations matched your search query. The app uses semantic search to find related content. Try different keywords, broader phrasing, or a longer date range.",
+      cta: {
+        label: "Try Again",
+        action: "retry",
+      },
+      severity: "info",
+    };
+  }
+  
+  // Script/Python Engine Errors
+  if (errorLower.includes("script failed") || errorLower.includes("python") || errorLower.includes("traceback")) {
+    return {
+      title: "Engine Error",
+      message: "The Python processing engine encountered an error. This is usually temporary — try again. If it persists, check that Python 3.10+ is installed.",
+      cta: {
+        label: "Retry",
+        action: "retry",
+      },
+      severity: "error",
+    };
+  }
+  
+  // Invalid Date Range
+  if (errorLower.includes("end date cannot be in the future") || errorLower.includes("start date must be before")) {
+    return {
+      title: "Invalid Date Range",
+      message: "Please select a valid date range. The end date cannot be in the future, and the start date must be before the end date.",
+      cta: {
+        label: "Fix Dates",
+        action: "retry",
+      },
+      severity: "warning",
+    };
+  }
+  
+  // Overloaded/Capacity Issues
+  if (errorLower.includes("overloaded") || errorLower.includes("503") || errorLower.includes("capacity")) {
+    return {
+      title: "AI Provider Busy",
+      message: "The AI service is currently overloaded. This is temporary — wait a moment and try again.",
+      cta: {
+        label: "Retry",
+        action: "retry",
+      },
+      severity: "warning",
+    };
+  }
+  
   // Default: show raw error but with retry option
   return {
     title: "Generation Failed",
