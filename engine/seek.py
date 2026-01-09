@@ -32,7 +32,7 @@ from common.config import (
 )
 from common.llm import create_llm, LLMProvider
 from common.vector_db import get_supabase_client, get_conversations_by_chat_ids
-from common.items_bank import ItemsBank
+from common.items_bank_supabase import ItemsBankSupabase as ItemsBank
 from common.prompt_compression import estimate_tokens, compress_single_conversation
 from generate import (
     load_synthesize_prompt,

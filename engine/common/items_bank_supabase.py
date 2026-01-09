@@ -218,3 +218,20 @@ class ItemsBankSupabase:
         Kept for API compatibility with JSON-based ItemsBank.
         """
         return True
+    
+    def clear(self) -> bool:
+        """
+        Clear all items and categories from Supabase.
+        WARNING: This is a destructive operation.
+        """
+        try:
+            # Delete all items
+            self.client.table("library_items").delete().neq("id", "").execute()
+            
+            # Delete all categories
+            self.client.table("library_categories").delete().neq("id", "").execute()
+            
+            return True
+        except Exception as e:
+            print(f"❌ Failed to clear Supabase bank: {e}")
+            return False

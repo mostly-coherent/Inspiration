@@ -39,7 +39,7 @@ from common.config import (
 )
 
 # Import v1 unified Items system (required - v0 removed)
-from common.items_bank import ItemsBank
+from common.items_bank_supabase import ItemsBankSupabase as ItemsBank
 
 # Load environment on import
 load_env_file()
