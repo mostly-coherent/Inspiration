@@ -89,6 +89,15 @@ export default function SettingsPage() {
   const [localLinkedInDirectory, setLocalLinkedInDirectory] = useState("");
   const [localSolvedStatusEnabled, setLocalSolvedStatusEnabled] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
+  // Local state for Voice & Style (to avoid cursor jumping on every keystroke)
+  const [localAuthorName, setLocalAuthorName] = useState("");
+  const [localAuthorContext, setLocalAuthorContext] = useState("");
+  const [localGoldenExamplesDir, setLocalGoldenExamplesDir] = useState("");
+  const [localVoiceGuideFile, setLocalVoiceGuideFile] = useState("");
+  
+  // Local state for LLM Model (to avoid cursor jumping)
+  const [localLlmModel, setLocalLlmModel] = useState("");
 
   // Load configuration
   useEffect(() => {
@@ -102,6 +111,17 @@ export default function SettingsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]); // detectChatHistory is stable, only re-run when config changes
+
+  // Initialize Voice & Style and LLM local state from config
+  useEffect(() => {
+    if (config) {
+      setLocalAuthorName(config.features.customVoice.authorName || "");
+      setLocalAuthorContext(config.features.customVoice.authorContext || "");
+      setLocalGoldenExamplesDir(config.features.customVoice.goldenExamplesDir || "");
+      setLocalVoiceGuideFile(config.features.customVoice.voiceGuideFile || "");
+      setLocalLlmModel(config.llm.model || "");
+    }
+  }, [config]);
 
   // Auto-detect chat history path
   const detectChatHistory = async () => {
@@ -504,14 +524,15 @@ export default function SettingsPage() {
                   </label>
                   <input
                     type="text"
-                    value={config.features.customVoice.authorName || ""}
-                    onChange={(e) =>
+                    value={localAuthorName}
+                    onChange={(e) => setLocalAuthorName(e.target.value)}
+                    onBlur={() =>
                       saveConfig({
                         features: {
                           ...config.features,
                           customVoice: {
                             ...config.features.customVoice,
-                            authorName: e.target.value || null,
+                            authorName: localAuthorName || null,
                           },
                         },
                       })
@@ -526,14 +547,15 @@ export default function SettingsPage() {
                   </label>
                   <input
                     type="text"
-                    value={config.features.customVoice.authorContext || ""}
-                    onChange={(e) =>
+                    value={localAuthorContext}
+                    onChange={(e) => setLocalAuthorContext(e.target.value)}
+                    onBlur={() =>
                       saveConfig({
                         features: {
                           ...config.features,
                           customVoice: {
                             ...config.features.customVoice,
-                            authorContext: e.target.value || null,
+                            authorContext: localAuthorContext || null,
                           },
                         },
                       })
@@ -556,15 +578,16 @@ export default function SettingsPage() {
                     </p>
                     <input
                       type="text"
-                      value={config.features.customVoice.goldenExamplesDir || ""}
-                      onChange={(e) =>
+                      value={localGoldenExamplesDir}
+                      onChange={(e) => setLocalGoldenExamplesDir(e.target.value)}
+                      onBlur={() =>
                         saveConfig({
                           features: {
                             ...config.features,
                             customVoice: {
                               ...config.features.customVoice,
-                              enabled: !!e.target.value,
-                              goldenExamplesDir: e.target.value || null,
+                              enabled: !!localGoldenExamplesDir,
+                              goldenExamplesDir: localGoldenExamplesDir || null,
                             },
                           },
                         })
@@ -591,14 +614,15 @@ export default function SettingsPage() {
                     </p>
                     <input
                       type="text"
-                      value={config.features.customVoice.voiceGuideFile || ""}
-                      onChange={(e) =>
+                      value={localVoiceGuideFile}
+                      onChange={(e) => setLocalVoiceGuideFile(e.target.value)}
+                      onBlur={() =>
                         saveConfig({
                           features: {
                             ...config.features,
                             customVoice: {
                               ...config.features.customVoice,
-                              voiceGuideFile: e.target.value || null,
+                              voiceGuideFile: localVoiceGuideFile || null,
                             },
                           },
                         })
@@ -611,21 +635,21 @@ export default function SettingsPage() {
               </div>
 
               {/* Preview of what's configured */}
-              {(config.features.customVoice.authorName || config.features.customVoice.goldenExamplesDir) && (
+              {(localAuthorName || localGoldenExamplesDir) && (
                 <div className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/30">
                   <h4 className="text-emerald-400 font-medium mb-2">✓ Voice Profile Active</h4>
                   <ul className="text-sm text-slate-400 space-y-1">
-                    {config.features.customVoice.authorName && (
-                      <li>• Author: {config.features.customVoice.authorName}</li>
+                    {localAuthorName && (
+                      <li>• Author: {localAuthorName}</li>
                     )}
-                    {config.features.customVoice.authorContext && (
-                      <li>• Context: {config.features.customVoice.authorContext}</li>
+                    {localAuthorContext && (
+                      <li>• Context: {localAuthorContext}</li>
                     )}
-                    {config.features.customVoice.goldenExamplesDir && (
-                      <li>• Examples: {config.features.customVoice.goldenExamplesDir}</li>
+                    {localGoldenExamplesDir && (
+                      <li>• Examples: {localGoldenExamplesDir}</li>
                     )}
-                    {config.features.customVoice.voiceGuideFile && (
-                      <li>• Voice Guide: {config.features.customVoice.voiceGuideFile}</li>
+                    {localVoiceGuideFile && (
+                      <li>• Voice Guide: {localVoiceGuideFile}</li>
                     )}
                   </ul>
                 </div>
@@ -681,9 +705,10 @@ export default function SettingsPage() {
                 </label>
                 <input
                   type="text"
-                  value={config.llm.model}
-                  onChange={(e) =>
-                    saveConfig({ llm: { ...config.llm, model: e.target.value } })
+                  value={localLlmModel}
+                  onChange={(e) => setLocalLlmModel(e.target.value)}
+                  onBlur={() =>
+                    saveConfig({ llm: { ...config.llm, model: localLlmModel } })
                   }
                   className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500/50"
                 />

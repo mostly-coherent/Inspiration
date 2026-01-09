@@ -18,6 +18,7 @@
     "postinstall": "command -v pip3 >/dev/null 2>&1 && pip3 install -r engine/requirements.txt || echo 'Skipping pip install (Python not available - expected on Vercel)'"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
     "@supabase/supabase-js": "^2.89.0",
     "next": "^16.1.0",
     "react": "^19.2.3",

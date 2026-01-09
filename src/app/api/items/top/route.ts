@@ -105,20 +105,19 @@ export async function GET() {
       tags: item.tags?.slice(0, 3) || [],
     });
 
-    // Take top 3 overall (legacy support)
-    const top3 = scoredItems.slice(0, 3).map(formatItem);
+    // Top 3 Today - mixed ideas and insights, ranked by score
+    const top3Today = scoredItems.slice(0, 3).map(formatItem);
 
-    // Build Next = top 2 ideas
+    // Legacy support: Build Next = top 2 ideas, Share Next = top 2 insights
     const buildNext = ideas.slice(0, 2).map(formatItem);
-
-    // Share Next = top 2 insights
     const shareNext = insights.slice(0, 2).map(formatItem);
 
     return NextResponse.json({
       success: true,
-      items: top3, // Legacy support
-      buildNext,
-      shareNext,
+      items: top3Today, // Primary: Top 3 Today (mixed types)
+      top3Today,        // Explicit alias
+      buildNext,        // Legacy: separated by type
+      shareNext,        // Legacy: separated by type
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {

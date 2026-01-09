@@ -284,7 +284,7 @@ export const BanksOverview = memo(function BanksOverview() {
             </div>
             <div className="p-2 bg-black/20 rounded-lg text-center">
               <div className="text-white font-medium">{stats.totalCategories}</div>
-              <div className="text-adobe-gray-500 text-xs">Cats</div>
+              <div className="text-adobe-gray-500 text-xs">Themes</div>
             </div>
             <div className="p-2 bg-black/20 rounded-lg text-center">
               <div className="text-emerald-400 font-medium">{stats.implemented}</div>
@@ -327,7 +327,7 @@ export const BanksOverview = memo(function BanksOverview() {
                       : "bg-white/10 text-adobe-gray-400 hover:bg-white/15"
                   }`}
                 >
-                  Categories ({filteredCategories.length})
+                  Themes ({filteredCategories.length})
                 </button>
               </div>
 

@@ -73,6 +73,7 @@ class ItemsBank:
         source_conversations: int = 1,
         embedding: Optional[list[float]] = None,
         first_seen_date: Optional[str] = None,
+        quality: Optional[str] = None,  # "A", "B", "C", or None
         # Legacy support - ignore these
         mode: Optional[str] = None,
         theme: Optional[str] = None,
@@ -169,6 +170,7 @@ class ItemsBank:
             "status": "active",
             "categoryId": None,
             "embedding": embedding,
+            "quality": quality,  # LLM-assigned quality tier: A, B, C, or None
             # Legacy fields for backward compatibility
             "mode": item_type,
             "theme": "generation",

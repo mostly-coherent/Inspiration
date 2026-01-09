@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, memo } from "react";
+import Link from "next/link";
 
 // Format YYYY-MM date string to readable format (e.g., "2025-12" → "Dec 2025")
 function formatMonthYear(dateStr: string): string {
@@ -476,12 +477,13 @@ export const LibraryView = memo(function LibraryView() {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Main Items List */}
       <div className="lg:col-span-2 space-y-4">
-        {/* Build Next / Share Next Recommendations */}
-        {showRecommendations && (buildNext.length > 0 || shareNext.length > 0) && (
+        {/* Top 3 Today - Mixed ideas and insights, ranked by score */}
+        {showRecommendations && topItems.length > 0 && (
           <div className="glass-card p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-white flex items-center gap-2">
-                <span className="text-lg">🎯</span> Recommendations
+                <span className="text-lg">🎯</span> Top 3 Today
+                <span className="text-xs text-adobe-gray-500 font-normal">(ranked by score)</span>
               </h3>
               <button
                 onClick={() => setShowRecommendations(false)}
@@ -491,66 +493,37 @@ export const LibraryView = memo(function LibraryView() {
               </button>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Build Next */}
-              {buildNext.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-medium text-inspiration-ideas mb-2 flex items-center gap-1">
-                    <span>🔨</span> Build Next
-                  </h4>
-                  <div className="space-y-2">
-                    {buildNext.map((item, idx) => (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          const fullItem = data?.items.find((i) => i.id === item.id);
-                          if (fullItem) setSelectedItem(fullItem);
-                        }}
-                        className="w-full text-left p-3 rounded-lg bg-gradient-to-br from-inspiration-ideas/10 to-adobe-gray-900/50 border border-inspiration-ideas/20 hover:border-inspiration-ideas/50 transition-all"
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-bold text-inspiration-ideas">#{idx + 1}</span>
-                          {item.quality === "A" && <span className="text-xs">⭐</span>}
-                        </div>
-                        <h5 className="text-sm font-medium text-white line-clamp-1 mb-1">{item.title}</h5>
-                        <p className="text-xs text-adobe-gray-500 line-clamp-1">
-                          {item.reasons?.join(" • ") || ""}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
-              {/* Share Next */}
-              {shareNext.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-medium text-inspiration-insights mb-2 flex items-center gap-1">
-                    <span>✨</span> Share Next
-                  </h4>
-                  <div className="space-y-2">
-                    {shareNext.map((item, idx) => (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          const fullItem = data?.items.find((i) => i.id === item.id);
-                          if (fullItem) setSelectedItem(fullItem);
-                        }}
-                        className="w-full text-left p-3 rounded-lg bg-gradient-to-br from-inspiration-insights/10 to-adobe-gray-900/50 border border-inspiration-insights/20 hover:border-inspiration-insights/50 transition-all"
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-bold text-inspiration-insights">#{idx + 1}</span>
-                          {item.quality === "A" && <span className="text-xs">⭐</span>}
-                        </div>
-                        <h5 className="text-sm font-medium text-white line-clamp-1 mb-1">{item.title}</h5>
-                        <p className="text-xs text-adobe-gray-500 line-clamp-1">
-                          {item.reasons?.join(" • ") || ""}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {topItems.map((item, idx) => {
+                const isIdea = item.itemType === "idea";
+                const colorClass = isIdea ? "inspiration-ideas" : "inspiration-insights";
+                const icon = isIdea ? "🔨" : "✨";
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      const fullItem = data?.items.find((i) => i.id === item.id);
+                      if (fullItem) setSelectedItem(fullItem);
+                    }}
+                    className={`w-full text-left p-3 rounded-lg bg-gradient-to-br from-${colorClass}/10 to-adobe-gray-900/50 border border-${colorClass}/20 hover:border-${colorClass}/50 transition-all`}
+                    style={{
+                      background: `linear-gradient(to bottom right, ${isIdea ? 'rgba(59, 130, 246, 0.1)' : 'rgba(168, 85, 247, 0.1)'}, rgba(30, 30, 30, 0.5))`,
+                      borderColor: isIdea ? 'rgba(59, 130, 246, 0.2)' : 'rgba(168, 85, 247, 0.2)'
+                    }}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`text-xs font-bold ${isIdea ? 'text-inspiration-ideas' : 'text-inspiration-insights'}`}>#{idx + 1}</span>
+                      <span className="text-xs">{icon}</span>
+                      {item.quality === "A" && <span className="text-xs">⭐</span>}
+                      <span className="text-[10px] text-adobe-gray-500 ml-auto">{item.score} pts</span>
+                    </div>
+                    <h5 className="text-sm font-medium text-white line-clamp-1 mb-1">{item.title}</h5>
+                    <p className="text-xs text-adobe-gray-500 line-clamp-1">
+                      {item.reasons?.join(" • ") || ""}
+                    </p>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -560,7 +533,7 @@ export const LibraryView = memo(function LibraryView() {
           <div className="glass-card p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-white flex items-center gap-2">
-                <span className="text-lg">🗺️</span> Themes ({themeStats?.totalThemes || 0} categories)
+                <span className="text-lg">🗺️</span> Themes ({themeStats?.totalThemes || 0})
               </h3>
               <button
                 onClick={() => setShowThemes(false)}
@@ -616,6 +589,26 @@ export const LibraryView = memo(function LibraryView() {
             )}
           </div>
         )}
+
+        {/* Link to Theme Explorer */}
+        <Link 
+          href="/themes"
+          className="glass-card p-4 flex items-center justify-between hover:bg-slate-800/60 transition-colors mb-4 group"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🔭</span>
+            <div>
+              <h3 className="font-medium text-white">Explore Themes</h3>
+              <p className="text-sm text-slate-400">Zoom in/out to see patterns in your ideas</p>
+            </div>
+          </div>
+          <svg 
+            className="w-5 h-5 text-slate-400 group-hover:text-white group-hover:translate-x-1 transition-all" 
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </Link>
 
         {/* Search & Filters */}
         <div className="glass-card p-4 space-y-4">
