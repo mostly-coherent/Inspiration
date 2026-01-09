@@ -43,17 +43,29 @@ That's it. The **onboarding wizard** handles everything else:
 | Step | What Happens | You Need |
 |------|-------------|----------|
 | 1. Welcome | Detects your chat history size | Nothing |
-| 2. API Keys | Enter your Anthropic key | [Get one free](https://console.anthropic.com/) |
+| 2. API Keys | Enter your keys (validated before saving) | See below |
 | 3. Sync | Indexes your chats (< 1 min for most users) | Nothing |
 | **Done!** | → Theme Explorer shows patterns in your thinking | 🎉 |
 
-> **Supabase?** Heavy users with 500MB+ history unlock instant semantic search across everything. Takes 5 minutes to set up.
+### API Keys
+
+| Key | Required? | What It Enables |
+|-----|-----------|-----------------|
+| **Anthropic** | ✅ Yes | Generation, theme synthesis, quality scoring |
+| **OpenAI** | Optional | Deduplication, semantic search, library sync |
+| **Supabase** | Optional | Scale to 500MB+ history with instant search |
+
+> **Minimal setup:** Just Anthropic key → basic generation works immediately.  
+> **Full power:** Add OpenAI key → deduplication and smarter Library management.
 
 ---
 
 ## ✨ Features
 
 - **📚 Library System** — Accumulated ideas/insights with automatic deduplication and categorization
+- **📄 Pagination** — Browse large libraries efficiently (50 items per page)
+- **💰 Cost Estimation** — See estimated API cost before running generation
+- **✅ API Key Validation** — Keys are tested before saving to catch typos
 - **⚙️ Time Presets** — Daily (24h), Sprint (14d), Month (30d), Quarter (90d) scans
 - **🧠 Vector Memory** — Scale to 2GB+ chat history with Supabase pgvector (optional)
 - **🔄 Cross-Platform** — Auto-detects Cursor DB on macOS and Windows
