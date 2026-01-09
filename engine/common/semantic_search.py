@@ -38,6 +38,14 @@ def get_embedding_cache_path() -> Path:
     return data_dir / "embedding_cache.json"
 
 
+def is_openai_configured() -> bool:
+    """Check if OpenAI API key is configured."""
+    if not OPENAI_AVAILABLE:
+        return False
+    load_env_file()
+    return bool(os.environ.get("OPENAI_API_KEY"))
+
+
 def get_openai_client():
     """Get OpenAI client, initializing if needed."""
     if not OPENAI_AVAILABLE:
@@ -59,23 +67,35 @@ def get_text_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def get_embedding(text: str, use_cache: bool = True) -> list[float]:
+def get_embedding(text: str, use_cache: bool = True, allow_fallback: bool = True) -> list[float]:
     """
     Get embedding for text, using cache if available.
     
     Args:
         text: Text to embed
         use_cache: Whether to use cached embeddings
+        allow_fallback: If True, return zero vector when OpenAI is not configured (graceful degradation)
     
     Returns:
         Embedding vector (list of floats)
     
     Raises:
-        RuntimeError: If OpenAI API key is missing or invalid
+        RuntimeError: If OpenAI API key is missing or invalid (only if allow_fallback=False)
         Exception: For other API errors
     """
     if not text.strip():
         return [0.0] * EMBEDDING_DIM
+    
+    # Check if OpenAI is configured - graceful degradation if not
+    if not is_openai_configured():
+        if allow_fallback:
+            # Return zero vector for local-only mode (no dedup/search, but generation still works)
+            return [0.0] * EMBEDDING_DIM
+        else:
+            raise RuntimeError(
+                "OPENAI_API_KEY not configured. Embeddings are disabled. "
+                "Add your OpenAI API key to enable deduplication, search, and sync."
+            )
     
     cache_path = get_embedding_cache_path()
     cache_key = get_text_hash(text)
@@ -301,19 +321,31 @@ def search_messages(
     return matches
 
 
-def batch_get_embeddings(texts: list[str], use_cache: bool = True) -> list[list[float]]:
+def batch_get_embeddings(texts: list[str], use_cache: bool = True, allow_fallback: bool = True) -> list[list[float]]:
     """
     Get embeddings for multiple texts efficiently (batched API call).
     
     Args:
         texts: List of texts to embed
         use_cache: Whether to use cached embeddings
+        allow_fallback: If True, return zero vectors when OpenAI is not configured (graceful degradation)
     
     Returns:
         List of embedding vectors
     """
     if not texts:
         return []
+    
+    # Check if OpenAI is configured - graceful degradation if not
+    if not is_openai_configured():
+        if allow_fallback:
+            # Return zero vectors for local-only mode
+            return [[0.0] * EMBEDDING_DIM] * len(texts)
+        else:
+            raise RuntimeError(
+                "OPENAI_API_KEY not configured. Embeddings are disabled. "
+                "Add your OpenAI API key to enable deduplication, search, and sync."
+            )
     
     # Filter out empty texts
     non_empty_texts = [(i, text) for i, text in enumerate(texts) if text.strip()]

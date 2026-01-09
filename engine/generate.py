@@ -465,11 +465,18 @@ def generate_items(
     print(f"✅ Parsed {len(items)} items from LLM output", file=sys.stderr)
     
     # Generate embeddings for deduplication/ranking (batch call - much faster)
+    # Note: If OpenAI is not configured, this returns zero vectors and dedup is effectively skipped
     if deduplicate or rank:
-        texts = [_item_to_text_for_embedding(item, mode) for item in items]
-        embeddings = batch_get_embeddings(texts)
-        for i, item in enumerate(items):
-            item["_embedding"] = embeddings[i]
+        from common.semantic_search import is_openai_configured
+        if not is_openai_configured():
+            print("⚠️  OpenAI not configured - skipping deduplication (add OPENAI_API_KEY to enable)", file=sys.stderr)
+            deduplicate = False  # Skip dedup since all embeddings would be zeros
+            rank = False
+        else:
+            texts = [_item_to_text_for_embedding(item, mode) for item in items]
+            embeddings = batch_get_embeddings(texts)
+            for i, item in enumerate(items):
+                item["_embedding"] = embeddings[i]
     
     items_before_dedup = len(items)
     
@@ -1106,10 +1113,16 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
                 })
             
             # Batch generate embeddings for all items at once (10x faster than individual calls)
+            # Note: If OpenAI is not configured, this returns zero vectors (no dedup against bank)
             if prepared_items:
+                from common.semantic_search import is_openai_configured
                 texts = [f"{p['title']} {p['description']}" for p in prepared_items]
-                print(f"   ⚡ Batch generating {len(texts)} embeddings...", file=sys.stderr)
-                embeddings = batch_get_embeddings(texts)
+                if is_openai_configured():
+                    print(f"   ⚡ Batch generating {len(texts)} embeddings...", file=sys.stderr)
+                    embeddings = batch_get_embeddings(texts)
+                else:
+                    print(f"   ⚠️  OpenAI not configured - skipping embeddings (items added without dedup)", file=sys.stderr)
+                    embeddings = [[0.0] * 1536] * len(texts)  # Zero vectors = no similarity matching
                 
                 # Quality scoring: Use LLM to rate items on novelty, interest, actionability
                 print(f"   🎯 Scoring quality for {len(prepared_items)} items...", file=sys.stderr)

@@ -190,12 +190,27 @@ export default function Home() {
 
   // v2: Estimate LLM cost for item-centric architecture (memoized)
   // Claude Sonnet 4: $3/M input, $15/M output
-  const estimateCost = useCallback((itemCount: number): number => {
-    // v2: Single generation call + embeddings + ranking call
-    const generationCost = 0.015; // ~15k tokens for generation
-    const embeddingCost = itemCount * 0.0001; // ~100 tokens per item embedding
-    const rankingCost = 0.003; // Ranking call
-    return generationCost + embeddingCost + rankingCost;
+  // OpenAI text-embedding-3-small: $0.02/M tokens
+  const estimateCost = useCallback((itemCount: number, days?: number): number => {
+    // More days = more chat history tokens to process
+    const daysToUse = days ?? 14;
+    const avgMessagesPerDay = 50; // Estimate based on typical usage
+    const avgTokensPerMessage = 200;
+    const inputTokens = daysToUse * avgMessagesPerDay * avgTokensPerMessage;
+    
+    // Claude Sonnet 4 pricing: $3/M input, $15/M output
+    const inputCost = (inputTokens / 1_000_000) * 3;
+    const outputTokens = itemCount * 500; // ~500 tokens per item
+    const outputCost = (outputTokens / 1_000_000) * 15;
+    
+    // Embedding cost (OpenAI): $0.02/M tokens
+    const embeddingTokens = itemCount * 100;
+    const embeddingCost = (embeddingTokens / 1_000_000) * 0.02;
+    
+    // Quality scoring call (smaller, uses Haiku or similar)
+    const qualityScoringCost = itemCount * 0.0002;
+    
+    return inputCost + outputCost + embeddingCost + qualityScoringCost;
   }, []);
 
   // v2: Get current itemCount value (memoized)
@@ -663,9 +678,37 @@ export default function Home() {
                     hours={!showAdvanced ? currentModeConfig?.hours : undefined}
                     itemCount={getCurrentItemCount()}
                     temperature={showAdvanced ? customTemperature : (currentModeConfig?.temperature ?? 0.4)}
-                    estimatedCost={estimateCost(getCurrentItemCount())}
+                    estimatedCost={estimateCost(
+                      getCurrentItemCount(),
+                      showAdvanced 
+                        ? (useCustomDates ? calculateDateRangeDays(fromDate, toDate) : customDays) 
+                        : (currentModeConfig?.days ?? 14)
+                    )}
                   />
                 </section>
+
+                {/* Cost Warning */}
+                {(() => {
+                  const currentCost = estimateCost(
+                    getCurrentItemCount(),
+                    showAdvanced 
+                      ? (useCustomDates ? calculateDateRangeDays(fromDate, toDate) : customDays) 
+                      : (currentModeConfig?.days ?? 14)
+                  );
+                  const COST_WARNING_THRESHOLD = 0.50;
+                  if (currentCost > COST_WARNING_THRESHOLD) {
+                    return (
+                      <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center gap-3">
+                        <span className="text-xl">⚠️</span>
+                        <div className="text-sm text-amber-300">
+                          <strong>High cost operation:</strong> This will cost approximately <strong>${currentCost.toFixed(2)}</strong>.
+                          Consider reducing the time range or item count.
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
 
                 {/* Generate Button & Progress */}
                 <div className="space-y-4">
