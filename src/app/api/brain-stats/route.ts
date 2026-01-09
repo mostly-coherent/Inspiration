@@ -3,6 +3,8 @@ import { spawn } from "child_process";
 import path from "path";
 import { getPythonPath } from "@/lib/pythonPath";
 
+export const maxDuration = 10; // 10 seconds max (fail fast on cloud)
+
 export async function GET() {
   try {
     const enginePath = path.resolve(process.cwd(), "engine");
@@ -16,6 +18,27 @@ export async function GET() {
 
       let stdout = "";
       let stderr = "";
+      let resolved = false;
+
+      // Timeout after 8 seconds (within maxDuration limit)
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          process.kill();
+          console.error("Brain stats timeout - likely cloud environment");
+          resolve(NextResponse.json(
+            { 
+              success: false, 
+              error: "Cloud environment detected - cannot access local Cursor database",
+              localSize: null,
+              vectorSize: null,
+              earliestDate: null,
+              latestDate: null,
+            },
+            { status: 200 } // Return 200 so UI can handle gracefully
+          ));
+        }
+      }, 8000);
 
       process.stdout.on("data", (data) => {
         stdout += data.toString();
@@ -26,6 +49,9 @@ export async function GET() {
       });
 
       process.on("close", (code) => {
+        clearTimeout(timeout);
+        if (resolved) return; // Already handled by timeout
+        resolved = true;
         if (code !== 0) {
           console.error("Brain stats script failed:", stderr);
           // Check for cloud environment
