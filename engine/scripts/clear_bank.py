@@ -9,7 +9,7 @@ from pathlib import Path
 # Add engine to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.items_bank import ItemsBank
+from common.items_bank_supabase import ItemsBankSupabase as ItemsBank
 
 
 def main():
