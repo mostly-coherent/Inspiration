@@ -1,48 +1,60 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile, writeFile } from "fs/promises";
-import path from "path";
-import { existsSync } from "fs";
-import { ItemsBank } from "@/lib/types";
+import { createClient } from "@supabase/supabase-js";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const ITEMS_BANK_PATH = path.join(DATA_DIR, "items_bank.json");
+export const maxDuration = 10; // 10 seconds
 
 const STALE_DAYS = 90;
 
 // GET /api/items/cleanup - Get count of stale items
 export async function GET() {
   try {
-    if (!existsSync(ITEMS_BANK_PATH)) {
-      return NextResponse.json({ success: true, staleCount: 0, staleItems: [] });
+    // Initialize Supabase client
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({
+        success: false,
+        error: "Supabase not configured",
+      }, { status: 500 });
     }
-
-    const content = await readFile(ITEMS_BANK_PATH, "utf-8");
-    const bank: ItemsBank = JSON.parse(content);
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const now = new Date();
     const cutoffDate = new Date(now.getTime() - STALE_DAYS * 24 * 60 * 60 * 1000);
+    const cutoffISO = cutoffDate.toISOString();
 
-    const staleItems = bank.items.filter((item) => {
-      // Skip already archived items
-      if (item.status === "archived") return false;
-      // Skip implemented/posted items (they're done)
-      if (item.status === "implemented" || item.status === "posted") return false;
-      // Skip A-tier items (user marked as valuable)
-      if (item.quality === "A") return false;
-      // Check if last seen is older than cutoff
-      const lastSeen = new Date(item.lastSeen);
-      return lastSeen < cutoffDate;
-    });
+    // Fetch stale items from Supabase
+    // Criteria: status NOT archived/implemented/posted, quality NOT A, lastSeen older than cutoff
+    const { data: staleData, error: staleError } = await supabase
+      .from("library_items")
+      .select("id, title, last_seen")
+      .neq("status", "archived")
+      .neq("status", "implemented")
+      .neq("status", "posted")
+      .or("quality.is.null,quality.neq.A")
+      .lt("last_seen", cutoffISO);
+    
+    if (staleError) {
+      console.error("Error fetching stale items from Supabase:", staleError);
+      return NextResponse.json({
+        success: false,
+        error: "Failed to fetch items from database",
+      }, { status: 500 });
+    }
+
+    const staleItems = (staleData || []).map((item: any) => ({
+      id: item.id,
+      title: item.title,
+      lastSeen: item.last_seen,
+      daysSinceLastSeen: Math.floor((now.getTime() - new Date(item.last_seen).getTime()) / (24 * 60 * 60 * 1000)),
+    }));
 
     return NextResponse.json({
       success: true,
       staleCount: staleItems.length,
-      staleItems: staleItems.map((item) => ({
-        id: item.id,
-        title: item.title,
-        lastSeen: item.lastSeen,
-        daysSinceLastSeen: Math.floor((now.getTime() - new Date(item.lastSeen).getTime()) / (24 * 60 * 60 * 1000)),
-      })),
+      staleItems,
       cutoffDays: STALE_DAYS,
     });
   } catch (error) {
@@ -60,54 +72,69 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const { dryRun = false } = body as { dryRun?: boolean };
 
-    if (!existsSync(ITEMS_BANK_PATH)) {
+    // Initialize Supabase client
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
       return NextResponse.json({
-        success: true,
-        archivedCount: 0,
-        message: "No items bank found",
-      });
+        success: false,
+        error: "Supabase not configured",
+      }, { status: 500 });
     }
-
-    const content = await readFile(ITEMS_BANK_PATH, "utf-8");
-    const bank: ItemsBank = JSON.parse(content);
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const now = new Date();
     const cutoffDate = new Date(now.getTime() - STALE_DAYS * 24 * 60 * 60 * 1000);
+    const cutoffISO = cutoffDate.toISOString();
 
-    let archivedCount = 0;
-    const archivedItems: string[] = [];
-
-    for (const item of bank.items) {
-      // Skip already archived items
-      if (item.status === "archived") continue;
-      // Skip implemented/posted items (they're done)
-      if (item.status === "implemented" || item.status === "posted") continue;
-      // Skip A-tier items (user marked as valuable)
-      if (item.quality === "A") continue;
-      // Check if last seen is older than cutoff
-      const lastSeen = new Date(item.lastSeen);
-      if (lastSeen < cutoffDate) {
-        if (!dryRun) {
-          item.status = "archived";
-        }
-        archivedItems.push(item.title);
-        archivedCount++;
-      }
+    // Fetch stale items (same criteria as GET)
+    const { data: staleData, error: staleError } = await supabase
+      .from("library_items")
+      .select("id, title, last_seen")
+      .neq("status", "archived")
+      .neq("status", "implemented")
+      .neq("status", "posted")
+      .or("quality.is.null,quality.neq.A")
+      .lt("last_seen", cutoffISO);
+    
+    if (staleError) {
+      console.error("Error fetching stale items from Supabase:", staleError);
+      return NextResponse.json({
+        success: false,
+        error: "Failed to fetch items from database",
+      }, { status: 500 });
     }
 
-    if (!dryRun && archivedCount > 0) {
-      bank.last_updated = new Date().toISOString();
-      await writeFile(ITEMS_BANK_PATH, JSON.stringify(bank, null, 2));
+    const staleItems = staleData || [];
+    const archivedItems = staleItems.map((item: any) => item.title);
+    const itemIds = staleItems.map((item: any) => item.id);
+
+    // Archive items in Supabase
+    if (!dryRun && itemIds.length > 0) {
+      const { error: updateError } = await supabase
+        .from("library_items")
+        .update({ status: "archived" })
+        .in("id", itemIds);
+      
+      if (updateError) {
+        console.error("Error archiving items in Supabase:", updateError);
+        return NextResponse.json({
+          success: false,
+          error: "Failed to archive items",
+        }, { status: 500 });
+      }
     }
 
     return NextResponse.json({
       success: true,
-      archivedCount,
+      archivedCount: staleItems.length,
       archivedItems: archivedItems.slice(0, 10), // Preview first 10
       dryRun,
       message: dryRun
-        ? `Would archive ${archivedCount} stale items`
-        : `Archived ${archivedCount} stale items`,
+        ? `Would archive ${staleItems.length} stale items`
+        : `Archived ${staleItems.length} stale items`,
     });
   } catch (error) {
     console.error("[Items Cleanup POST] Error:", error);

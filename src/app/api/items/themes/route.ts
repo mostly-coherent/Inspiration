@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
-import { readFile } from "fs/promises";
-import path from "path";
-import { existsSync } from "fs";
-import { ItemsBank } from "@/lib/types";
+import { createClient } from "@supabase/supabase-js";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const ITEMS_BANK_PATH = path.join(DATA_DIR, "items_bank.json");
+export const maxDuration = 10; // 10 seconds
 
 interface ThemeSummary {
   name: string;
@@ -19,17 +15,64 @@ interface ThemeSummary {
 // GET /api/items/themes - Get theme synthesis summary
 export async function GET() {
   try {
-    if (!existsSync(ITEMS_BANK_PATH)) {
-      return NextResponse.json({ success: true, themes: [], stats: null });
+    // Initialize Supabase client
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({
+        success: false,
+        error: "Supabase not configured",
+      }, { status: 500 });
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Fetch active items from Supabase
+    const { data: itemsData, error: itemsError } = await supabase
+      .from("library_items")
+      .select("*")
+      .neq("status", "archived");
+    
+    if (itemsError) {
+      console.error("Error fetching items from Supabase:", itemsError);
+      return NextResponse.json({
+        success: false,
+        error: "Failed to fetch items from database",
+      }, { status: 500 });
+    }
+    
+    // Fetch categories from Supabase
+    const { data: categoriesData, error: categoriesError } = await supabase
+      .from("library_categories")
+      .select("*");
+    
+    if (categoriesError) {
+      console.error("Error fetching categories from Supabase:", categoriesError);
+      return NextResponse.json({
+        success: false,
+        error: "Failed to fetch categories from database",
+      }, { status: 500 });
     }
 
-    const content = await readFile(ITEMS_BANK_PATH, "utf-8");
-    const bank: ItemsBank = JSON.parse(content);
+    // Transform Supabase data
+    const activeItems = (itemsData || []).map((item: any) => ({
+      id: item.id,
+      itemType: item.item_type,
+      title: item.title,
+      description: item.description,
+      tags: item.tags || [],
+      status: item.status,
+      quality: item.quality,
+      occurrence: item.occurrence,
+      lastSeen: item.last_seen,
+      categoryId: item.category_id,
+    }));
 
-    // Get active items only
-    const activeItems = bank.items.filter(
-      (item) => item.status !== "archived"
-    );
+    const categories = (categoriesData || []).map((cat: any) => ({
+      id: cat.id,
+      name: cat.name,
+    }));
 
     // Group by category
     const categoryMap = new Map<string, {
@@ -39,7 +82,7 @@ export async function GET() {
 
     for (const item of activeItems) {
       const catId = item.categoryId || "uncategorized";
-      const category = bank.categories.find((c) => c.id === catId);
+      const category = categories.find((c: any) => c.id === catId);
       const catName = category?.name || "Uncategorized";
       
       if (!categoryMap.has(catId)) {
@@ -56,7 +99,7 @@ export async function GET() {
         // Collect all tags
         const tagCounts = new Map<string, number>();
         for (const item of items) {
-          (item.tags || []).forEach((tag) => {
+          (item.tags || []).forEach((tag: string) => {
             tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
           });
         }

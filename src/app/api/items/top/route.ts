@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
-import { readFile } from "fs/promises";
-import path from "path";
-import { existsSync } from "fs";
-import { ItemsBank, Item } from "@/lib/types";
+import { createClient } from "@supabase/supabase-js";
+import { Item } from "@/lib/types";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const ITEMS_BANK_PATH = path.join(DATA_DIR, "items_bank.json");
+export const maxDuration = 10; // 10 seconds
 
 // Scoring function for item relevance
 function scoreItem(item: Item): { score: number; reasons: string[] } {
@@ -62,22 +59,51 @@ interface ScoredItem extends Item {
 // GET /api/items/top - Get top recommendations split by type
 export async function GET() {
   try {
-    if (!existsSync(ITEMS_BANK_PATH)) {
-      return NextResponse.json({ 
-        success: true, 
-        items: [], 
-        buildNext: [],
-        shareNext: [],
-      });
+    // Initialize Supabase client
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({
+        success: false,
+        error: "Supabase not configured",
+      }, { status: 500 });
     }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const content = await readFile(ITEMS_BANK_PATH, "utf-8");
-    const bank: ItemsBank = JSON.parse(content);
-
-    // Filter to active items only (not implemented, posted, or archived)
-    const activeItems = bank.items.filter(
-      (item) => item.status === "active"
-    );
+    // Fetch active items from Supabase
+    const { data: itemsData, error: itemsError } = await supabase
+      .from("library_items")
+      .select("*")
+      .eq("status", "active");
+    
+    if (itemsError) {
+      console.error("Error fetching items from Supabase:", itemsError);
+      return NextResponse.json({
+        success: false,
+        error: "Failed to fetch items from database",
+      }, { status: 500 });
+    }
+    
+    // Transform Supabase data to Item format
+    const activeItems: Item[] = (itemsData || []).map((item: any) => ({
+      id: item.id,
+      itemType: item.item_type,
+      title: item.title,
+      description: item.description,
+      tags: item.tags || [],
+      status: item.status,
+      quality: item.quality,
+      occurrence: item.occurrence,
+      sourceConversations: item.source_conversations,
+      firstSeen: item.first_seen,
+      lastSeen: item.last_seen,
+      categoryId: item.category_id,
+      // Legacy fields
+      mode: item.mode,
+      theme: item.theme,
+    }));
 
     // Score items
     const scoredItems: ScoredItem[] = activeItems.map((item) => {

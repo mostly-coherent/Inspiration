@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile, writeFile } from "fs/promises";
-import path from "path";
-import { existsSync } from "fs";
-import { ItemsBank, ItemStatus } from "@/lib/types";
+import { createClient } from "@supabase/supabase-js";
+import { ItemStatus } from "@/lib/types";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const ITEMS_BANK_PATH = path.join(DATA_DIR, "items_bank.json");
+export const maxDuration = 10; // 10 seconds
 
 // PATCH /api/items/bulk - Bulk status change
 export async function PATCH(request: NextRequest) {
@@ -27,33 +24,37 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    if (!existsSync(ITEMS_BANK_PATH)) {
-      return NextResponse.json(
-        { success: false, error: "Items bank not found" },
-        { status: 404 }
-      );
+    // Initialize Supabase client
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({
+        success: false,
+        error: "Supabase not configured",
+      }, { status: 500 });
     }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const content = await readFile(ITEMS_BANK_PATH, "utf-8");
-    const bank: ItemsBank = JSON.parse(content);
-
-    let updatedCount = 0;
-    const idSet = new Set(ids);
-
-    for (const item of bank.items) {
-      if (idSet.has(item.id)) {
-        item.status = status;
-        updatedCount++;
-      }
+    // Update status for all items in Supabase
+    const { error: updateError } = await supabase
+      .from("library_items")
+      .update({ status: status })
+      .in("id", ids);
+    
+    if (updateError) {
+      console.error("Error bulk updating items in Supabase:", updateError);
+      return NextResponse.json({
+        success: false,
+        error: "Failed to update items",
+      }, { status: 500 });
     }
-
-    bank.last_updated = new Date().toISOString();
-    await writeFile(ITEMS_BANK_PATH, JSON.stringify(bank, null, 2));
 
     return NextResponse.json({
       success: true,
-      updatedCount,
-      message: `Updated ${updatedCount} items to status: ${status}`,
+      updatedCount: ids.length,
+      message: `Updated ${ids.length} items to status: ${status}`,
     });
   } catch (error) {
     console.error("[Items Bulk PATCH] Error:", error);
@@ -77,42 +78,58 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    if (!existsSync(ITEMS_BANK_PATH)) {
-      return NextResponse.json(
-        { success: false, error: "Items bank not found" },
-        { status: 404 }
-      );
+    // Initialize Supabase client
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({
+        success: false,
+        error: "Supabase not configured",
+      }, { status: 500 });
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Delete items from Supabase
+    const { error: deleteError } = await supabase
+      .from("library_items")
+      .delete()
+      .in("id", ids);
+    
+    if (deleteError) {
+      console.error("Error bulk deleting items from Supabase:", deleteError);
+      return NextResponse.json({
+        success: false,
+        error: "Failed to delete items",
+      }, { status: 500 });
     }
 
-    const content = await readFile(ITEMS_BANK_PATH, "utf-8");
-    const bank: ItemsBank = JSON.parse(content);
-
-    const idSet = new Set(ids);
-    const originalCount = bank.items.length;
-
-    // Remove items
-    bank.items = bank.items.filter((item) => !idSet.has(item.id));
-    const deletedCount = originalCount - bank.items.length;
-
-    // Update category itemIds
-    for (const category of bank.categories) {
-      if (category.itemIds) {
-        category.itemIds = category.itemIds.filter((id) => !idSet.has(id));
+    // Update category itemIds (remove deleted items)
+    // First, fetch all categories
+    const { data: categories, error: categoriesError } = await supabase
+      .from("library_categories")
+      .select("*");
+    
+    if (!categoriesError && categories) {
+      const idSet = new Set(ids);
+      for (const category of categories) {
+        if (category.item_ids && category.item_ids.length > 0) {
+          const updatedItemIds = category.item_ids.filter((id: string) => !idSet.has(id));
+          if (updatedItemIds.length !== category.item_ids.length) {
+            await supabase
+              .from("library_categories")
+              .update({ item_ids: updatedItemIds })
+              .eq("id", category.id);
+          }
+        }
       }
     }
 
-    // Remove empty categories
-    bank.categories = bank.categories.filter(
-      (cat) => cat.itemIds && cat.itemIds.length > 0
-    );
-
-    bank.last_updated = new Date().toISOString();
-    await writeFile(ITEMS_BANK_PATH, JSON.stringify(bank, null, 2));
-
     return NextResponse.json({
       success: true,
-      deletedCount,
-      message: `Deleted ${deletedCount} items`,
+      deletedCount: ids.length,
+      message: `Deleted ${ids.length} items`,
     });
   } catch (error) {
     console.error("[Items Bulk DELETE] Error:", error);
