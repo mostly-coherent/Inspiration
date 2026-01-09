@@ -5,14 +5,34 @@ import { getPythonPath } from "@/lib/pythonPath";
 
 export const maxDuration = 300; // 5 minutes
 
+// Detect cloud environment (Vercel, Railway, etc.)
+function isCloudEnvironment(): boolean {
+  return !!(
+    process.env.VERCEL || 
+    process.env.RAILWAY_ENVIRONMENT || 
+    process.env.RENDER ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME
+  );
+}
+
 export async function POST() {
   try {
+    // Fast path: If running in cloud, return immediately (cannot sync from cloud)
+    if (isCloudEnvironment()) {
+      console.log("Cloud environment detected - skipping sync");
+      return NextResponse.json({
+        success: false,
+        errorType: "cloud_environment",
+        error: "Cannot sync from cloud environment. The app cannot access your local Cursor database when running on Vercel.",
+        remediation: "Run the app locally (npm run dev) to sync your chat history.",
+        cloudMode: true,
+      }, { status: 400 });
+    }
+
+    // Local environment: spawn Python process as before
     const enginePath = path.resolve(process.cwd(), "engine");
     const scriptPath = path.join(enginePath, "scripts", "sync_messages.py");
     const pythonPath = getPythonPath();
-
-    // Check if running on Vercel (simplified check: if local cursor DB path is missing)
-    // We'll let the script fail if it can't find the DB, and handle the error output.
     
     return new Promise<NextResponse>((resolve) => {
       const process = spawn(pythonPath, [scriptPath], {
