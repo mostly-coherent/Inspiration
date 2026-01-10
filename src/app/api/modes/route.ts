@@ -19,7 +19,7 @@ interface Mode {
     goldenExamplesFolder: string | null;
     semanticSearchQueries: string[] | null;
   };
-  defaultBestOf: number;
+  defaultBestOf?: number; // Deprecated: kept for backward compatibility with existing data
   createdBy: string;
   createdDate: string;
 }
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Add mode
+    // Add mode (defaultBestOf deprecated - use itemCount in generation settings instead)
     const newMode: Mode = {
       id: mode.id,
       name: mode.name,
@@ -133,7 +133,6 @@ export async function POST(request: NextRequest) {
         goldenExamplesFolder: mode.settings?.goldenExamplesFolder || null,
         semanticSearchQueries: mode.settings?.semanticSearchQueries || null,
       },
-      defaultBestOf: mode.defaultBestOf || 5,
       createdBy: "user",
       createdDate: new Date().toISOString().split("T")[0],
     };
@@ -196,7 +195,7 @@ export async function PUT(request: NextRequest) {
       );
     }
     
-    // Update mode
+    // Update mode (defaultBestOf deprecated - ignored if sent)
     if (updates.name) mode.name = updates.name;
     if (updates.description !== undefined) mode.description = updates.description;
     if (updates.icon) mode.icon = updates.icon;
@@ -205,7 +204,6 @@ export async function PUT(request: NextRequest) {
     if (updates.settings) {
       mode.settings = { ...mode.settings, ...updates.settings };
     }
-    if (updates.defaultBestOf !== undefined) mode.defaultBestOf = updates.defaultBestOf;
     
     const saved = await saveThemes(config);
     if (saved) {

@@ -150,10 +150,10 @@ export function getFriendlyError(rawError: string): FriendlyError {
   if (errorLower.includes("no conversations") || errorLower.includes("no messages")) {
     return {
       title: "No Chat History Found",
-      message: "No Cursor conversations found for the selected date range. Try different dates or sync your brain first.",
+      message: "No Cursor conversations found for the selected date range. Try different dates or check your Memory sync in Settings.",
       cta: {
-        label: "Retry",
-        action: "retry",
+        label: "Check Settings",
+        action: "settings",
       },
       severity: "warning",
     };
@@ -163,10 +163,10 @@ export function getFriendlyError(rawError: string): FriendlyError {
   if (errorLower.includes("no items found") || errorLower.includes("failed to parse") || errorLower.includes("couldn't be parsed")) {
     return {
       title: "No Items Parsed",
-      message: "The AI generated a response but it couldn't be parsed into structured items. Try a different date range or adjust the temperature.",
+      message: "The AI generated a response but it couldn't be parsed into structured items. Try a different date range or adjust the temperature in Settings.",
       cta: {
-        label: "Try Different Dates",
-        action: "retry",
+        label: "Adjust Settings",
+        action: "settings",
       },
       severity: "warning",
     };
@@ -182,7 +182,7 @@ export function getFriendlyError(rawError: string): FriendlyError {
       message: `${count} relevant conversations were analyzed, but no items were extracted. This is normal for routine work (debugging, configuration). Try a different date range or higher temperature.`,
       cta: {
         label: "Adjust Settings",
-        action: "retry",
+        action: "settings",
       },
       severity: "info",
     };
@@ -286,11 +286,8 @@ export function getFriendlyError(rawError: string): FriendlyError {
     return {
       title: "Running in Cloud Mode",
       message: "The app is deployed to the cloud and cannot access your local Cursor database. To sync new conversations, run the app locally with 'npm run dev'.",
-      cta: {
-        label: "Learn More",
-        action: "retry",
-      },
       severity: "info",
+      // No CTA - this is informational only, user needs to run locally
     };
   }
   
@@ -340,7 +337,7 @@ export function getFriendlyError(rawError: string): FriendlyError {
       title: "Invalid Date Range",
       message: "Please select a valid date range. The end date cannot be in the future, and the start date must be before the end date.",
       cta: {
-        label: "Fix Dates",
+        label: "Try Again",
         action: "retry",
       },
       severity: "warning",

@@ -19,7 +19,6 @@ export function ModeForm({ theme, mode, onSave, onCancel }: ModeFormProps) {
   const [temperature, setTemperature] = useState<number | null>(
     mode?.settings.temperature ?? null
   );
-  const [defaultBestOf, setDefaultBestOf] = useState(mode?.defaultBestOf || 5);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,7 +42,6 @@ export function ModeForm({ theme, mode, onSave, onCancel }: ModeFormProps) {
           goldenExamplesFolder: null,
           semanticSearchQueries: null,
         },
-        defaultBestOf,
         createdBy: "user",
         createdDate: new Date().toISOString().split("T")[0],
       };
@@ -152,37 +150,24 @@ export function ModeForm({ theme, mode, onSave, onCancel }: ModeFormProps) {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-adobe-gray-300 mb-1">
-            Temperature
-          </label>
-          <input
-            type="number"
-            min="0"
-            max="2"
-            step="0.1"
-            value={temperature ?? ""}
-            onChange={(e) =>
-              setTemperature(e.target.value ? parseFloat(e.target.value) : null)
-            }
-            className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-white"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-adobe-gray-300 mb-1">
-            Default Best Of
-          </label>
-          <input
-            type="number"
-            min="1"
-            max="20"
-            value={defaultBestOf}
-            onChange={(e) => setDefaultBestOf(parseInt(e.target.value))}
-            className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-white"
-          />
-        </div>
+      <div>
+        <label className="block text-sm font-medium text-adobe-gray-300 mb-1">
+          Temperature
+        </label>
+        <input
+          type="number"
+          min="0"
+          max="2"
+          step="0.1"
+          value={temperature ?? ""}
+          onChange={(e) =>
+            setTemperature(e.target.value ? parseFloat(e.target.value) : null)
+          }
+          className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-white"
+        />
+        <p className="text-xs text-adobe-gray-500 mt-1">
+          Use 1 decimal precision (0.1, 0.5, 0.7). Values are rounded to nearest 0.1.
+        </p>
       </div>
 
       <div className="flex gap-2">

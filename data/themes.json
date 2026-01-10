@@ -14,7 +14,7 @@
           "color": "inspiration-ideas",
           "promptTemplate": "ideas_synthesize.md",
           "settings": {
-            "temperature": 0.2,
+            "temperature": 0.4,
             "minSimilarity": null,
             "deduplicationThreshold": 0.85,
             "goldenExamplesFolder": null,
@@ -32,25 +32,22 @@
         {
           "id": "insight",
           "name": "Insight",
-          "description": "Social media posts to share learnings",
+          "description": "Writings to share learnings",
           "icon": "✨",
           "color": "inspiration-insights",
           "promptTemplate": "insights_synthesize.md",
           "settings": {
-            "temperature": 0.2,
+            "temperature": 0.3,
             "minSimilarity": null,
-            "deduplicationThreshold": 0.85,
+            "deduplicationThreshold": null,
             "goldenExamplesFolder": null,
             "implementedItemsFolder": null,
-            "semanticSearchQueries": [
-              "What did I learn? What problems did I solve?",
-              "What decisions did I make? What patterns did I notice?",
-              "What insights came up?"
-            ]
+            "semanticSearchQueries": null
           },
           "defaultItemCount": 10,
           "createdBy": "user",
-          "createdDate": "2025-01-01"
+          "createdDate": "2025-01-01",
+          "defaultBestOf": 5
         }
       ]
     },
@@ -68,8 +65,8 @@
           "promptTemplate": null,
           "settings": {
             "temperature": null,
-            "minSimilarity": 0.0,
-            "deduplicationThreshold": 0.80,
+            "minSimilarity": 0,
+            "deduplicationThreshold": 0.8,
             "goldenExamplesFolder": null,
             "implementedItemsFolder": null,
             "semanticSearchQueries": [

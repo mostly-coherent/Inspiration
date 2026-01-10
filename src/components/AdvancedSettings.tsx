@@ -164,19 +164,19 @@ export function AdvancedSettings({
               (higher = more creative, riskier)
             </span>
           </label>
-          <span className="font-mono text-lg">{customTemperature.toFixed(2)}</span>
+          <span className="font-mono text-lg">{customTemperature.toFixed(1)}</span>
         </div>
         <input
           type="range"
           min={0}
-          max={100}
-          value={customTemperature * 100}
-          onChange={(e) => setCustomTemperature(parseInt(e.target.value) / 100)}
+          max={10}
+          value={Math.round(customTemperature * 10)}
+          onChange={(e) => setCustomTemperature(parseInt(e.target.value) / 10)}
           className="slider-track w-full"
-          aria-label={`Temperature setting: ${customTemperature.toFixed(2)}`}
+          aria-label={`Temperature setting: ${customTemperature.toFixed(1)}`}
           aria-valuemin={0}
           aria-valuemax={1}
-          aria-valuenow={Math.round(customTemperature * 100) / 100}
+          aria-valuenow={Math.round(customTemperature * 10) / 10}
         />
         <div className="flex justify-between text-xs text-adobe-gray-500">
           <span>0.0 (focused)</span>
@@ -199,7 +199,7 @@ export function AdvancedSettings({
               setUseCustomDates(false);
             }}
             className="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-            aria-label={`Apply ${preset.label} preset: ${preset.days} days, ${preset.itemCount} items, temperature ${preset.temperature}`}
+            aria-label={`Apply ${preset.label} preset: ${preset.days} days, ${preset.itemCount} items, temperature ${preset.temperature.toFixed(1)}`}
           >
             <span aria-hidden="true">{preset.icon}</span> {preset.label}
           </button>

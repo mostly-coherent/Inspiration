@@ -140,7 +140,8 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
           />
           <p className="text-xs text-adobe-gray-500 mt-1">
             Controls creativity for this specific mode. Low (0.2-0.3) = focused, predictable. High (0.7+) = creative, varied.
-            Leave blank to use the global default from Settings → Advanced.
+            <br />
+            <span className="text-amber-500/70">⚠️ Use 1 decimal precision (0.1, 0.5, 0.7).</span> Leave blank to use global default.
           </p>
         </div>
       )}

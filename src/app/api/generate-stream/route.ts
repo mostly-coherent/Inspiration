@@ -1,9 +1,37 @@
 import { NextRequest } from "next/server";
 import { spawn } from "child_process";
-import { GenerateRequest, TOOL_CONFIG, PRESET_MODES, getToolPath, ThemeType, ModeType, ToolType } from "@/lib/types";
+import { readFile } from "fs/promises";
+import path from "path";
+import { existsSync } from "fs";
+import { GenerateRequest, TOOL_CONFIG, PRESET_MODES, getToolPath, ThemeType, ModeType, ToolType, GenerationDefaults } from "@/lib/types";
 import { logger } from "@/lib/logger";
 import { resolveThemeModeFromTool, validateThemeMode, getModeSettings } from "@/lib/themes";
 import { getPythonPath } from "@/lib/pythonPath";
+
+// Default generation settings (fallback if config not found)
+const DEFAULT_GENERATION: GenerationDefaults = {
+  temperature: 0.5,
+  deduplicationThreshold: 0.80,
+  maxTokens: 4000,
+  maxTokensJudge: 500,
+};
+
+// Load generation defaults from config
+async function loadGenerationDefaults(): Promise<GenerationDefaults> {
+  try {
+    const configPath = path.join(process.cwd(), "data", "config.json");
+    if (existsSync(configPath)) {
+      const content = await readFile(configPath, "utf-8");
+      const config = JSON.parse(content);
+      if (config.generationDefaults) {
+        return { ...DEFAULT_GENERATION, ...config.generationDefaults };
+      }
+    }
+  } catch (error) {
+    logger.error("[Generate-Stream] Failed to load generation defaults:", error);
+  }
+  return DEFAULT_GENERATION;
+}
 
 export const maxDuration = 300; // 5 minutes for long-running generation
 
@@ -95,9 +123,13 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Override with custom values if provided, or use mode defaults
+        // Load global generation defaults from config
+        const generationDefaults = await loadGenerationDefaults();
+        
+        // Override with custom values if provided, or use mode defaults, or use global defaults
+        // Priority: per-request > per-mode > global config > hardcoded fallback
         const effectiveBestOf = bestOf ?? modeConfig?.bestOf ?? 5;
-        const effectiveTemperature = temperature ?? modeSettings?.temperature ?? modeConfig?.temperature ?? 0.2;
+        const effectiveTemperature = temperature ?? modeSettings?.temperature ?? modeConfig?.temperature ?? generationDefaults.temperature;
         
         args.push("--best-of", effectiveBestOf.toString());
         args.push("--temperature", effectiveTemperature.toString());
