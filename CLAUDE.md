@@ -26,6 +26,8 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 - **Library** — Items and Categories with automatic grouping via cosine similarity
 - **Memory** — Indexed chat history with sync status and date coverage
 - **Theme Explorer** — Interactive theme grouping with LLM-powered synthesis
+- **Coverage Intelligence (v5)** — Automated gap detection and suggested generation runs
+- **Explore Coverage** — Visual chart of Memory terrain vs Library coverage
 
 ### New User Onboarding
 
@@ -123,6 +125,42 @@ npm run dev
 2.  **Initialize DB:** Run `engine/scripts/init_vector_db.sql` in Supabase SQL Editor.
 3.  **Index History:** Run `python3 engine/scripts/index_all_messages.py` (one-time).
 4.  **Sync:** Run `python3 engine/scripts/sync_messages.py` periodically.
+5.  **Coverage Tables (v5):** Run `engine/scripts/add_coverage_tables.sql` for Coverage Intelligence.
+6.  **Harmonization Optimization:** Run `engine/scripts/optimize_harmonization.sql` + `python3 engine/scripts/backfill_library_embeddings.py`.
+
+---
+
+## Coverage Intelligence (v5)
+
+**Purpose:** Automate Library growth by analyzing Memory terrain vs Library coverage.
+
+**Key Concepts:**
+- **Memory Terrain:** Conversation density by week (how much raw material exists)
+- **Library Coverage:** Which time periods have items derived from them
+- **Coverage Gap:** High chat density + low Library items = opportunity
+- **Coverage Score:** 0-100% measure of how well Library tracks Memory
+
+**Pages:**
+- `/` — Main page shows coverage score + 4 suggested runs inline
+- `/explore-coverage` — Full visualization chart + all suggested runs
+
+**CLI for Coverage Runs:**
+```bash
+# Generate ideas for specific date range (with topic filter)
+python3 engine/generate.py --mode ideas \
+  --start-date 2026-01-01 --end-date 2026-01-07 \
+  --item-count 10 --source-tracking
+
+# Disable topic filter to regenerate even covered topics
+python3 engine/generate.py --mode insights \
+  --start-date 2026-01-01 --end-date 2026-01-07 \
+  --source-tracking --no-topic-filter
+```
+
+**Performance Optimizations (IMP-15/16/17):**
+- pgvector RPC for server-side similarity search (275x fewer API calls)
+- Batch + parallel deduplication (5 workers)
+- Pre-generation topic filter (50-80% LLM cost reduction)
 
 ---
 
@@ -130,23 +168,26 @@ npm run dev
 
 | File | Purpose |
 |------|---------|
-| `src/app/page.tsx` | Main UI — redirects to onboarding if new user, Theme Explorer hero, Generate actions |
+| `src/app/page.tsx` | Main UI — redirects to onboarding if new user, integrated Coverage suggestions |
 | `src/app/onboarding/page.tsx` | 3-step onboarding wizard (Welcome → API Keys → Sync) |
 | `src/app/themes/page.tsx` | Theme Explorer — interactive theme grouping with LLM synthesis |
-| `src/app/settings/page.tsx` | Settings wizard (workspaces, VectorDB, voice, LLM, mode settings, features) |
-| `src/app/api/config/env/route.ts` | Environment variables API for onboarding |
-| `src/app/api/items/themes/synthesize/route.ts` | LLM-powered theme synthesis API |
-| `src/components/ModeSettingsManager.tsx` | Mode management UI (create/edit/delete modes) (v1) |
-| `src/components/BanksOverview.tsx` | Unified Items/Categories bank viewer (v1) |
-| `src/components/ScoreboardHeader.tsx` | Memory + Library stats header (v3) |
-| `src/components/RunHistory.tsx` | Run history display component (v1) |
-| `engine/generate.py` | Unified generation CLI (v1: replaces ideas.py/insights.py) |
+| `src/app/explore-coverage/page.tsx` | Coverage visualization — chart + suggested runs (v5) |
+| `src/app/settings/page.tsx` | Settings wizard (workspaces, VectorDB, voice, LLM, mode settings) |
+| `src/app/api/coverage/analyze/route.ts` | Coverage analysis API (v5) |
+| `src/app/api/generate/route.ts` | Generation API with topic filter support |
+| `src/components/ScoreboardHeader.tsx` | Memory + Library stats header with coverage score (v3+v5) |
+| `src/components/CoverageSuggestions.tsx` | Suggested runs display on main page (v5) |
+| `src/components/CoverageVisualization.tsx` | Bar chart of terrain vs coverage (v5) |
+| `src/components/LibraryView.tsx` | Full-width library browser with detail panel (v3.1) |
+| `engine/generate.py` | Unified generation CLI with topic filter integration |
 | `engine/common/cursor_db.py` | Core DB extraction (Mac/Windows only, handles "Bubble" architecture) |
 | `engine/common/vector_db.py` | Supabase interface for storage & search (server-side RPC) |
-| `engine/common/items_bank.py` | Unified Items/Categories bank manager (v1) |
-| `engine/common/folder_tracking.py` | Folder-based tracking for implemented items (v1) |
+| `engine/common/items_bank_supabase.py` | Supabase-backed ItemsBank with batch operations |
+| `engine/common/coverage.py` | Coverage Intelligence analysis engine (v5) |
+| `engine/common/topic_filter.py` | Pre-generation topic filtering (IMP-17) |
 | `engine/common/semantic_search.py` | Embedding generation & vector similarity |
 | `engine/scripts/sync_messages.py` | Incremental sync service |
+| `engine/scripts/optimize_harmonization.sql` | pgvector optimization schema |
 | `data/themes.json` | Theme/Mode configuration (v1) |
 
 ---

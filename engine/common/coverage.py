@@ -191,9 +191,14 @@ def detect_gaps(
     - Calculate expected items based on conversation density
     - Flag gaps where actual < expected
     - Assign severity based on gap size and conversation count
+    - SKIP incomplete weeks (week_end >= today)
     
     Returns list of CoverageGap objects sorted by severity (high first).
     """
+    from datetime import date
+    
+    today = date.today()
+    
     # Build lookup map for library coverage
     coverage_map: dict[str, int] = {}
     for cov in library_coverage:
@@ -204,6 +209,14 @@ def detect_gaps(
     for week in memory_density:
         conversations = week.conversation_count
         existing_items = coverage_map.get(week.week_label, 0)
+        
+        # Skip incomplete weeks (week hasn't ended yet)
+        try:
+            week_end_date = date.fromisoformat(week.week_end)
+            if week_end_date >= today:
+                continue  # Week is still in progress, don't suggest runs for it
+        except (ValueError, TypeError):
+            pass  # If date parsing fails, include the week
         
         # Calculate expected items (1 per 10 conversations, minimum 1 if any conversations)
         if conversations == 0:

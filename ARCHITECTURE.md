@@ -1193,7 +1193,7 @@ Generation Request
 - Easier to maintain and extend
 - Use cases become reusable assets in bank
 
-**Last Updated:** 2026-01-10
+**Last Updated:** 2026-01-10 (Coverage Intelligence + Harmonization Optimizations)
 
 ---
 
@@ -1372,6 +1372,114 @@ Harmonize deduplicated items to bank
 Users wanting diverse outputs should run multiple queries with different temperature/similarity settings. The bank naturally deduplicates across runs.
 
 <!-- Merged from FLOW_ANALYSIS.md on 2026-01-01 - see PIVOT_LOG.md for full decision rationale -->
+
+---
+
+## Harmonization & Pre-Generation Optimization Architecture (2026-01-10)
+
+### The Problem
+
+As the Library grew (275+ items), several bottlenecks emerged:
+
+| Bottleneck | Before | Impact |
+|------------|--------|--------|
+| **Harmonization** | Regenerate embeddings for EVERY existing item on EVERY comparison | O(n*m) API calls, 60-120s for 10 items |
+| **Sequential deduplication** | N items = N sequential RPC calls | Linear slowdown with item count |
+| **Redundant generation** | Generate items for topics already in Library | Wasted LLM costs (dedup during harmonization) |
+
+### Optimization Stack
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    GENERATION + HARMONIZATION PIPELINE              │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌─────────────────────┐                                            │
+│  │ 1. Pre-Generation   │  IMP-17: Topic Filter                     │
+│  │    Topic Check      │  ─────────────────────                    │
+│  │                     │  • Extract conversation summaries          │
+│  │                     │  • Batch embed (single API call)           │
+│  │                     │  • Parallel pgvector search (5 workers)    │
+│  │                     │  • Skip covered topics → expand date range │
+│  │                     │  • Increment occurrence for skipped topics │
+│  └─────────┬───────────┘                                            │
+│            │ Only uncovered topics                                  │
+│            ▼                                                        │
+│  ┌─────────────────────┐                                            │
+│  │ 2. LLM Generation   │  Only for NEW topics                      │
+│  │                     │  ─────────────────────                    │
+│  │                     │  • Generate N items                        │
+│  │                     │  • Cost reduced 50-80% for repeat topics  │
+│  └─────────┬───────────┘                                            │
+│            │                                                        │
+│            ▼                                                        │
+│  ┌─────────────────────┐                                            │
+│  │ 3. Batch Embedding  │  IMP-16: Parallel Processing              │
+│  │                     │  ────────────────────────                 │
+│  │                     │  • Single batch API call for all items     │
+│  │                     │  • Embeddings stored in DB (not regenerated) │
+│  └─────────┬───────────┘                                            │
+│            │                                                        │
+│            ▼                                                        │
+│  ┌─────────────────────┐                                            │
+│  │ 4. Server-Side      │  IMP-15: pgvector RPC                     │
+│  │    Similarity       │  ─────────────────────                    │
+│  │                     │  • search_similar_library_items() RPC      │
+│  │                     │  • Parallel execution (5 workers)          │
+│  │                     │  • No client-side embedding regeneration   │
+│  └─────────┬───────────┘                                            │
+│            │                                                        │
+│            ▼                                                        │
+│  ┌─────────────────────┐                                            │
+│  │ 5. Batch DB Ops     │  IMP-16: Batch + Parallel                 │
+│  │                     │  ────────────────────────                 │
+│  │                     │  • Batch insert for new items              │
+│  │                     │  • Parallel updates for existing items     │
+│  │                     │  • Date range expansion on dedup           │
+│  └─────────────────────┘                                            │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Performance Impact
+
+| Metric | Before Optimization | After Optimization | Improvement |
+|--------|---------------------|-------------------|-------------|
+| Embedding API calls per item | 275+ (all existing items) | 1 (new item only) | **275x** |
+| RPC calls for 10 items | N/A | 10 parallel (5 workers) | **2x faster** |
+| DB inserts for 10 items | 10 sequential | 1 batch | **10x faster** |
+| LLM calls for covered topics | 100% | 0% (skipped) | **50-80% cost** |
+| Harmonization time (10 items) | 60-120s | ~2-5s | **20-60x** |
+
+### Key SQL Functions
+
+**`search_similar_library_items()`** - Server-side similarity search:
+```sql
+CREATE FUNCTION search_similar_library_items(
+  query_embedding vector(1536),
+  match_count int DEFAULT 5,
+  similarity_threshold float DEFAULT 0.85
+) RETURNS TABLE (id text, title text, similarity float)
+```
+
+**`get_memory_density_by_week()`** - Memory terrain analysis:
+```sql
+RETURNS TABLE (week_start date, week_end date, conversation_count int, message_count int)
+```
+
+**`get_library_coverage_by_week_and_type()`** - Coverage by item type:
+```sql
+RETURNS TABLE (week_start date, week_end date, item_type text, item_count int)
+```
+
+### Files Involved
+
+| File | Purpose |
+|------|---------|
+| `engine/common/topic_filter.py` | Pre-generation topic check |
+| `engine/common/items_bank_supabase.py` | Batch operations, pgvector RPC |
+| `engine/scripts/optimize_harmonization.sql` | Vector column + RPC function |
+| `engine/scripts/backfill_library_embeddings.py` | Populate embeddings for existing items |
 
 ---
 

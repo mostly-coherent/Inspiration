@@ -89,12 +89,8 @@ export async function POST(request: NextRequest) {
       args.push(`--${mode}`);
     } else {
       // Custom mode - use explicit args
-      // Note: generate.py only supports --days (last N days from today) or --date (single date)
-      // For date ranges, we calculate the number of days and use --days
-      let effectiveDays: number | undefined;
-      
       if (fromDate && toDate) {
-        // Calculate days between dates (inclusive)
+        // Use explicit date range (enables IMP-17 topic filter)
         const from = new Date(fromDate);
         const to = new Date(toDate);
         const today = new Date();
@@ -132,22 +128,13 @@ export async function POST(request: NextRequest) {
           );
         }
         
-        // Calculate days from today to start date
-        const daysFromTodayToStart = Math.ceil((today.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
-        
-        // Python --days means "last N days from today", so we need to calculate
-        // how many days back to go to include the start date
-        // Since we're searching backwards from today, we use daysFromTodayToStart + 1
-        // (to include both start and end dates)
-        // Note: No 90-day limit in v1 - Vector DB enables unlimited ranges
-        effectiveDays = daysFromTodayToStart + 1;
+        // Use explicit --start-date and --end-date (enables IMP-17 topic filter)
+        args.push("--start-date", fromDate);
+        args.push("--end-date", toDate);
+        args.push("--source-tracking"); // Enable coverage tracking + topic filter
       } else if (days) {
         // Note: No 90-day limit in v1 - Vector DB enables unlimited ranges
-        effectiveDays = days;
-      }
-      
-      if (effectiveDays !== undefined) {
-        args.push("--days", effectiveDays.toString());
+        args.push("--days", days.toString());
       }
     }
 

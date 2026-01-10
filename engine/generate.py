@@ -1174,32 +1174,60 @@ def harmonize_all_outputs(
                     print(f"   ⚠️  Quality scoring failed: {e}", file=sys.stderr)
                     quality_scores = [None] * len(prepared_items)
                 
-                # Now add items with pre-computed embeddings and quality scores
+                # OPTIMIZATION (H-1, H-2): Batch add items with parallel deduplication
+                # Prepare items for batch insertion
+                batch_items_data = []
                 for i, prep in enumerate(prepared_items):
-                    returned_id = bank.add_item(
+                    batch_items_data.append({
+                        "title": prep["title"],
+                        "description": prep["description"],
+                        "tags": prep["tags"],
+                        "embedding": embeddings[i],
+                        "first_seen_date": prep.get("_first_seen_date"),
+                        "quality": quality_scores[i] if i < len(quality_scores) else None,
+                    })
+                
+                # Use batch_add_items if available (ItemsBankSupabase), else fallback to sequential
+                if hasattr(bank, 'batch_add_items'):
+                    batch_result = bank.batch_add_items(
+                        items=batch_items_data,
                         item_type=mode_id,
-                        title=prep["title"],
-                        description=prep["description"],
-                        tags=prep["tags"],
-                        embedding=embeddings[i],  # Pass pre-computed embedding
-                        first_seen_date=prep.get("_first_seen_date"),  # Pass date from filename
-                        quality=quality_scores[i] if i < len(quality_scores) else None,
-                        # Coverage tracking: store source date range for coverage analysis
                         source_start_date=source_date_range[0] if source_date_range else None,
                         source_end_date=source_date_range[1] if source_date_range else None,
+                        threshold=0.85,
+                        max_workers=5,
                     )
-                    
-                    batch_items_processed += 1
-                    total_items_processed += 1
-                    
-                    # If returned_id was already in bank before, it was an update; otherwise new
-                    if returned_id in existing_ids_before:
-                        batch_items_updated += 1
-                        total_items_updated += 1
-                    else:
-                        batch_items_added += 1
-                        total_items_added += 1
-                        existing_ids_before.add(returned_id)  # Track for next iteration
+                    batch_items_processed = batch_result.get("total", 0)
+                    batch_items_added = batch_result.get("added", 0)
+                    batch_items_updated = batch_result.get("updated", 0)
+                    total_items_processed += batch_items_processed
+                    total_items_added += batch_items_added
+                    total_items_updated += batch_items_updated
+                else:
+                    # Fallback: Sequential add_item calls (for local ItemsBank)
+                    for i, prep in enumerate(prepared_items):
+                        returned_id = bank.add_item(
+                            item_type=mode_id,
+                            title=prep["title"],
+                            description=prep["description"],
+                            tags=prep["tags"],
+                            embedding=embeddings[i],
+                            first_seen_date=prep.get("_first_seen_date"),
+                            quality=quality_scores[i] if i < len(quality_scores) else None,
+                            source_start_date=source_date_range[0] if source_date_range else None,
+                            source_end_date=source_date_range[1] if source_date_range else None,
+                        )
+                        
+                        batch_items_processed += 1
+                        total_items_processed += 1
+                        
+                        if returned_id in existing_ids_before:
+                            batch_items_updated += 1
+                            total_items_updated += 1
+                        else:
+                            batch_items_added += 1
+                            total_items_added += 1
+                            existing_ids_before.add(returned_id)
             
             bank.save()
             
@@ -1563,6 +1591,7 @@ def process_aggregated_range(
     dedup_threshold: float = 0.85,
     timestamp_range: tuple[int, int] | None = None,  # Optional (start_ts, end_ts) for precise time-based ranges
     source_date_range: tuple[str, str] | None = None,  # Optional (start_date, end_date) for coverage tracking
+    topic_filter: bool = True,  # IMP-17: Pre-filter covered topics to reduce LLM costs
 ) -> dict:
     """Process a date range with aggregated output."""
     # OPTIMIZATION: Search entire date range at once instead of per-date
@@ -1741,6 +1770,49 @@ def process_aggregated_range(
             "output_file": None,
         }
     
+    # Step 3.5 (IMP-17): Pre-filter covered topics to reduce LLM generation costs
+    # For covered topics: Skip generation but expand date ranges (keeps coverage accurate)
+    topic_filter_stats = None
+    if topic_filter and source_date_range:
+        from common.topic_filter import filter_covered_topics
+        
+        # Map mode to item_type
+        item_type = "insight" if mode == "insights" else "idea"
+        
+        filter_result = filter_covered_topics(
+            conversations=all_conversations,
+            item_type=item_type,
+            source_start_date=source_date_range[0],
+            source_end_date=source_date_range[1],
+            threshold=0.75,  # Lower than dedup threshold to catch more overlaps
+            max_workers=5,
+            verbose=verbose,
+        )
+        
+        topic_filter_stats = {
+            "original_conversations": len(all_conversations),
+            "conversations_to_generate": filter_result.uncovered_count,
+            "conversations_skipped": filter_result.covered_count,
+            "items_date_range_expanded": filter_result.items_updated,
+        }
+        
+        # Use filtered conversations for generation
+        all_conversations = filter_result.conversations_to_generate
+        
+        # If all topics are covered, return early
+        if not all_conversations:
+            print(f"✅ All topics already covered! Date ranges expanded for {filter_result.items_updated} items.", file=sys.stderr)
+            return {
+                "start_date": dates[0],
+                "end_date": dates[-1],
+                "total_conversations": topic_filter_stats["original_conversations"],
+                "days_with_activity": days_with_activity,
+                has_output_key: False,
+                "output_file": None,
+                "topic_filter": topic_filter_stats,
+                "skipped_reason": "all_topics_covered",
+            }
+    
     # Step 4: Compress/distill each conversation individually (lossless compression)
     # Users want signals/reminders, not all details - compression preserves key info
     # OPTIMIZATION: Skip compression for small date ranges (configurable threshold)
@@ -1836,7 +1908,7 @@ def process_aggregated_range(
         total_conversations=len(all_conversations),
     )
     
-    return {
+    result = {
         "start_date": dates[0],
         "end_date": dates[-1],
         "total_conversations": len(all_conversations),
@@ -1847,6 +1919,14 @@ def process_aggregated_range(
         "items_after_dedup": stats.get("items_after_dedup", 0),
         "items_returned": stats.get("items_returned", 0),
     }
+    
+    # Add topic filter stats if available
+    if topic_filter_stats:
+        result["topic_filter"] = topic_filter_stats
+        # Adjust total_conversations to reflect original count before filtering
+        result["total_conversations"] = topic_filter_stats["original_conversations"]
+    
+    return result
 
 
 # =============================================================================
@@ -1891,6 +1971,8 @@ def main():
                         help="End date (YYYY-MM-DD) for coverage run")
     parser.add_argument("--source-tracking", dest="source_tracking", action="store_true",
                         help="Track source dates for coverage analysis")
+    parser.add_argument("--no-topic-filter", dest="no_topic_filter", action="store_true",
+                        help="Disable IMP-17 pre-generation topic filter (generate all topics)")
     parser.add_argument("--items", dest="items_alias", type=int, default=None,
                         help="Alias for --item-count (for coverage runs)")
     
@@ -2025,6 +2107,7 @@ def main():
             dedup_threshold=args.dedup_threshold,
             timestamp_range=timestamp_range,  # For hours-based processing
             source_date_range=source_date_range,  # For coverage tracking
+            topic_filter=not args.no_topic_filter,  # IMP-17: Pre-filter covered topics
         )
         
         has_output_key = "has_posts" if mode == "insights" else "has_ideas"
