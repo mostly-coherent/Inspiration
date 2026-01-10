@@ -157,6 +157,20 @@ class ItemsBank:
                 if tags:
                     existing_tags.update(tags)
                 item["tags"] = list(existing_tags)[:10]  # Cap at 10 tags
+                
+                # CRITICAL FIX: Expand source date range for Coverage Intelligence
+                # When a similar item is deduplicated, the existing item now "covers"
+                # both the original period AND the new period. This prevents false
+                # coverage gaps where the same concept appears across multiple weeks.
+                if source_start_date:
+                    existing_start = item.get("sourceStartDate")
+                    if not existing_start or source_start_date < existing_start:
+                        item["sourceStartDate"] = source_start_date
+                if source_end_date:
+                    existing_end = item.get("sourceEndDate")
+                    if not existing_end or source_end_date > existing_end:
+                        item["sourceEndDate"] = source_end_date
+                
                 return existing_id
         
         # Create new item with unified structure
