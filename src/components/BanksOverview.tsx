@@ -20,7 +20,6 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
     totalCategories: number;
     byMode: Record<string, number>;
     byTheme: Record<string, number>;
-    implemented: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(true); // v3: Default expanded for two-panel layout
@@ -40,10 +39,9 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
     setError(null);
     setLoading(true);
     try {
-      // Load all items (filtering done client-side via LibrarySearch)
+      // Load all items
       const params = new URLSearchParams({
         view: "items",
-        // No implemented filter - include all statuses, filter client-side
       });
       
       const res = await fetch(`/api/items?${params}`);
@@ -79,26 +77,16 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const generateItemsMarkdown = (_items?: Item[]): string => {
     const lines = ["# Items Library", ""];
-    const implementedCount = items.filter((item) => 
-      item.status === "implemented" || item.status === "posted" || item.implemented
-    ).length;
-    lines.push(`> **${items.length} items** — ${implementedCount} implemented/posted`);
+    lines.push(`> **${items.length} items**`);
     lines.push("");
     lines.push("---");
     lines.push("");
 
-    // Separate by status
-    const active = items.filter((item) => 
-      (item.status === "active" || !item.status) && !item.implemented
-    );
-    const completed = items.filter((item) => 
-      item.status === "implemented" || item.status === "posted" || item.implemented
-    );
-
-    if (active.length > 0) {
-      lines.push("## Active Items");
+    // All items (no status separation)
+    if (items.length > 0) {
+      lines.push("## Items");
       lines.push("");
-      active.forEach((item, idx) => {
+      items.forEach((item, idx) => {
         // Use unified structure: title + description
         const title = item.title || item.name || item.content?.title || "Untitled";
         const itemType = item.itemType || item.mode || "unknown";
@@ -134,33 +122,8 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
           }
         }
         
-        // Tags
-        const tags = item.tags || [];
-        if (tags.length > 0) {
-          lines.push(`**Tags:** ${tags.join(", ")}`);
-          lines.push("");
-        }
-        
         lines.push(`*Occurrence: ${item.occurrence}x | First seen: ${item.firstSeen} | Last seen: ${item.lastSeen}*`);
         lines.push("");
-        lines.push("---");
-        lines.push("");
-      });
-    }
-
-    if (completed.length > 0) {
-      lines.push("## Completed Items");
-      lines.push("");
-      completed.forEach((item, idx) => {
-        const title = item.title || item.name || item.content?.title || "Untitled";
-        const status = item.status || (item.implemented ? "implemented" : "active");
-        const statusEmoji = status === "posted" ? "📝" : "✅";
-        lines.push(`### ${idx + 1}. ${title} ${statusEmoji}`);
-        lines.push("");
-        if (item.implementedSource) {
-          lines.push(`*Source: ${item.implementedSource}*`);
-          lines.push("");
-        }
         lines.push("---");
         lines.push("");
       });
@@ -195,20 +158,10 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
     
     return (
       <div className="space-y-4">
-        {/* Quick Stats Row */}
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <div className="text-center p-2 bg-slate-800/50 rounded-lg">
-            <div className="text-lg font-bold text-white">{stats.totalItems}</div>
-            <div className="text-slate-500">items</div>
-          </div>
-          <div className="text-center p-2 bg-slate-800/50 rounded-lg">
-            <div className="text-lg font-bold text-emerald-400">{stats.implemented}</div>
-            <div className="text-slate-500">done</div>
-          </div>
-          <div className="text-center p-2 bg-slate-800/50 rounded-lg">
-            <div className="text-lg font-bold text-amber-400">{stats.totalItems - stats.implemented}</div>
-            <div className="text-slate-500">active</div>
-          </div>
+        {/* Quick Stats */}
+        <div className="text-center p-2 bg-slate-800/50 rounded-lg">
+          <div className="text-lg font-bold text-white">{stats.totalItems}</div>
+          <div className="text-xs text-slate-500">items in library</div>
         </div>
         
         {/* Recent Items Preview */}
@@ -222,7 +175,6 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
               <div className="text-white truncate">{item.title || item.name}</div>
               <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
                 <span className="capitalize">{item.itemType}</span>
-                {item.quality && <span className={`${item.quality === "A" ? "text-emerald-400" : item.quality === "B" ? "text-amber-400" : "text-slate-400"}`}>{item.quality}</span>}
               </div>
             </div>
           ))}
@@ -276,20 +228,10 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
       
       {stats && (
         <>
-          {/* Stats Summary - Compact for sidebar */}
-          <div className="grid grid-cols-3 gap-2 text-sm">
-            <div className="p-2 bg-black/20 rounded-lg text-center">
-              <div className="text-white font-medium">{stats.totalItems}</div>
-              <div className="text-adobe-gray-500 text-xs">Items</div>
-            </div>
-            <div className="p-2 bg-black/20 rounded-lg text-center">
-              <div className="text-emerald-400 font-medium">{stats.implemented}</div>
-              <div className="text-adobe-gray-500 text-xs">Done</div>
-            </div>
-            <div className="p-2 bg-black/20 rounded-lg text-center">
-              <div className="text-amber-400 font-medium">{stats.totalItems - stats.implemented}</div>
-              <div className="text-adobe-gray-500 text-xs">Active</div>
-            </div>
+          {/* Stats Summary */}
+          <div className="p-2 bg-black/20 rounded-lg text-center">
+            <div className="text-white font-medium">{stats.totalItems}</div>
+            <div className="text-adobe-gray-500 text-xs">Items in Library</div>
           </div>
 
           {/* Expandable content (always visible on desktop, collapsible on mobile) */}

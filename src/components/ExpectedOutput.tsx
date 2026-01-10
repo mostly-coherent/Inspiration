@@ -52,7 +52,7 @@ export function ExpectedOutput({
       {/* v2: Simplified Explanation - Item-centric flow */}
       <div className="mt-3 pt-3 border-t border-white/10 text-xs text-adobe-gray-500">
         <span className="text-adobe-gray-400">
-          Generates {itemCount} {toolLabel} at temp {temperature.toFixed(1)}, deduplicates similar ones, then ranks by quality.
+          Generates {itemCount} {toolLabel} at temp {temperature.toFixed(1)}, then deduplicates similar ones.
         </span>
       </div>
     </div>

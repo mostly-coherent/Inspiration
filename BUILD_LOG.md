@@ -6,6 +6,60 @@
 
 ---
 
+## Progress - 2026-01-10 (Major Feature Declutter)
+
+**Done:**
+- ✅ **Removed Low-Value Features to Simplify the App**
+  - **Problem:** The Inspiration app accumulated many features (Quality rating, Implementation status, Tags, Top 3 Today, Run History, Themes Overview in Library) that added complexity without proportional value. Users want clarity, ideas, and insights—not a barrage of filters and indicators.
+  - **Solution:** Systematically removed dead code, unused configs, and UI clutter to focus the app on its core value proposition: Theme Explorer reflection.
+
+  **Features Removed:**
+  | Feature | Why Removed |
+  |---------|-------------|
+  | **Quality Rating (A/B/C)** | Never used for filtering; items naturally get prioritized by occurrence/recency |
+  | **Implementation Status** | With 100+ items, tracking "done vs pending" was noise; users focus on themes, not individual items |
+  | **Tags** | 100+ tags = unusable; users can use Seek to find specific items instead |
+  | **Top 3 Today** | Recommendations were hit-or-miss; Theme Explorer serves this purpose better |
+  | **Build/Share Next** | Removed with Top 3 Today |
+  | **Themes Overview (Library)** | Too many "Uncategorized" items; Theme Explorer is the canonical exploration tool |
+  | **Run History** | Never used; users don't need to see past generation runs |
+  | **Most Occurrences / A-Z Sort** | No value without tags; simple sorting by recency/newest is sufficient |
+  | **File Tracking Config** | Was tied to implementation status tracking |
+  
+  **Files Deleted:**
+  - `src/app/api/items/top/route.ts` — Top 3 Today API
+  - `src/app/api/items/quality/route.ts` — Quality rating API
+  - `src/lib/runHistory.ts` — Run history utility
+  - `src/components/RunHistory.tsx` — Run history component
+  - `src/app/api/items/route.ts.backup` — Old backup file
+  
+  **Types Cleaned Up:**
+  - Removed `QualityScoring`, `FileTrackingConfig`, `ItemQuality` interfaces
+  - Simplified `ItemStatus` from `active|implemented|posted|archived` to `active|archived`
+  - Removed `implemented`, `implementedDate`, `implementedSource`, `quality` fields from `Item`
+  - Removed `implementedItemsFolder` from `ModeSettings`
+  
+  **UI Simplified:**
+  - Library filters: removed Quality, Status, Tags dropdowns
+  - Library sort: removed "Most Occurrences", "A-Z" options
+  - Item cards: removed quality badges, status badges, tags display
+  - Settings: removed File Tracking section
+  - Scoreboard: removed implemented count
+  - Bulk actions: simplified to Active/Archived only
+
+**Evidence:**
+- All 26 E2E tests passing
+- No TypeScript/lint errors
+- App loads and functions correctly with simplified interface
+
+**In Progress:**
+- None
+
+**Next:**
+- Ready for next big feature
+
+---
+
 ## Progress - 2026-01-09 (Supabase Library Storage)
 
 **Done:**

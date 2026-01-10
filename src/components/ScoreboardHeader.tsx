@@ -12,7 +12,6 @@ interface MemoryStats {
 interface LibraryStats {
   totalItems: number;
   totalCategories: number;
-  implemented: number;
   thisWeek: number;
   byMode: Record<string, number>;
 }
@@ -37,7 +36,6 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
   const [libraryStats, setLibraryStats] = useState<LibraryStats>({
     totalItems: 0,
     totalCategories: 0,
-    implemented: 0,
     thisWeek: 0,
     byMode: {},
   });
@@ -78,7 +76,6 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
         setLibraryStats({
           totalItems: data.stats?.totalItems || 0,
           totalCategories: data.stats?.totalCategories || 0,
-          implemented: data.stats?.implemented || 0,
           thisWeek,
           byMode: data.stats?.byMode || {},
         });
@@ -263,13 +260,6 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
               <div className="flex items-center gap-1 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
                 <span>🏷️</span>
                 <span>{libraryStats.totalCategories} themes</span>
-              </div>
-            )}
-            
-            {libraryStats.implemented > 0 && (
-              <div className="flex items-center gap-1 text-purple-400 bg-purple-500/10 px-2 py-1 rounded-full">
-                <span>✓</span>
-                <span>{libraryStats.implemented} implemented</span>
               </div>
             )}
             

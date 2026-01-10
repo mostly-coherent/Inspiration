@@ -21,13 +21,11 @@ import { AdvancedSettings } from "@/components/AdvancedSettings";
 import { ExpectedOutput } from "@/components/ExpectedOutput";
 import { LogoutButton } from "@/components/LogoutButton";
 import { SimpleModeSelector } from "@/components/SimpleModeSelector";
-import { RunHistory } from "@/components/RunHistory";
 import { ScoreboardHeader } from "@/components/ScoreboardHeader";
 import { AnalysisCoverage } from "@/components/AnalysisCoverage";
 import { ViewToggle, ViewMode } from "@/components/ViewToggle";
 import { LibraryView } from "@/components/LibraryView";
 import { loadThemesAsync } from "@/lib/themes";
-import { saveRunToHistory } from "@/lib/runHistory";
 
 export default function Home() {
   const router = useRouter();
@@ -207,10 +205,7 @@ export default function Home() {
     const embeddingTokens = itemCount * 100;
     const embeddingCost = (embeddingTokens / 1_000_000) * 0.02;
     
-    // Quality scoring call (smaller, uses Haiku or similar)
-    const qualityScoringCost = itemCount * 0.0002;
-    
-    return inputCost + outputCost + embeddingCost + qualityScoringCost;
+    return inputCost + outputCost + embeddingCost;
   }, []);
 
   // v2: Get current itemCount value (memoized)
@@ -420,10 +415,6 @@ export default function Home() {
         }
       }
       
-      // Save to run history
-      if (data.success) {
-        saveRunToHistory(data);
-      }
     } catch (error) {
       // Check if this was an abort
       if (error instanceof Error && error.name === "AbortError") {
@@ -759,9 +750,6 @@ export default function Home() {
 
                 {/* Results */}
                 {result && <ResultsPanel result={result} onRetry={handleGenerate} />}
-
-                {/* Run History */}
-                <RunHistory />
               </>
             )}
           </main>

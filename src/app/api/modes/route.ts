@@ -15,8 +15,8 @@ interface Mode {
   settings: {
     temperature: number | null;
     minSimilarity: number | null;
+    deduplicationThreshold: number | null;
     goldenExamplesFolder: string | null;
-    implementedItemsFolder: string | null;
     semanticSearchQueries: string[] | null;
   };
   defaultBestOf: number;
@@ -129,8 +129,8 @@ export async function POST(request: NextRequest) {
       settings: {
         temperature: mode.settings?.temperature ?? null,
         minSimilarity: mode.settings?.minSimilarity ?? null,
+        deduplicationThreshold: mode.settings?.deduplicationThreshold ?? null,
         goldenExamplesFolder: mode.settings?.goldenExamplesFolder || null,
-        implementedItemsFolder: mode.settings?.implementedItemsFolder || null,
         semanticSearchQueries: mode.settings?.semanticSearchQueries || null,
       },
       defaultBestOf: mode.defaultBestOf || 5,

@@ -26,14 +26,11 @@ export async function GET() {
     const cutoffISO = cutoffDate.toISOString();
 
     // Fetch stale items from Supabase
-    // Criteria: status NOT archived/implemented/posted, quality NOT A, lastSeen older than cutoff
+    // Criteria: status NOT archived, lastSeen older than cutoff
     const { data: staleData, error: staleError } = await supabase
       .from("library_items")
       .select("id, title, last_seen")
       .neq("status", "archived")
-      .neq("status", "implemented")
-      .neq("status", "posted")
-      .or("quality.is.null,quality.neq.A")
       .lt("last_seen", cutoffISO);
     
     if (staleError) {
@@ -94,9 +91,6 @@ export async function POST(request: NextRequest) {
       .from("library_items")
       .select("id, title, last_seen")
       .neq("status", "archived")
-      .neq("status", "implemented")
-      .neq("status", "posted")
-      .or("quality.is.null,quality.neq.A")
       .lt("last_seen", cutoffISO);
     
     if (staleError) {

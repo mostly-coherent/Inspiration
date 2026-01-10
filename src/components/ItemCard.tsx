@@ -5,7 +5,6 @@ import { Item } from "@/lib/types";
 
 interface ItemCardProps {
   item: Item;
-  onStatusChange?: (id: string, status: Item["status"]) => void;
   isExpanded?: boolean;
 }
 
@@ -48,17 +47,8 @@ function getRecencyInfo(daysAgo: number): { label: string; color: string } {
   return { label: `${Math.floor(daysAgo / 30)}mo ago`, color: "text-slate-600" };
 }
 
-// Status icons and labels
-const STATUS_CONFIG: Record<Item["status"], { icon: string; label: string; bgColor: string; textColor: string }> = {
-  active: { icon: "💡", label: "Active", bgColor: "bg-amber-500/20", textColor: "text-amber-400" },
-  implemented: { icon: "✅", label: "Built", bgColor: "bg-emerald-500/20", textColor: "text-emerald-400" },
-  posted: { icon: "📝", label: "Posted", bgColor: "bg-purple-500/20", textColor: "text-purple-400" },
-  archived: { icon: "📦", label: "Archived", bgColor: "bg-slate-500/20", textColor: "text-slate-400" },
-};
-
 export const ItemCard = memo(function ItemCard({
   item,
-  onStatusChange,
   isExpanded: initialExpanded = false,
 }: ItemCardProps) {
   const [isExpanded, setIsExpanded] = useState(initialExpanded);
@@ -66,12 +56,9 @@ export const ItemCard = memo(function ItemCard({
   const title = item.title || item.name || (item.content?.title as string) || "Untitled";
   const itemType = item.itemType || item.mode || "idea";
   const typeEmoji = itemType === "idea" ? "💡" : itemType === "insight" ? "✨" : "🔍";
-  const status = item.status || (item.implemented ? "implemented" : "active");
-  const statusConfig = STATUS_CONFIG[status] || STATUS_CONFIG.active;
   
   const daysAgo = getDaysAgo(item.lastSeen);
   const recency = getRecencyInfo(daysAgo);
-  const tags = item.tags || [];
   
   // Memory jog: First seen to last seen
   const firstSeenFormatted = formatDateShort(item.firstSeen);
@@ -82,11 +69,7 @@ export const ItemCard = memo(function ItemCard({
 
   return (
     <div
-      className={`group rounded-xl border transition-all duration-200 ${
-        status === "implemented" || status === "posted"
-          ? "border-emerald-500/30 bg-gradient-to-br from-emerald-500/5 to-transparent"
-          : "border-white/10 bg-gradient-to-br from-white/5 to-transparent hover:border-white/20"
-      }`}
+      className="group rounded-xl border transition-all duration-200 border-white/10 bg-gradient-to-br from-white/5 to-transparent hover:border-white/20"
     >
       {/* Main Content */}
       <div className="p-4">
@@ -119,12 +102,6 @@ export const ItemCard = memo(function ItemCard({
           <div className="flex items-center gap-1 text-slate-400">
             <span className="opacity-50">💬</span>
             <span>{item.occurrence || item.sourceConversations || 1}x mentioned</span>
-          </div>
-          
-          {/* Status */}
-          <div className={`ml-auto flex items-center gap-1 px-2 py-0.5 rounded-full ${statusConfig.bgColor} ${statusConfig.textColor}`}>
-            <span>{statusConfig.icon}</span>
-            <span>{statusConfig.label}</span>
           </div>
         </div>
 
@@ -164,25 +141,8 @@ export const ItemCard = memo(function ItemCard({
           );
         })()}
 
-        {/* Tags */}
-        {tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {(isExpanded ? tags : tags.slice(0, 4)).map((tag, i) => (
-              <span
-                key={i}
-                className="text-xs bg-white/5 text-slate-400 px-2 py-0.5 rounded-md border border-white/5"
-              >
-                #{tag}
-              </span>
-            ))}
-            {!isExpanded && tags.length > 4 && (
-              <span className="text-xs text-slate-500">+{tags.length - 4}</span>
-            )}
-          </div>
-        )}
-
         {/* Expand/Collapse */}
-        {(item.description?.length > 200 || tags.length > 4) && (
+        {item.description?.length > 200 && (
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="mt-2 text-xs text-inspiration-ideas hover:text-inspiration-ideas/80 transition-colors"
@@ -192,23 +152,6 @@ export const ItemCard = memo(function ItemCard({
         )}
       </div>
 
-      {/* Quick Actions (shown on hover) */}
-      {onStatusChange && (
-        <div className="hidden group-hover:flex items-center gap-2 px-4 py-2 border-t border-white/5 bg-white/5">
-          <span className="text-xs text-slate-500">Mark as:</span>
-          {Object.entries(STATUS_CONFIG).map(([key, config]) => (
-            key !== status && (
-              <button
-                key={key}
-                onClick={() => onStatusChange(item.id, key as Item["status"])}
-                className={`text-xs px-2 py-1 rounded ${config.bgColor} ${config.textColor} hover:opacity-80 transition-opacity`}
-              >
-                {config.icon} {config.label}
-              </button>
-            )
-          ))}
-        </div>
-      )}
     </div>
   );
 });

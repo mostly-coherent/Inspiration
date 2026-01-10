@@ -15,7 +15,6 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [goldenExamplesFolder, setGoldenExamplesFolder] = useState("");
-  const [implementedItemsFolder, setImplementedItemsFolder] = useState("");
   const [temperature, setTemperature] = useState<number | null>(null);
   const [minSimilarity, setMinSimilarity] = useState<number | null>(null);
   const [deduplicationThreshold, setDeduplicationThreshold] = useState<number | null>(null);
@@ -33,7 +32,6 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
       if (modeData) {
         setModeData(modeData);
         setGoldenExamplesFolder(modeData.settings.goldenExamplesFolder || "");
-        setImplementedItemsFolder(modeData.settings.implementedItemsFolder || "");
         setTemperature(modeData.settings.temperature);
         setMinSimilarity(modeData.settings.minSimilarity);
         setDeduplicationThreshold(modeData.settings.deduplicationThreshold ?? 0.85);
@@ -55,7 +53,6 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
         settings: {
           ...modeData.settings,
           goldenExamplesFolder: goldenExamplesFolder || null,
-          implementedItemsFolder: implementedItemsFolder || null,
           temperature: temperature,
           minSimilarity: minSimilarity,
           deduplicationThreshold: deduplicationThreshold,
@@ -197,33 +194,6 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
           💡 Example: For insights, use a folder of your best blog post drafts.
         </p>
       </div>
-
-      {/* Implemented Items Folder */}
-      {(mode === "idea" || mode === "insight") && (
-        <div>
-          <label className="block text-sm text-adobe-gray-400 mb-1">
-            Implemented Items Folder
-          </label>
-          <input
-            type="text"
-            value={implementedItemsFolder}
-            onChange={(e) => setImplementedItemsFolder(e.target.value)}
-            placeholder={
-              mode === "idea"
-                ? "/path/to/implemented/projects"
-                : "/path/to/published/posts"
-            }
-            className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-white font-mono text-sm"
-          />
-          <p className="text-xs text-adobe-gray-500 mt-1">
-            {mode === "idea"
-              ? "Point to your code projects folder. Ideas that match files there get marked as 'implemented' — so you can focus on what's left to build."
-              : "Point to your published content folder (blog posts, notes). Insights matching published work get marked as 'implemented' — so you focus on new topics."}
-            <br />
-            💡 This helps you avoid duplicating work you&apos;ve already done.
-          </p>
-        </div>
-      )}
 
       {/* Semantic Search Queries (for generation and seek modes) */}
       {(mode === "idea" || mode === "insight" || mode === "use_case") && (
