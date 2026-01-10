@@ -70,6 +70,8 @@ export async function GET(request: NextRequest) {
       title: item.title,
       description: item.description,
       status: item.status || "active",
+      mode: item.mode,
+      theme: item.theme,
       sourceConversations: item.source_conversations,
       occurrence: item.occurrence,
       firstSeen: item.first_seen,

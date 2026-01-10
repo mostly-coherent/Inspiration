@@ -38,6 +38,9 @@ class ItemsBankSupabase:
         embedding: Optional[list[float]] = None,
         first_seen_date: Optional[str] = None,
         quality: Optional[str] = None,  # "A", "B", "C", or None
+        # Coverage Intelligence: source date range tracking
+        source_start_date: Optional[str] = None,  # YYYY-MM-DD format
+        source_end_date: Optional[str] = None,  # YYYY-MM-DD format
         # Legacy support
         mode: Optional[str] = None,
         theme: Optional[str] = None,
@@ -46,6 +49,22 @@ class ItemsBankSupabase:
     ) -> str:
         """
         Add a new item to Supabase.
+        
+        Args:
+            item_type: Type of item ("idea", "insight", "use_case")
+            title: Item title
+            description: Item description
+            tags: Optional tags for filtering
+            source_conversations: Number of conversations this item came from
+            embedding: Pre-computed embedding vector
+            first_seen_date: Date when item content was first seen (YYYY-MM format)
+            quality: Quality tier ("A", "B", "C")
+            source_start_date: Start date of the generation run that created this item (YYYY-MM-DD)
+            source_end_date: End date of the generation run that created this item (YYYY-MM-DD)
+            mode: Legacy field
+            theme: Legacy field
+            content: Legacy field
+            name: Legacy field
         
         Returns the item ID.
         """
@@ -74,6 +93,9 @@ class ItemsBankSupabase:
             "last_seen": datetime.now().strftime("%Y-%m"),
             "category_id": None,
             "embedding": embedding,  # Store embedding for theme grouping
+            # Coverage Intelligence: source date range tracking
+            "source_start_date": source_start_date,
+            "source_end_date": source_end_date,
             # Legacy fields for backward compatibility
             "mode": mode or item_type,
             "theme": theme or "generation",

@@ -25,6 +25,9 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "2mb",
     },
   },
+  // Note: "params are being enumerated" warnings in console are harmless
+  // They occur when dev tools/Cursor AI inspects the DOM and tries to serialize
+  // searchParams objects. All pages using searchParams have proper Suspense wrappers.
 };
 
 export default nextConfig;

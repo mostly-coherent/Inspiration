@@ -48,13 +48,6 @@ export interface AppConfig {
     styleguide: string | null;
   };
   features: {
-    linkedInSync: {
-      enabled: boolean;
-      postsDirectory: string | null;
-    };
-    solvedStatusSync: {
-      enabled: boolean;
-    };
     customVoice: {
       enabled: boolean;
       voiceGuideFile: string | null;      // Path to voice/style guide document
@@ -100,13 +93,6 @@ const DEFAULT_CONFIG: AppConfig = {
     styleguide: null,
   },
   features: {
-    linkedInSync: {
-      enabled: false,
-      postsDirectory: null,
-    },
-    solvedStatusSync: {
-      enabled: false,
-    },
     customVoice: {
       enabled: false,
       voiceGuideFile: null,
@@ -250,9 +236,8 @@ export async function POST(request: NextRequest) {
       ...body,
       llm: { ...currentConfig.llm, ...body.llm },
       features: {
-        linkedInSync: { ...currentConfig.features.linkedInSync, ...body.features?.linkedInSync },
-        solvedStatusSync: { ...currentConfig.features.solvedStatusSync, ...body.features?.solvedStatusSync },
         customVoice: { ...currentConfig.features.customVoice, ...body.features?.customVoice },
+        v1Enabled: body.features?.v1Enabled ?? currentConfig.features.v1Enabled,
       },
       ui: { ...currentConfig.ui, ...body.ui },
     };

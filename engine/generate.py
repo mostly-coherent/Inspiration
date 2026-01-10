@@ -986,10 +986,22 @@ Total conversations analyzed: {total_conversations}
 # Bank Harmonization
 # =============================================================================
 
-def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, batch_size: int = 5) -> int:
+def harmonize_all_outputs(
+    mode: Literal["insights", "ideas"],
+    llm: LLMProvider,
+    batch_size: int = 5,
+    source_date_range: tuple[str, str] | None = None,  # (start_date, end_date) for coverage tracking
+) -> int:
     """
     Harmonize all output files into the unified ItemsBank (v1), then delete them.
     Returns number of files processed.
+    
+    Args:
+        mode: Generation mode ("insights" or "ideas")
+        llm: LLM provider for quality scoring
+        batch_size: Number of files to process in each batch
+        source_date_range: Optional (start_date, end_date) tuple for coverage tracking.
+                          If provided, items will be marked with these dates for coverage analysis.
     """
     config = MODE_CONFIG[mode]
     output_dir = config["output_dir"]
@@ -1145,6 +1157,9 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
                         embedding=embeddings[i],  # Pass pre-computed embedding
                         first_seen_date=prep.get("_first_seen_date"),  # Pass date from filename
                         quality=quality_scores[i] if i < len(quality_scores) else None,
+                        # Coverage tracking: store source date range for coverage analysis
+                        source_start_date=source_date_range[0] if source_date_range else None,
+                        source_end_date=source_date_range[1] if source_date_range else None,
                     )
                     
                     batch_items_processed += 1
@@ -1520,6 +1535,7 @@ def process_aggregated_range(
     item_count: int = 10,
     dedup_threshold: float = 0.85,
     timestamp_range: tuple[int, int] | None = None,  # Optional (start_ts, end_ts) for precise time-based ranges
+    source_date_range: tuple[str, str] | None = None,  # Optional (start_date, end_date) for coverage tracking
 ) -> dict:
     """Process a date range with aggregated output."""
     # OPTIMIZATION: Search entire date range at once instead of per-date
@@ -1841,8 +1857,21 @@ def main():
                         help="Number of items to generate")
     parser.add_argument("--dedup-threshold", dest="dedup_threshold", type=float, default=0.85,
                         help="Similarity threshold for deduplication (0.0-1.0)")
+    # Coverage Intelligence: precise date range arguments
+    parser.add_argument("--start-date", dest="start_date", type=str,
+                        help="Start date (YYYY-MM-DD) for coverage run")
+    parser.add_argument("--end-date", dest="end_date", type=str,
+                        help="End date (YYYY-MM-DD) for coverage run")
+    parser.add_argument("--source-tracking", dest="source_tracking", action="store_true",
+                        help="Track source dates for coverage analysis")
+    parser.add_argument("--items", dest="items_alias", type=int, default=None,
+                        help="Alias for --item-count (for coverage runs)")
     
     args = parser.parse_args()
+    
+    # Handle --items alias for --item-count
+    if args.items_alias is not None and args.item_count is None:
+        args.item_count = args.items_alias
     
     mode: Literal["insights", "ideas"] = args.mode
     
@@ -1900,9 +1929,32 @@ def main():
     now = datetime.now()
     dates_to_process = []
     timestamp_range: tuple[int, int] | None = None  # For hours-based processing
+    source_date_range: tuple[str, str] | None = None  # For coverage tracking
     
-    # Priority: --hours > --days > mode default
-    if args.hours:
+    # Priority: --start-date/--end-date > --hours > --days > mode default
+    if args.start_date and args.end_date:
+        # Coverage run: precise date range
+        try:
+            start_date = datetime.strptime(args.start_date, "%Y-%m-%d").date()
+            end_date = datetime.strptime(args.end_date, "%Y-%m-%d").date()
+            
+            # Calculate days in range
+            delta = (end_date - start_date).days + 1
+            dates_to_process = [start_date + timedelta(days=i) for i in range(delta)]
+            
+            # Enable aggregated mode for coverage runs
+            use_aggregated = True
+            mode_name = "coverage"
+            
+            # Store source dates for tracking
+            if args.source_tracking:
+                source_date_range = (args.start_date, args.end_date)
+            
+            print(f"📅 Processing: {start_date} to {end_date} (coverage run)")
+        except ValueError as e:
+            print(f"Error: Invalid date format. Use YYYY-MM-DD. Error: {e}")
+            return 1
+    elif args.hours:
         # Use timestamp-based range for precise hour-based processing
         end_ts = int(now.timestamp() * 1000)
         start_ts = int((now - timedelta(hours=args.hours)).timestamp() * 1000)
@@ -1945,6 +1997,7 @@ def main():
             item_count=args.item_count,
             dedup_threshold=args.dedup_threshold,
             timestamp_range=timestamp_range,  # For hours-based processing
+            source_date_range=source_date_range,  # For coverage tracking
         )
         
         has_output_key = "has_posts" if mode == "insights" else "has_ideas"
@@ -1967,7 +2020,7 @@ def main():
         
         if result["output_file"] and not args.dry_run:
             print(f"📄 Output: {result['output_file']}")
-            harmonize_all_outputs(mode, llm)
+            harmonize_all_outputs(mode, llm, source_date_range=source_date_range)
             # Sync operations are non-critical - don't crash if they fail
             # The main work (generation + harmonization) is already saved
             try:

@@ -47,14 +47,13 @@ ENV/
 env.bak/
 venv.bak/
 
-# Data & Cache
+# Data & Cache (User-specific, contains personal paths and API keys)
+data/config.json
 data/embedding_cache.json
 data/conversation_cache.json
 data/vector_db_sync_state.json
 data/idea_bank.json
 data/insight_bank.json
-# Keep config.json example if needed, but user config is private usually. 
-# For now, ignoring banks and caches.
 
 # Test Results (may contain personal paths)
 e2e/
