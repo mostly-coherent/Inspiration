@@ -66,6 +66,50 @@
 
 ---
 
+## Critical Fix: Expand Source Date Range on Deduplication - 2026-01-10
+
+**Problem:** Coverage Intelligence could create an infinite loop of false coverage gaps.
+
+**Scenario:**
+1. Week A (Jan 1-7): 50 conversations about "AI agents"
+2. Week B (Jan 8-14): 30 conversations about "AI agents"
+3. Run for Week B → 10 items added with `source_start_date = Jan 8`
+4. Run for Week A → 10 items generated, but similar to Week B items → **ALL deduplicated, 0 new items**
+5. Week A still shows as a coverage gap (no items with `source_start_date` in Jan 1-7)
+6. User runs again → Same result → **Infinite frustration loop**
+
+**Root Cause:** When harmonization finds a similar existing item, it only incremented `occurrence` count but did NOT expand the item's source date range. The existing item still only "covered" its original period, not the period that triggered the deduplication.
+
+**Fix:** When deduplicating, expand the existing item's source date range to include the new period:
+
+```python
+# When similar item found during deduplication:
+existing_item.source_start_date = MIN(existing.start, new.start)
+existing_item.source_end_date = MAX(existing.end, new.end)
+```
+
+**Result:**
+- Item about "AI agents" now has `source_start_date = Jan 1` and `source_end_date = Jan 14`
+- Week A is correctly marked as "covered" by this item
+- Coverage analysis no longer shows Week A as a gap
+
+**Why This Is More Accurate:** An item spanning Jan 1-14 reflects reality—the same concept appeared across multiple time periods. This is a persistent theme worth noting, not a coverage gap.
+
+**Code Paths Affected:**
+- `engine/common/items_bank.py` — Updated `add_item()` to expand date range on existing item update
+- `engine/common/items_bank_supabase.py` — Added `_find_and_update_similar()` and `_update_existing_item_on_dedup()` methods
+
+**Verification:**
+```bash
+# Test: Run for Week A after Week B has items
+# Expected: Week A coverage shows as covered (not a gap)
+# Even if 0 new items added, existing items' date ranges expand
+```
+
+**Status:** ✅ Implemented | **DRI:** AI Agent
+
+---
+
 ## Decision: Remove Power Features Section - 2026-01-10
 
 **Problem:** The Power Features section (Social Media Sync and Solved Status Sync) was orphaned after implementation status was deprecated. These features were:

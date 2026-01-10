@@ -78,6 +78,18 @@ class ItemsBankSupabase:
             except Exception:
                 embedding = None  # Proceed without embedding if generation fails
         
+        # Check for existing similar item (deduplication)
+        if embedding:
+            existing = self._find_and_update_similar(
+                embedding=embedding,
+                item_type=item_type,
+                source_start_date=source_start_date,
+                source_end_date=source_end_date,
+                threshold=0.85,
+            )
+            if existing:
+                return existing  # Return existing item ID instead of creating new
+        
         # Prepare item data
         item_data = {
             "id": item_id,
@@ -111,6 +123,95 @@ class ItemsBankSupabase:
             raise Exception(f"Failed to insert item: {result}")
         
         return item_id
+    
+    def _find_and_update_similar(
+        self,
+        embedding: list[float],
+        item_type: ItemType,
+        source_start_date: Optional[str],
+        source_end_date: Optional[str],
+        threshold: float = 0.85,
+    ) -> Optional[str]:
+        """
+        Find similar item and update it if found.
+        
+        CRITICAL for Coverage Intelligence: When a similar item is found, we expand
+        its source date range to include the new period. This prevents false coverage
+        gaps where the same concept appears across multiple weeks.
+        
+        Returns the existing item ID if updated, None if no similar item found.
+        """
+        # Fetch all items of this type with embeddings
+        query = self.client.table("library_items").select("*").eq("item_type", item_type)
+        result = query.execute()
+        items = result.data if result.data else []
+        
+        best_match_id = None
+        best_similarity = 0.0
+        
+        for item in items:
+            item_embedding = item.get("embedding")
+            if not item_embedding:
+                continue
+            
+            similarity = cosine_similarity(embedding, item_embedding)
+            if similarity >= threshold and similarity > best_similarity:
+                best_similarity = similarity
+                best_match_id = item["id"]
+        
+        if best_match_id:
+            # Update existing item: increment occurrence + expand date range
+            self._update_existing_item_on_dedup(
+                item_id=best_match_id,
+                source_start_date=source_start_date,
+                source_end_date=source_end_date,
+            )
+            return best_match_id
+        
+        return None
+    
+    def _update_existing_item_on_dedup(
+        self,
+        item_id: str,
+        source_start_date: Optional[str],
+        source_end_date: Optional[str],
+    ) -> bool:
+        """
+        Update existing item when deduplicating: increment occurrence and expand date range.
+        """
+        # Fetch current item
+        result = self.client.table("library_items").select(
+            "occurrence, source_start_date, source_end_date"
+        ).eq("id", item_id).single().execute()
+        
+        if not result.data:
+            return False
+        
+        current = result.data
+        current_occurrence = current.get("occurrence", 0)
+        
+        # Build update data
+        update_data = {
+            "occurrence": current_occurrence + 1,
+            "last_seen": datetime.now().strftime("%Y-%m"),
+        }
+        
+        # CRITICAL: Expand source date range for Coverage Intelligence
+        # The existing item now "covers" both its original period AND the new period
+        if source_start_date:
+            existing_start = current.get("source_start_date")
+            if not existing_start or source_start_date < existing_start:
+                update_data["source_start_date"] = source_start_date
+        
+        if source_end_date:
+            existing_end = current.get("source_end_date")
+            if not existing_end or source_end_date > existing_end:
+                update_data["source_end_date"] = source_end_date
+        
+        # Update in Supabase
+        update_result = self.client.table("library_items").update(update_data).eq("id", item_id).execute()
+        
+        return bool(update_result.data)
     
     def find_similar_items(
         self,
