@@ -6,6 +6,26 @@
 
 ---
 
+## Progress - 2026-01-10 (Critical Fix: Date Range Expansion on Deduplication)
+
+**Done:**
+- ✅ **Fixed False Coverage Gaps from Deduplication**
+  - **Problem:** Coverage Intelligence could report false gaps. When similar items were deduplicated, the existing item's date range wasn't expanded—Week A would still appear as a gap even though its concepts were already represented via similar items from Week B.
+  - **Solution:** When deduplicating, expand existing item's `source_start_date`/`source_end_date` to include the new period:
+    ```python
+    existing.source_start_date = MIN(existing.start, new.start)
+    existing.source_end_date = MAX(existing.end, new.end)
+    ```
+  - **Files Modified:**
+    - `engine/common/items_bank.py` — Added date range expansion in `add_item()` when updating existing item
+    - `engine/common/items_bank_supabase.py` — Added `_find_and_update_similar()` and `_update_existing_item_on_dedup()` methods
+
+**Evidence:**
+- Commit: `2fc2c60` — fix: expand source date range on deduplication to prevent false coverage gaps
+- Both Python files compile successfully
+
+---
+
 ## Progress - 2026-01-10 (Coverage Intelligence Feature)
 
 **Done:**
