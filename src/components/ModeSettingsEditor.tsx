@@ -14,6 +14,8 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
   const [modeData, setModeData] = useState<Mode | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [goldenExamplesFolder, setGoldenExamplesFolder] = useState("");
   const [temperature, setTemperature] = useState<number | null>(null);
   const [minSimilarity, setMinSimilarity] = useState<number | null>(null);
@@ -48,6 +50,9 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
     if (!modeData) return;
 
     setSaving(true);
+    setError(null);
+    setSuccess(null);
+    
     try {
       const updates = {
         settings: {
@@ -71,15 +76,17 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
       });
 
       if (response.ok) {
+        setSuccess("Settings saved successfully!");
+        setTimeout(() => setSuccess(null), 3000);
         await loadMode();
         onSave?.();
       } else {
         const data = await response.json();
-        alert(`Failed to save: ${data.error || "Unknown error"}`);
+        setError(data.error || "Failed to save settings");
       }
     } catch (error) {
       console.error("Failed to save mode settings:", error);
-      alert("Failed to save mode settings");
+      setError("Failed to save mode settings. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -95,6 +102,18 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
 
   return (
     <div className="space-y-4">
+      {/* Error/Success Messages */}
+      {error && (
+        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-sm text-emerald-400">
+          {success}
+        </div>
+      )}
+      
       <div>
         <h3 className="text-sm font-medium text-adobe-gray-300 mb-2">
           {modeData.name} Settings

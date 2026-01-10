@@ -25,6 +25,7 @@ import { ScoreboardHeader } from "@/components/ScoreboardHeader";
 import { AnalysisCoverage } from "@/components/AnalysisCoverage";
 import { ViewToggle, ViewMode } from "@/components/ViewToggle";
 import { LibraryView } from "@/components/LibraryView";
+import { CoverageSuggestions, SuggestedRun } from "@/components/CoverageSuggestions";
 import { loadThemesAsync } from "@/lib/themes";
 
 export default function Home() {
@@ -128,6 +129,14 @@ export default function Home() {
     actualToDate?: string;
     workspaces?: number;
   } | null>(null);
+
+  // Coverage Intelligence state (v5)
+  const [coverageStats, setCoverageStats] = useState<{
+    coverageScore: number;
+    gapCounts: { high: number; medium: number; low: number };
+    totalGaps: number;
+  } | null>(null);
+  const [suggestedRuns, setSuggestedRuns] = useState<SuggestedRun[]>([]);
 
   // Progress tracking
   const [progress, setProgress] = useState(0);
@@ -303,6 +312,192 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run once on mount - handleSync is stable
 
+  // Fetch coverage analysis (v5)
+  const fetchCoverageAnalysis = useCallback(async () => {
+    try {
+      const res = await fetch("/api/coverage/analyze");
+      const data = await res.json();
+      if (data.success) {
+        setCoverageStats({
+          coverageScore: data.coverageScore,
+          gapCounts: data.gapCounts,
+          totalGaps: (data.gapCounts?.high || 0) + (data.gapCounts?.medium || 0) + (data.gapCounts?.low || 0),
+        });
+        setSuggestedRuns(data.suggestedRuns || []);
+      }
+    } catch (e) {
+      console.error("Failed to fetch coverage analysis:", e);
+    }
+  }, []);
+
+  // Fetch coverage on mount and after generation
+  useEffect(() => {
+    fetchCoverageAnalysis();
+  }, [fetchCoverageAnalysis]);
+
+  // Handle running a suggested coverage run
+  const handleRunSuggestion = async (run: SuggestedRun) => {
+    // Set mode based on item type
+    const newModeId = run.itemType === "idea" ? "idea" : "insight";
+    setSelectedModeId(newModeId as ModeType);
+    setSelectedTheme("generation");
+    
+    // Enable advanced mode with custom dates
+    setShowAdvanced(true);
+    setUseCustomDates(true);
+    setFromDate(run.startDate);
+    setToDate(run.endDate);
+    setCustomItemCount(run.expectedItems);
+    
+    // Small delay to let state update, then trigger generation
+    setTimeout(() => {
+      // Trigger generation (the state is already set)
+      handleGenerateWithParams({
+        theme: "generation",
+        modeId: newModeId,
+        fromDate: run.startDate,
+        toDate: run.endDate,
+        itemCount: run.expectedItems,
+      });
+    }, 100);
+  };
+
+  // Generate with explicit params (for suggested runs)
+  const handleGenerateWithParams = async (params: {
+    theme: string;
+    modeId: string;
+    fromDate: string;
+    toDate: string;
+    itemCount: number;
+  }) => {
+    setIsGenerating(true);
+    setResult(null);
+    setProgress(0);
+    setElapsedSeconds(0);
+    setAnalysisCoverage(null);
+    setLibraryCountBefore(null);
+    setLibraryCountAfter(null);
+    
+    // v3: Fetch library count before generation
+    try {
+      const libRes = await fetch("/api/items?view=items");
+      const libData = await libRes.json();
+      if (libData.success) {
+        setLibraryCountBefore(libData.stats?.totalItems || 0);
+      }
+    } catch (e) {
+      console.error("Failed to fetch library count before:", e);
+    }
+    
+    // Create new AbortController for this request
+    abortController.current = new AbortController();
+    
+    const totalEstimate = estimateTime(params.itemCount);
+    setEstimatedSeconds(totalEstimate);
+
+    // Start progress simulation
+    const startTime = Date.now();
+    progressInterval.current = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      setElapsedSeconds(elapsed);
+      
+      const rawProgress = Math.min((elapsed / totalEstimate) * 100, 95);
+      setProgress(rawProgress);
+      
+      if (rawProgress < 10) {
+        setProgressPhase("Reading chat history...");
+      } else if (rawProgress < 30) {
+        setProgressPhase("Analyzing conversations...");
+      } else if (rawProgress < 60) {
+        setProgressPhase(`Generating ${params.itemCount} items...`);
+      } else if (rawProgress < 75) {
+        setProgressPhase("Deduplicating items...");
+      } else if (rawProgress < 90) {
+        setProgressPhase("Ranking items...");
+      } else {
+        setProgressPhase("Harmonizing to library...");
+      }
+    }, 500);
+
+    try {
+      const body = {
+        theme: params.theme,
+        modeId: params.modeId,
+        mode: "custom",
+        fromDate: params.fromDate,
+        toDate: params.toDate,
+        itemCount: params.itemCount,
+      };
+
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: abortController.current.signal,
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || `Request failed with status ${response.status}`);
+      }
+      
+      setProgress(100);
+      setProgressPhase("Complete!");
+      setResult(data);
+      
+      // v3: Update analysis coverage from result
+      if (data.success && data.stats) {
+        setAnalysisCoverage({
+          conversationsAnalyzed: data.stats.conversationsAnalyzed,
+          workspaces: 3,
+        });
+        
+        // Fetch library count after generation
+        try {
+          const libRes = await fetch("/api/items?view=items");
+          const libData = await libRes.json();
+          if (libData.success) {
+            setLibraryCountAfter(libData.stats?.totalItems || 0);
+          }
+        } catch (e) {
+          console.error("Failed to fetch library count after:", e);
+        }
+        
+        // Refresh coverage analysis after successful generation
+        fetchCoverageAnalysis();
+      }
+      
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        setProgressPhase("Stopped");
+      } else {
+        setResult({
+          success: false,
+          tool: params.modeId === "idea" ? "ideas" : "insights",
+          mode: "custom",
+          error: error instanceof Error ? error.message : "Unknown error",
+          stats: {
+            daysProcessed: 0,
+            daysWithActivity: 0,
+            daysWithOutput: 0,
+            itemsGenerated: 0,
+            itemsAfterDedup: 0,
+            itemsReturned: 0,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } finally {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
+        progressInterval.current = null;
+      }
+      abortController.current = null;
+      setIsGenerating(false);
+    }
+  };
+
   const handleGenerate = async () => {
     setIsGenerating(true);
     setResult(null);
@@ -413,6 +608,9 @@ export default function Home() {
         } catch (e) {
           console.error("Failed to fetch library count after:", e);
         }
+        
+        // v5: Refresh coverage analysis after successful generation
+        fetchCoverageAnalysis();
       }
       
     } catch (error) {
@@ -578,7 +776,22 @@ export default function Home() {
           onSyncClick={handleSync}
           isSyncing={isSyncing}
           syncStatus={syncStatus}
+          coverageStats={coverageStats}
         />
+
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {/* COVERAGE SUGGESTIONS — Quick run recommendations */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {suggestedRuns.length > 0 && !isGenerating && (
+          <div className="glass-card p-5">
+            <CoverageSuggestions
+              suggestedRuns={suggestedRuns}
+              onRunSuggestion={handleRunSuggestion}
+              isGenerating={isGenerating}
+              maxDisplay={6}
+            />
+          </div>
+        )}
 
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         {/* VIEW MODE: Library Browse vs Generate New */}

@@ -558,6 +558,9 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 | COV-10 | **Smart run batching** — Combine adjacent weeks into single runs for efficiency | LOW | LOW |
 | COV-11 | **Priority weighting** — Factor in topic relevance (via semantic search) in gap severity | LOW | HIGH |
 | COV-12 | **Coverage notifications** — Alert user when coverage drops below threshold | LOW | LOW |
+| COV-13 | **Refactor generation handlers** — Extract shared logic from `handleGenerate` and `handleGenerateWithParams` into reusable function | MEDIUM | LOW |
+| COV-14 | **Progress tracking for suggested runs** — Show which suggested run is currently processing with live status | MEDIUM | MEDIUM |
+| COV-15 | **Multi-run queue** — Let users queue multiple suggested runs and process them sequentially | MEDIUM | MEDIUM |
 
 **Performance:**
 | ID | Improvement | Priority | Effort |

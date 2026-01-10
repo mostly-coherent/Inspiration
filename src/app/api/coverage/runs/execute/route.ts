@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { spawn } from "child_process";
-import path from "path";
-import { getPythonPath } from "@/lib/pythonPath";
 
-export const maxDuration = 300; // 5 minutes for generation
+export const maxDuration = 300; // 5 minutes for generation (match /api/generate)
 
 function getSupabase() {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -20,13 +17,10 @@ function getSupabase() {
 /**
  * POST /api/coverage/runs/execute
  * 
- * Execute a coverage run (start generation for a specific date range).
- * Body: { id } - the run ID to execute
+ * Execute a coverage run by calling the existing /api/generate endpoint.
+ * This reuses all optimizations (abort handling, progress, harmonization, etc.)
  * 
- * This endpoint:
- * 1. Updates run status to "processing"
- * 2. Calls the Python engine with the date range
- * 3. Updates run with results
+ * Body: { id } - the run ID to execute
  */
 export async function POST(request: NextRequest) {
   const supabase = getSupabase();
@@ -89,107 +83,71 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", runId);
 
-    // Build generation command
-    const enginePath = path.resolve(process.cwd(), "engine");
-    const pythonPath = getPythonPath();
+    // Map item_type to modeId for /api/generate
+    // Database: "idea" | "insight" | "use_case"
+    // API expects: "idea" | "insight" (modeId)
+    const modeIdMap: Record<string, string> = {
+      idea: "idea",
+      insight: "insight",
+      use_case: "idea", // Fallback
+    };
+    const modeId = modeIdMap[run.item_type] || "idea";
 
-    // Calculate days from date range
-    const startDate = new Date(run.start_date);
-    const endDate = new Date(run.end_date);
-    const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    // Build request body for /api/generate (same format as main page)
+    const generateBody = {
+      theme: "generation",
+      modeId: modeId,
+      mode: "custom", // Use custom mode to specify date range
+      fromDate: run.start_date,
+      toDate: run.end_date,
+      itemCount: run.expected_items || 10,
+      // Source tracking is handled by generate.py automatically when using date ranges
+    };
 
-    // Build args for generate.py
-    // Using --start-date and --end-date for precise coverage
-    const args = [
-      "generate.py",
-      "--mode", run.item_type || "idea",
-      "--start-date", run.start_date,
-      "--end-date", run.end_date,
-      "--items", String(run.expected_items || 5),
-      "--source-tracking", // Enable source date tracking for coverage
-    ];
+    console.log(`[Coverage Execute] Calling /api/generate with:`, generateBody);
 
-    console.log(`[Coverage Execute] Running: python3 ${args.join(" ")}`);
-
-    // Execute generation
-    const result = await new Promise<{ success: boolean; output: string; items: number }>((resolve) => {
-      const proc = spawn(pythonPath, args, {
-        cwd: enginePath,
-        env: { ...process.env },
-      });
-
-      let stdout = "";
-      let stderr = "";
-
-      proc.stdout.on("data", (data) => {
-        stdout += data.toString();
-        
-        // Try to extract progress from output
-        const progressMatch = stdout.match(/Progress:\s*(\d+)%/);
-        if (progressMatch) {
-          const progress = parseInt(progressMatch[1], 10);
-          // Update progress in background (fire and forget)
-          supabase
-            .from("coverage_runs")
-            .update({ progress })
-            .eq("id", runId)
-            .then(() => {});
-        }
-      });
-
-      proc.stderr.on("data", (data) => {
-        stderr += data.toString();
-      });
-
-      proc.on("close", (code) => {
-        if (code !== 0) {
-          console.error(`[Coverage Execute] Python process failed: ${stderr}`);
-          resolve({ success: false, output: stderr || "Unknown error", items: 0 });
-        } else {
-          // Try to parse the output for item count
-          let items = 0;
-          try {
-            // Look for JSON output
-            const jsonMatch = stdout.match(/\{[\s\S]*"items_added":\s*(\d+)[\s\S]*\}/);
-            if (jsonMatch) {
-              items = parseInt(jsonMatch[1], 10);
-            } else {
-              // Fallback: look for "Added X items" pattern
-              const addedMatch = stdout.match(/Added\s+(\d+)\s+items?/i);
-              if (addedMatch) {
-                items = parseInt(addedMatch[1], 10);
-              }
-            }
-          } catch {
-            // Ignore parsing errors
-          }
-          resolve({ success: true, output: stdout, items });
-        }
-      });
-
-      // Timeout after 4.5 minutes
-      setTimeout(() => {
-        proc.kill();
-        resolve({ success: false, output: "Generation timed out", items: 0 });
-      }, 270000);
+    // Call the existing /api/generate endpoint (reuses all optimizations)
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
+                    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
+                    "http://localhost:3000";
+    
+    const generateResponse = await fetch(`${baseUrl}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(generateBody),
     });
 
+    const generateResult = await generateResponse.json();
+
+    console.log(`[Coverage Execute] /api/generate result:`, {
+      success: generateResult.success,
+      itemsReturned: generateResult.stats?.itemsReturned,
+      harmonization: generateResult.stats?.harmonization,
+      error: generateResult.error,
+    });
+
+    // Extract actual items added from harmonization stats
+    const actualItems = generateResult.stats?.harmonization?.itemsAdded ?? 
+                       generateResult.stats?.itemsReturned ?? 
+                       0;
+
     // Update run with results
-    if (result.success) {
+    if (generateResult.success) {
       await supabase
         .from("coverage_runs")
         .update({
           status: "completed",
           completed_at: new Date().toISOString(),
           progress: 100,
-          actual_items: result.items,
+          actual_items: actualItems,
         })
         .eq("id", runId);
 
       return NextResponse.json({
         success: true,
-        items: result.items,
-        message: `Generated ${result.items} items for ${run.week_label}`,
+        items: actualItems,
+        message: `Generated ${actualItems} items for ${run.week_label}`,
+        stats: generateResult.stats,
       });
     } else {
       await supabase
@@ -197,12 +155,12 @@ export async function POST(request: NextRequest) {
         .update({
           status: "failed",
           completed_at: new Date().toISOString(),
-          error: result.output.slice(0, 1000), // Truncate error
+          error: (generateResult.error || "Unknown error").slice(0, 1000),
         })
         .eq("id", runId);
 
       return NextResponse.json(
-        { success: false, error: result.output },
+        { success: false, error: generateResult.error },
         { status: 500 }
       );
     }

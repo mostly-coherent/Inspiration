@@ -646,6 +646,33 @@ def _deduplicate_items(items: list[dict], threshold: float = 0.85) -> list[dict]
     return unique_items
 
 
+def _safe_parse_judge_json(response: str) -> dict | None:
+    """Safely parse JSON from LLM judge response."""
+    import json
+    import re
+    
+    if not response:
+        return None
+    
+    # Try to extract JSON from the response
+    # LLMs sometimes wrap JSON in markdown code blocks
+    json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', response)
+    if json_match:
+        response = json_match.group(1)
+    
+    # Try to find JSON object in the response
+    json_start = response.find('{')
+    json_end = response.rfind('}') + 1
+    
+    if json_start >= 0 and json_end > json_start:
+        try:
+            return json.loads(response[json_start:json_end])
+        except json.JSONDecodeError:
+            pass
+    
+    return None
+
+
 def _rank_items(items: list[dict], mode: str, llm: LLMProvider) -> list[dict]:
     """Rank items by quality using LLM judge."""
     if len(items) <= 1:
@@ -1078,7 +1105,7 @@ def harmonize_all_outputs(
             bank = ItemsBank()
             
             # Get existing item IDs before processing (to detect new vs updated)
-            existing_ids_before = {item["id"] for item in bank._bank["items"]}
+            existing_ids_before = bank.get_all_item_ids()
             
             batch_items_processed = 0
             batch_items_added = 0

@@ -308,6 +308,13 @@ class ItemsBankSupabase:
         
         return bool(result.data)
     
+    def get_all_item_ids(self) -> set[str]:
+        """Get all item IDs from the library."""
+        result = self.client.table("library_items").select("id").execute()
+        if result.data:
+            return {item["id"] for item in result.data}
+        return set()
+    
     def get_stats(self) -> dict[str, Any]:
         """Get library statistics."""
         # Get total items count

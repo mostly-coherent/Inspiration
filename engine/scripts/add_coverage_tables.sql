@@ -106,7 +106,7 @@ AS $$
 BEGIN
     RETURN QUERY
     SELECT
-        TO_CHAR(li.source_start_date, 'IYYY-"W"IW') AS week_label,
+        TO_CHAR(DATE_TRUNC('week', li.source_start_date), 'IYYY-"W"IW') AS week_label,
         DATE_TRUNC('week', li.source_start_date)::DATE AS week_start,
         COUNT(*) AS item_count
     FROM library_items li
