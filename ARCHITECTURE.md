@@ -158,6 +158,8 @@ inspiration/
 │   │   ├── llm.py              # Anthropic + OpenAI wrapper
 │   │   ├── config.py           # User config loader
 │   │   ├── items_bank.py       # Unified ItemsBank harmonization
+│   │   ├── items_bank_supabase.py # Supabase-backed ItemsBank
+│   │   ├── coverage.py         # Coverage Intelligence analysis (NEW)
 │   │   ├── prompt_compression.py # Per-conversation compression
 │   │   └── semantic_search.py  # Embedding generation & vector similarity
 │   ├── scripts/                # Utility scripts
@@ -421,6 +423,48 @@ page.tsx (Orchestrator)
 - **State**: `memoryStats`, `libraryStats`, `isSyncing`
 - **API**: `/api/brain-stats`, `/api/items`, `/api/sync`
 
+**8. Coverage Intelligence Context** (`coverage/page.tsx`, `CoverageDashboard`)
+- **Purpose**: Automate Library growth by analyzing Memory terrain vs. Library coverage
+- **Boundaries**: Analyze coverage → Identify gaps → Suggest runs → Execute runs → Track completion
+- **State**: `memoryDensity`, `libraryCoverage`, `coverageGaps`, `suggestedRuns`, `coverageScore`
+- **API**: `/api/coverage/analyze`, `/api/coverage/runs`, `/api/coverage/runs/execute`
+
+**Core Concepts:**
+- **Memory Terrain**: Conversation density by week (from `get_memory_density_by_week()` RPC)
+- **Library Coverage**: Items with `source_start_date`/`source_end_date` spanning each week
+- **Coverage Gap**: Week with high conversation count but low/no Library items
+- **Coverage Run**: Queued generation job targeting a specific date range
+
+**Data Flow:**
+```
+/coverage page loads
+    ↓
+GET /api/coverage/analyze
+    ↓
+Python: coverage.py → get_memory_density_from_db()
+                    → get_library_coverage_from_db()
+                    → analyze_coverage() → gaps
+                    → suggest_runs_from_gaps()
+    ↓
+Frontend displays:
+    ├─→ Coverage Score (0-100%)
+    ├─→ Memory Terrain vs Library Coverage chart
+    └─→ Suggested Runs (with "Run Now" buttons)
+    
+User clicks "Run Now"
+    ↓
+POST /api/coverage/runs/execute
+    ↓
+Python: generate.py --mode ideas/insights
+        --date-range start:end
+        --item-count N
+        --source-run-id {runId}
+    ↓
+Items generated with source_start_date/source_end_date
+    ↓
+Coverage run marked completed
+```
+
 ---
 
 ### v3 UI Architecture (Library-Centric Layout)
@@ -659,6 +703,10 @@ src/app/api/
 │       └── synthesize/route.ts # LLM synthesis
 ├── brain-stats/route.ts       # Memory stats endpoint
 ├── brain-diagnostics/route.ts # Diagnostics endpoint
+├── coverage/                  # Coverage Intelligence
+│   ├── analyze/route.ts       # Analyze coverage gaps
+│   ├── runs/route.ts          # Coverage runs CRUD
+│   └── runs/execute/route.ts  # Execute coverage run
 ├── chat-history/route.ts      # Chat history endpoint
 ├── harmonize/route.ts         # Item harmonization
 ├── modes/route.ts             # Mode management
@@ -1145,7 +1193,7 @@ Generation Request
 - Easier to maintain and extend
 - Use cases become reusable assets in bank
 
-**Last Updated:** 2025-01-30
+**Last Updated:** 2026-01-10
 
 ---
 

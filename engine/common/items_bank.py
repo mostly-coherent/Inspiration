@@ -74,6 +74,9 @@ class ItemsBank:
         embedding: Optional[list[float]] = None,
         first_seen_date: Optional[str] = None,
         quality: Optional[str] = None,  # "A", "B", "C", or None
+        # Coverage Intelligence: source date range tracking
+        source_start_date: Optional[str] = None,  # YYYY-MM-DD format
+        source_end_date: Optional[str] = None,  # YYYY-MM-DD format
         # Legacy support - ignore these
         mode: Optional[str] = None,
         theme: Optional[str] = None,
@@ -171,6 +174,9 @@ class ItemsBank:
             "categoryId": None,
             "embedding": embedding,
             "quality": quality,  # LLM-assigned quality tier: A, B, C, or None
+            # Coverage Intelligence: source date range tracking
+            "sourceStartDate": source_start_date,  # YYYY-MM-DD format
+            "sourceEndDate": source_end_date,  # YYYY-MM-DD format
             # Legacy fields for backward compatibility
             "mode": item_type,
             "theme": "generation",

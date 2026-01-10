@@ -6,6 +6,60 @@
 
 ---
 
+## Progress - 2026-01-10 (Coverage Intelligence Feature)
+
+**Done:**
+- ✅ **Implemented Coverage Intelligence System (COV-1 through COV-7)**
+  - **Problem:** Users are busy and reflective—they come to Inspiration to be inspired, not to manually configure generations. With 200+ items and months of chat history, users don't know what time periods are well-covered vs. missing from their Library.
+  - **Solution:** Built an automated system that analyzes Memory terrain (conversation density by week) vs. Library coverage (which periods have items derived from them), identifies gaps, and suggests generation runs to fill them.
+
+  **Features Implemented:**
+  | Feature | Description |
+  |---------|-------------|
+  | Memory Terrain Analysis | SQL RPC function `get_memory_density_by_week()` to count conversations/messages by week |
+  | Library Coverage Tracking | Added `source_start_date`/`source_end_date` columns to `library_items` table |
+  | Gap Detection | Python algorithm comparing terrain vs. coverage (rule: 1 item per 10 conversations) |
+  | Run Sizing | Severity-based sizing (High: 8-10 items, Medium: 5 items, Low: 3 items) |
+  | Coverage Runs Table | New `coverage_runs` table to track suggested/queued/processing/completed runs |
+  | Cost Estimation | Show estimated cost ($0.XX) before execution |
+  | Coverage Dashboard | Visual display with terrain vs. coverage, suggested runs, and "Run Now" buttons |
+
+  **Database Changes (SQL Migration):**
+  - `library_items` table: Added `source_start_date DATE`, `source_end_date DATE`
+  - New `coverage_runs` table with status tracking (suggested → queued → processing → completed/failed)
+  - New RPC function `get_memory_density_by_week()` for efficient weekly aggregation
+
+  **Files Created:**
+  - `engine/scripts/add_coverage_tables.sql` — Database schema and RPC functions
+  - `engine/common/coverage.py` — Coverage analysis backend logic
+  - `src/app/api/coverage/analyze/route.ts` — Coverage analysis API endpoint
+  - `src/app/api/coverage/runs/route.ts` — Coverage runs CRUD API
+  - `src/app/api/coverage/runs/execute/route.ts` — Execute coverage run API
+  - `src/components/CoverageDashboard.tsx` — Coverage visualization UI
+  - `src/app/coverage/page.tsx` — Dedicated Coverage page
+
+  **Files Modified:**
+  - `engine/generate.py` — Accept and track `source_start_date`/`source_end_date` for items
+  - `engine/common/items_bank_supabase.py` — Store source date range on items
+  - `engine/common/items_bank.py` — Store source date range on local items
+  - `src/app/page.tsx` — Added navigation link to Coverage page
+
+**Evidence:**
+- SQL migration executed successfully
+- Coverage analysis endpoint functional
+- Coverage Dashboard renders with terrain visualization
+- Suggested runs display with cost estimates
+
+**In Progress:**
+- None
+
+**Next:**
+- Test Coverage Intelligence with real data
+- Monitor run execution and item generation
+- Consider auto-queue for future iteration
+
+---
+
 ## Progress - 2026-01-10 (Major Feature Declutter)
 
 **Done:**

@@ -497,6 +497,51 @@ inspiration/
 
 ---
 
+## v5 Coverage Intelligence (2026-01-10)
+
+**Problem:** Users are busy and reflective—they come to Inspiration to be inspired, not to manually configure and run generations. With 200+ items and months of chat history, users don't know what time periods are well-covered vs. missing from their Library.
+
+**Goal:** Automate Library growth by analyzing Memory terrain vs. Library coverage, and queuing intelligent generation runs to fill gaps.
+
+**Core Concepts:**
+- **Memory Terrain:** Distribution of chat sessions over time (conversation density)
+- **Library Coverage:** Which time periods have Library items derived from them
+- **Coverage Gap:** Time period with high chat density but low/no Library items
+- **Coverage Run:** A queued generation job targeting a specific time period
+- **Coverage Score:** 0-100% metric of how well Library coverage matches Memory terrain
+
+### v5 Features
+
+| ID | Feature | Description | Status |
+|----|---------|-------------|--------|
+| COV-1 | **Memory Terrain Analysis** | SQL RPC to analyze conversation density by week | ✅ Done |
+| COV-2 | **Library Coverage Tracking** | Track `source_start_date`/`source_end_date` on items | ✅ Done |
+| COV-3 | **Gap Detection Algorithm** | Compare terrain vs. coverage to identify gaps | ✅ Done |
+| COV-4 | **Run Sizing Strategy** | Size runs based on conversation count and gap severity | ✅ Done |
+| COV-5 | **Suggested Runs Queue** | UI to view and execute suggested runs | ✅ Done |
+| COV-6 | **Cost Estimation** | Show estimated cost ($0.XX) before execution | ✅ Done |
+| COV-7 | **Coverage Dashboard** | Visual display of Memory terrain vs. Library coverage | ✅ Done |
+
+### Run Sizing Rules
+
+| Gap Severity | Conversations | Expected Items |
+|--------------|--------------|----------------|
+| High | 50+ | 10 items |
+| High | 30-49 | 8 items |
+| Medium | 20+ | 5 items |
+| Low | Any | 3 items |
+
+**Rule of Thumb:** 1 Library item per 10 conversations is healthy coverage.
+
+### Implementation Notes
+
+- **Granularity:** Weekly (matches natural work rhythms)
+- **Conversation Count:** Uses ALL conversations in period (not just semantically relevant)
+- **Queue Management:** Manual for now (user clicks to execute), auto-queue planned for future
+- **Mode:** Suggests both Ideas and Insights runs per gap
+
+---
+
 ## 🔮 Future Directions
 
 Active development focused on longitudinal intelligence—moving beyond single-session extraction. Roadmap details kept internal.
@@ -504,6 +549,15 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 ---
 
 ## 🔮 Improvement Backlog (Post-v3)
+
+**Coverage Intelligence (v5 Enhancements):**
+| ID | Improvement | Priority | Effort |
+|----|-------------|----------|--------|
+| COV-8 | **Auto-queue with budget cap** — Automatically run suggested jobs up to $X/week | MEDIUM | MEDIUM |
+| COV-9 | **Coverage history chart** — Show coverage score over time | LOW | MEDIUM |
+| COV-10 | **Smart run batching** — Combine adjacent weeks into single runs for efficiency | LOW | LOW |
+| COV-11 | **Priority weighting** — Factor in topic relevance (via semantic search) in gap severity | LOW | HIGH |
+| COV-12 | **Coverage notifications** — Alert user when coverage drops below threshold | LOW | LOW |
 
 **Performance:**
 | ID | Improvement | Priority | Effort |
@@ -559,4 +613,4 @@ Users can now edit prompt templates directly in the UI. While we create backups 
 
 ---
 
-**Last Updated:** 2026-01-08
+**Last Updated:** 2026-01-10

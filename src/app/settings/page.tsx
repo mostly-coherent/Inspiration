@@ -12,7 +12,6 @@ import {
   VectorDBSection,
   VoiceStyleSection,
   LLMSettingsSection,
-  PowerFeaturesSection,
 } from "@/components/settings";
 
 interface AppConfig {
@@ -45,13 +44,6 @@ interface AppConfig {
     };
   };
   features: {
-    linkedInSync: {
-      enabled: boolean;
-      postsDirectory: string | null;
-    };
-    solvedStatusSync: {
-      enabled: boolean;
-    };
     customVoice: {
       enabled: boolean;
       voiceGuideFile: string | null;
@@ -67,7 +59,7 @@ interface AppConfig {
   };
 }
 
-type WizardStep = "workspaces" | "vectordb" | "voice" | "llm" | "features" | "done";
+type WizardStep = "workspaces" | "vectordb" | "voice" | "llm" | "done";
 type SettingsTab = "general" | "modes" | "advanced" | "prompts";
 
 const SETTINGS_TABS: { id: SettingsTab; label: string; icon: string }[] = [
@@ -93,12 +85,8 @@ export default function SettingsPage() {
   
   // Form state
   const [newWorkspace, setNewWorkspace] = useState("");
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
   // Local state for inputs (to avoid cursor jumping on every keystroke)
-  const [localLinkedInEnabled, setLocalLinkedInEnabled] = useState(false);
-  const [localLinkedInDirectory, setLocalLinkedInDirectory] = useState("");
-  const [localSolvedStatusEnabled, setLocalSolvedStatusEnabled] = useState(false);
   const [localAuthorName, setLocalAuthorName] = useState("");
   const [localAuthorContext, setLocalAuthorContext] = useState("");
   const [localGoldenExamplesDir, setLocalGoldenExamplesDir] = useState("");
@@ -126,9 +114,6 @@ export default function SettingsPage() {
       setLocalGoldenExamplesDir(config.features.customVoice.goldenExamplesDir || "");
       setLocalVoiceGuideFile(config.features.customVoice.voiceGuideFile || "");
       setLocalLlmModel(config.llm.model || "");
-      setLocalLinkedInEnabled(config.features.linkedInSync.enabled);
-      setLocalLinkedInDirectory(config.features.linkedInSync.postsDirectory || "");
-      setLocalSolvedStatusEnabled(config.features.solvedStatusSync.enabled);
     }
   }, [config]);
 
@@ -151,8 +136,6 @@ export default function SettingsPage() {
             fallbackModel: null,
           },
           features: {
-            linkedInSync: { enabled: false, postsDirectory: null },
-            solvedStatusSync: { enabled: false },
             customVoice: {
               enabled: false,
               voiceGuideFile: null,
@@ -242,30 +225,28 @@ export default function SettingsPage() {
   const completeSetup = async () => {
     await saveConfig({
       setupComplete: true,
-      features: {
-        ...config!.features,
-        linkedInSync: {
-          enabled: localLinkedInEnabled,
-          postsDirectory: localLinkedInDirectory || null,
-        },
-        solvedStatusSync: { enabled: localSolvedStatusEnabled },
-      },
     });
     setCurrentStep("done");
   };
 
   const handleVoiceSave = (field: "authorName" | "authorContext" | "goldenExamplesDir" | "voiceGuideFile", value: string) => {
     if (!config) return;
+    
+    // Update the customVoice settings
+    const updatedCustomVoice = {
+      ...config.features.customVoice,
+      [field]: value || null,
+      enabled: field === "goldenExamplesDir" ? !!value : config.features.customVoice.enabled,
+    };
+    
+    // Merge with existing features, preserving v1Enabled
     const updates: Partial<AppConfig> = {
       features: {
-        ...config.features,
-        customVoice: {
-          ...config.features.customVoice,
-          [field]: value || null,
-          enabled: field === "goldenExamplesDir" ? !!value : config.features.customVoice.enabled,
-        },
+        customVoice: updatedCustomVoice,
+        v1Enabled: config.features.v1Enabled,
       },
     };
+    
     saveConfig(updates);
   };
 
@@ -317,21 +298,21 @@ export default function SettingsPage() {
         {!config.setupComplete && currentStep !== "done" && (
           <div className="mb-8">
             <div className="flex items-center justify-center mb-4">
-              {["workspaces", "vectordb", "voice", "llm", "features"].map((step, i) => (
+              {["workspaces", "vectordb", "voice", "llm"].map((step, i) => (
                 <div key={step} className="flex items-center">
                   <button
                     onClick={() => setCurrentStep(step as WizardStep)}
                     className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
                       currentStep === step
                         ? "bg-amber-500 text-slate-900"
-                        : i < ["workspaces", "vectordb", "voice", "llm", "features"].indexOf(currentStep)
+                        : i < ["workspaces", "vectordb", "voice", "llm"].indexOf(currentStep)
                         ? "bg-emerald-500/20 text-emerald-400"
                         : "bg-slate-800 text-slate-500"
                     }`}
                   >
                     {i + 1}
                   </button>
-                  {i < 4 && <div className="w-12 h-0.5 bg-slate-800 mx-2" />}
+                  {i < 3 && <div className="w-12 h-0.5 bg-slate-800 mx-2" />}
                 </div>
               ))}
             </div>
@@ -340,7 +321,6 @@ export default function SettingsPage() {
               {currentStep === "vectordb" && "Step 2: Vector DB Setup"}
               {currentStep === "voice" && "Step 3: Your Voice & Style"}
               {currentStep === "llm" && "Step 4: LLM Settings"}
-              {currentStep === "features" && "Step 5: Power Features"}
             </div>
           </div>
         )}
@@ -445,7 +425,10 @@ export default function SettingsPage() {
             {!config.setupComplete && (
               <WizardNavigation
                 onBack={() => setCurrentStep("voice")}
-                onNext={() => setCurrentStep("features")}
+                onNext={completeSetup}
+                nextLabel="Complete Setup ✓"
+                saving={saving}
+                isComplete
               />
             )}
           </SettingsSection>
@@ -488,65 +471,15 @@ export default function SettingsPage() {
           </SettingsSection>
         )}
 
-        {/* Power Features */}
-        {(currentStep === "features" || (config.setupComplete && activeTab === "general")) && (
-          <SettingsSection title="⚡ Power Features" description="Optional features for advanced users">
-            <PowerFeaturesSection
-              linkedInEnabled={localLinkedInEnabled}
-              setLinkedInEnabled={setLocalLinkedInEnabled}
-              linkedInDirectory={localLinkedInDirectory}
-              setLinkedInDirectory={setLocalLinkedInDirectory}
-              solvedStatusEnabled={localSolvedStatusEnabled}
-              setSolvedStatusEnabled={setLocalSolvedStatusEnabled}
-              onUnsavedChange={() => setHasUnsavedChanges(true)}
-            />
-            {!config.setupComplete && (
-              <WizardNavigation
-                onBack={() => setCurrentStep("llm")}
-                onNext={completeSetup}
-                nextLabel="Complete Setup ✓"
-                saving={saving}
-                isComplete
-              />
-            )}
-            {config.setupComplete && activeTab === "general" && (
-              <div className="mt-6 flex justify-end gap-3">
-                {hasUnsavedChanges ? (
-                  <button
-                    onClick={async () => {
-                      const success = await saveConfig({
-                        features: {
-                          ...config.features,
-                          linkedInSync: {
-                            enabled: localLinkedInEnabled,
-                            postsDirectory: localLinkedInDirectory || null,
-                          },
-                          solvedStatusSync: { enabled: localSolvedStatusEnabled },
-                        },
-                      });
-                      if (success) setHasUnsavedChanges(false);
-                    }}
-                    disabled={saving}
-                    className="px-6 py-2 bg-amber-500 text-slate-900 font-medium rounded-lg hover:bg-amber-400 disabled:opacity-50 transition-colors"
-                  >
-                    {saving ? "Saving..." : "Save Changes"}
-                  </button>
-                ) : (
-                  <div className="text-xs text-slate-500 self-center">All changes saved</div>
-                )}
-              </div>
-            )}
-          </SettingsSection>
-        )}
-
         {/* API Keys Notice */}
         <div className="mt-8 p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
           <h3 className="text-sm font-medium text-slate-300 mb-2">🔑 API Keys</h3>
           <p className="text-xs text-slate-500">
             API keys are loaded from environment variables. Set{" "}
-            <code className="text-amber-400">ANTHROPIC_API_KEY</code> and/or{" "}
-            <code className="text-amber-400">OPENAI_API_KEY</code> in your{" "}
-            <code className="text-slate-400">.env</code> file.
+            <code className="text-amber-400">ANTHROPIC_API_KEY</code>,{" "}
+            <code className="text-amber-400">OPENAI_API_KEY</code>, and/or{" "}
+            <code className="text-amber-400">OPENROUTER_API_KEY</code> in your{" "}
+            <code className="text-slate-400">.env</code> or <code className="text-slate-400">.env.local</code> file.
           </p>
         </div>
       </main>

@@ -7,6 +7,94 @@
 
 ---
 
+## Decision: Coverage Intelligence — Automated Library Growth - 2026-01-10
+
+**Problem:** Users are busy and reflective builders—they come to Inspiration to decompress, be inspired, and reflect on themes in their own thinking. They don't enjoy manually configuring and running generations. With 200+ items and months of chat history, users can't tell which time periods are well-covered vs. missing from their Library.
+
+**Decision:** Build a Coverage Intelligence system that:
+1. Analyzes Memory terrain (conversation density by week)
+2. Compares against Library coverage (which periods have items derived from them)
+3. Identifies coverage gaps (high chat density but low/no Library items)
+4. Suggests generation runs sized appropriately for each gap
+5. Shows estimated cost before execution
+6. Allows users to click to run without manual configuration
+
+**Key Design Choices:**
+
+| Choice | Decision | Rationale |
+|--------|----------|-----------|
+| **Granularity** | Weekly | Matches natural work rhythms; daily too noisy, monthly too coarse |
+| **Conversation Count** | All conversations (not just semantically relevant) | Goal is to map raw material density, not topic relevance |
+| **Queue Management** | Manual click to execute (for now) | Start simple; auto-queue can be added later |
+| **Run Modes** | Both Ideas and Insights per gap | Users want variety; let them choose which to run |
+| **Coverage Rule** | 1 item per 10 conversations = healthy | Empirical balance—too many items = noise, too few = missed coverage |
+
+**Run Sizing Strategy:**
+
+| Gap Severity | Conversations | Expected Items | Rationale |
+|--------------|--------------|----------------|-----------|
+| High | 50+ | 10 items | Lots of material to mine |
+| High | 30-49 | 8 items | Significant gap |
+| Medium | 20+ | 5 items | Moderate gap |
+| Low | Any | 3 items | Light maintenance |
+
+**Alternatives Considered:**
+
+1. **Full automation (auto-run suggested jobs):** Rejected for v1. Users want control over when costs are incurred. Can add auto-queue with budget limits later.
+
+2. **Topic-based coverage (semantically relevant conversations):** Rejected. Goal is to map raw material density across time, not topic coverage. Topic analysis is better served by Theme Explorer.
+
+3. **Daily granularity:** Rejected. Too noisy—many days have 0-1 conversations, creating lots of trivial gaps.
+
+4. **Monthly granularity:** Rejected. Too coarse—a month with 100 conversations and 5 items might hide a week with 50 conversations and 0 items.
+
+**Code Paths Affected:**
+- `engine/scripts/add_coverage_tables.sql` — Schema + RPC function
+- `engine/common/coverage.py` — Backend analysis logic
+- `engine/generate.py` — Track `source_start_date`/`source_end_date` on generated items
+- `engine/common/items_bank_supabase.py` — Store source dates
+- `src/app/api/coverage/*` — Three new API endpoints
+- `src/components/CoverageDashboard.tsx` — Visualization UI
+- `src/app/coverage/page.tsx` — Dedicated page
+
+**Impact:**
+- **Scope:** Major new feature (v5 in PLAN.md)
+- **Timeline:** Single session implementation
+- **Architecture:** New bounded context (Coverage Intelligence) with dedicated page
+
+**Status:** ✅ Implemented | **DRI:** AI Agent
+
+---
+
+## Decision: Remove Power Features Section - 2026-01-10
+
+**Problem:** The Power Features section (Social Media Sync and Solved Status Sync) was orphaned after implementation status was deprecated. These features were:
+- **Social Media Sync:** Mark insights as "shared" when they match social media posts
+- **Solved Status Sync:** Mark ideas as "solved" when they match projects in workspaces
+
+**Decision:** Remove Power Features section entirely from Settings
+
+**Rationale:**
+1. **Implementation status deprecated:** The "implemented" field was removed in the Major Feature Declutter (2026-01-10), making these features meaningless
+2. **Never used:** No backend logic ever consumed `linkedInSync` or `solvedStatusSync` config values
+3. **Orphaned UI:** Settings page displayed these options but they had no effect
+4. **Complexity without value:** Added cognitive load to onboarding wizard (5 steps → 4 steps now)
+
+**Alternatives Considered:**
+1. **Keep config but hide UI** — Rejected: Dead code is technical debt
+2. **Repurpose for other features** — Rejected: No clear use case
+3. **Remove entirely** — ✅ Chosen: Clean break, simpler onboarding
+
+**Impact:**
+- **Scope:** Removed PowerFeaturesSection component, linkedInSync/solvedStatusSync from config types
+- **Onboarding:** Reduced from 5 steps to 4 steps (Workspaces → VectorDB → Voice → LLM → Done)
+- **Settings:** General tab now has 4 sections instead of 5
+- **Codebase:** ~80 lines of dead code removed
+
+**Status:** ✅ Implemented | **DRI:** AI Agent
+
+---
+
 ## Decision: Major Feature Declutter - 2026-01-10
 
 **Problem:** The Inspiration app accumulated many features that added complexity without proportional value:

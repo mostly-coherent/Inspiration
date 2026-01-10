@@ -47,7 +47,7 @@ function OnboardingLoadingFallback() {
 
 function OnboardingContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const searchParams = useSearchParams(); // Wrapped in Suspense below (Next.js 15+ requirement)
   const isPreviewMode = searchParams.get("preview") === "true";
   
   const [step, setStep] = useState<OnboardingStep>("welcome");
@@ -286,8 +286,6 @@ function OnboardingContent() {
           fallbackModel: null,
         },
         features: {
-          linkedInSync: { enabled: false, postsDirectory: null },
-          solvedStatusSync: { enabled: false },
           customVoice: { enabled: false },
           v1Enabled: true,
         },
