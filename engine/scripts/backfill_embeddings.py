@@ -25,8 +25,12 @@ from pathlib import Path
 # Add engine to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from common.config import load_env_file
 from common.vector_db import get_supabase_client
 from common.semantic_search import get_embedding
+
+# Load environment variables from .env files
+load_env_file()
 
 
 def get_items_without_embeddings(client, limit: int = None):
@@ -55,7 +59,7 @@ def backfill_embeddings(dry_run: bool = False, limit: int = None, batch_size: in
     # Check for OpenAI API key
     if not os.environ.get("OPENAI_API_KEY"):
         print("❌ OPENAI_API_KEY not set in environment")
-        print("   Set it in your .env.local file or export it:")
+        print("   Set it in your .env file (workspace root) or export it:")
         print("   export OPENAI_API_KEY=your-key-here")
         return 1
     
@@ -104,18 +108,24 @@ def backfill_embeddings(dry_run: bool = False, limit: int = None, batch_size: in
             
             if embedding and len(embedding) > 0:
                 # Store embedding in Supabase
-                result = client.table("library_items").update({
-                    "embedding": embedding  # Stored as JSONB array
-                }).eq("id", item_id).execute()
-                
-                if result.data:
-                    processed += 1
-                    # Progress indicator
-                    if processed % 10 == 0 or processed == total:
-                        print(f"   ✅ {processed}/{total} items processed")
-                else:
+                try:
+                    result = client.table("library_items").update({
+                        "embedding": embedding  # Stored as JSONB array
+                    }).eq("id", item_id).execute()
+                    
+                    if result.data:
+                        processed += 1
+                        # Progress indicator
+                        if processed % 10 == 0 or processed == total:
+                            print(f"   ✅ {processed}/{total} items processed")
+                    else:
+                        failed += 1
+                        if failed <= 3:  # Only show first 3 errors
+                            print(f"   ⚠️ Failed to update item {item_id}: No data returned")
+                except Exception as update_error:
                     failed += 1
-                    print(f"   ⚠️ Failed to update item {item_id}")
+                    if failed <= 3:  # Only show first 3 errors with details
+                        print(f"   ❌ Error updating {item_id}: {update_error}")
             else:
                 failed += 1
                 print(f"   ⚠️ Empty embedding for item {item_id}")
