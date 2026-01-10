@@ -245,9 +245,11 @@ inspiration/
 - Theme: Seek (Mode: Use Case, custom modes)
 - Unified Items/Categories bank with cosine similarity grouping
 - Mode-specific settings (temperature, similarity thresholds, folder paths)
-- Folder-based tracking for implemented items
-- Run history storage (localStorage)
 - Optional file export (user-initiated, not auto-save)
+
+**v1 Features Removed (2026-01-10):**
+- ~~Folder-based tracking for implemented items~~ — Removed: Users focus on themes, not item status
+- ~~Run history storage (localStorage)~~ — Removed: Never used
 
 <!-- Merged from Next.md and V1_BUILD_PLAN.md on 2025-12-29 -->
 
@@ -286,7 +288,7 @@ inspiration/
 
 **v3 Goal:** Redesign the frontend to center on the Library (accumulated items) as the core value proposition, with full configuration exposure in Settings. Prepare for public release.
 
-**Core Insight:** The Library is the scoreboard—not just storage. Users measure their learning and productivity by whether their Library is growing with high-quality items. Generation/Seek are tools to grow that number.
+**Core Insight:** The Library is the scoreboard—not just storage. Users measure their learning and productivity by whether their Library is growing with valuable items. Generation/Seek are tools to grow that number.
 
 ### Terminology Changes
 
@@ -298,7 +300,7 @@ inspiration/
 ### User Mental Model (Guiding Principles)
 
 1. **Memory completeness:** "Do I have all my chats indexed?" → Show coverage dates, size comparison (local vs. vector), workspace count
-2. **Library growth:** "Is my Library growing?" → Show total items, weekly delta, categories, implemented count
+2. **Library growth:** "Is my Library growing?" → Show total items, weekly delta, categories
 3. **Analysis assurance:** "Did the app analyze the right chats?" → Show messages analyzed, date range, workspaces searched, before AND after generation
 4. **Easy experimentation:** All parameters (temperature, similarity, LLM assignments) exposed and editable in Settings
 5. **Memory jog:** Items link back to source chat dates and workspaces to help users remember context
@@ -343,8 +345,6 @@ inspiration/
 **Reference Paths:**
 - Voice Guide file
 - Golden Examples folder
-- Posted Insights folder (for "shared" status)
-- Implemented Ideas folder (for "implemented" status)
 
 ### UI Layout (v3)
 
@@ -352,7 +352,7 @@ inspiration/
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  SCOREBOARD HEADER (always visible)                                         │
 │  🧠 MEMORY: 2.1GB | Jul 15 → Jan 1 | 3 workspaces                          │
-│  📚 LIBRARY: 247 items | +12 this week | 14 categories | 8 implemented     │
+│  📚 LIBRARY: 247 items | +12 this week | 14 categories                     │
 └─────────────────────────────────────────────────────────────────────────────┘
 ┌───────────────────────────────┬─────────────────────────────────────────────┐
 │  📚 LIBRARY                   │  ✨ GENERATE / 🔍 SEEK                       │
@@ -450,41 +450,50 @@ inspiration/
 
 | ID | Feature | Description | Status |
 |----|---------|-------------|--------|
-| LIB-1 | **Quality Tier (A/B/C)** | Rate items on save; default filter to A-tier only | ✅ Done |
+| LIB-1 | ~~**Quality Tier (A/B/C)**~~ | ~~Rate items on save; default filter to A-tier only~~ | ❌ Removed (2026-01-10) |
 | LIB-2 | **Merge Similar** | "These 5 items are essentially the same—combine?" Button on category level | ✅ Done |
-| LIB-3 | **Auto-Archive Stale** | Items >90 days old with no action → auto-archive (one-click restore) | ✅ Done |
-| LIB-4 | **Bulk Actions** | Select multiple items → archive, change status, delete | ✅ Done |
+| LIB-3 | **Auto-Archive Stale** | Items >90 days old → auto-archive (one-click restore) | ✅ Done |
+| LIB-4 | **Bulk Actions** | Select multiple items → archive, delete | ✅ Done (simplified) |
 
-### Phase 2: Surface (Medium Effort, High Impact)
+### Phase 2: Surface — ❌ REMOVED (2026-01-10)
+
+*Entire phase removed. Theme Explorer serves the "surfacing" use case better than algorithmic recommendations.*
 
 | ID | Feature | Description | Status |
 |----|---------|-------------|--------|
-| LIB-5 | **"Top 3 Today"** | AI picks 3 items: recency × occurrence × workspace relevance | ✅ Done |
-| LIB-6 | **Workspace Context** | Highlight items matching current Cursor workspace | Deferred (requires Cursor integration) |
-| LIB-7 | **"Build Next" / "Share Next"** | Explicit recommendations with reasoning | ✅ Done |
+| LIB-5 | ~~**Top 3 Today**~~ | ~~Daily recommendations with freshness scoring~~ | ❌ Removed |
+| LIB-6 | ~~**Workspace Context**~~ | ~~Highlight items matching current workspace~~ | ❌ Removed |
+| LIB-7 | ~~**Build/Share Next**~~ | ~~Recommendations based on type priority~~ | ❌ Removed |
 
 ### Phase 3: Synthesize (High Effort, High Novelty)
 
 | ID | Feature | Description | Status |
 |----|---------|-------------|--------|
-| LIB-8 | **Theme Synthesis** | Category overview with quality breakdown per theme | ✅ Complete |
+| LIB-8 | **Theme Synthesis** | Category overview with item breakdown per theme | ✅ Complete |
 | LIB-9 | **Learning Trajectory** | "Your interests shifted from X → Y → Z over 6 months" | Pending |
 | LIB-10 | **Gap Detection** | "You've explored A and C extensively, but B is absent" | Pending |
 
+### Features Also Removed (2026-01-10)
+
+| Feature | Why Removed |
+|---------|-------------|
+| **Implementation Status Tracking** | Users focus on themes, not item completion |
+| **Tags Display/Filter** | 100+ tags = unusable; Seek mode handles "find specific" |
+| **Themes Overview in Library** | Too many "Uncategorized"; Theme Explorer is canonical |
+| **Run History** | Never used |
+| **Most Occurrences / A-Z Sort** | Low value without tags/categories |
+| **File Tracking Config** | Tied to removed implementation status |
+
 ### Implementation Order
 
-**Start with Phase 1** — Immediate quality-of-life improvements:
-1. LIB-4: Bulk Actions (enables manual cleanup now)
-2. LIB-2: Merge Similar (reduce item count at category level)
-3. LIB-1: Quality Tier (surface best items)
-4. LIB-3: Auto-Archive (automated cleanup)
+**Phase 1** — Declutter: ✅ Complete
+1. LIB-4: Bulk Actions (simplified to Active/Archived)
+2. LIB-2: Merge Similar
+3. LIB-3: Auto-Archive
 
-**Then Phase 2** — Surfacing:
-5. LIB-5: Top 3 Today
-6. LIB-6: Workspace Context
-7. LIB-7: Build/Share Next
+**Phase 2** — Surface: ❌ Removed (Theme Explorer serves this purpose)
 
-**Finally Phase 3** — Longitudinal intelligence (post-release)
+**Phase 3** — Longitudinal intelligence: Post-release
 
 ---
 

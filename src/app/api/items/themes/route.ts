@@ -9,7 +9,6 @@ interface ThemeSummary {
   categories: string[];
   topTags: string[];
   recentActivity: string; // ISO date
-  qualityBreakdown: { A: number; B: number; C: number; unrated: number };
 }
 
 // GET /api/items/themes - Get theme synthesis summary
@@ -63,7 +62,6 @@ export async function GET() {
       description: item.description,
       tags: item.tags || [],
       status: item.status,
-      quality: item.quality,
       occurrence: item.occurrence,
       lastSeen: item.last_seen,
       categoryId: item.category_id,
@@ -116,22 +114,12 @@ export async function GET() {
           return itemDate > new Date(latest) ? item.lastSeen : latest;
         }, items[0]?.lastSeen || new Date().toISOString());
 
-        // Quality breakdown
-        const qualityBreakdown = { A: 0, B: 0, C: 0, unrated: 0 };
-        for (const item of items) {
-          if (item.quality === "A") qualityBreakdown.A++;
-          else if (item.quality === "B") qualityBreakdown.B++;
-          else if (item.quality === "C") qualityBreakdown.C++;
-          else qualityBreakdown.unrated++;
-        }
-
         return {
           name: data.name,
           itemCount: items.length,
           categories: [data.name],
           topTags,
           recentActivity,
-          qualityBreakdown,
         };
       })
       .filter((theme) => theme.itemCount > 0)
@@ -142,12 +130,6 @@ export async function GET() {
       totalItems: activeItems.length,
       totalThemes: themes.length,
       topTheme: themes[0]?.name || null,
-      qualityDistribution: {
-        A: activeItems.filter((i) => i.quality === "A").length,
-        B: activeItems.filter((i) => i.quality === "B").length,
-        C: activeItems.filter((i) => i.quality === "C").length,
-        unrated: activeItems.filter((i) => !i.quality).length,
-      },
       typeDistribution: {
         ideas: activeItems.filter((i) => i.itemType === "idea").length,
         insights: activeItems.filter((i) => i.itemType === "insight").length,

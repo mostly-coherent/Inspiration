@@ -7,6 +7,46 @@
 
 ---
 
+## Decision: Major Feature Declutter - 2026-01-10
+
+**Problem:** The Inspiration app accumulated many features that added complexity without proportional value:
+- **Quality rating (A/B/C):** Users never filtered by quality; items naturally surface by occurrence/recency
+- **Implementation status:** With 200+ items, tracking "done vs pending" became noise—users want to explore themes, not tick off checklists
+- **Tags:** 100+ tags = cognitive overload; Seek mode serves the "find something specific" use case better
+- **Top 3 Today / Build/Share Next:** Hit-or-miss recommendations; Theme Explorer does this better with visual clustering
+- **Themes Overview in Library:** Too many "Uncategorized" items made this useless; Theme Explorer is canonical
+- **Run History:** Never consulted; users don't care about past generation runs
+- **File Tracking Config:** Tied to implementation status which was removed
+
+**Decision:** Remove all low-value features; simplify to core use cases
+
+**Rationale:**
+1. **User intent:** Users come to Inspiration for clarity, ideas, and insights—not to manage a complex database
+2. **Theme Explorer is the centerpiece:** Visual exploration of themes/patterns is the unique value; everything else is secondary
+3. **Library is for reference, not management:** Users browse, search, reflect—they don't need elaborate filtering/sorting
+4. **Seek handles specificity:** If users want something specific, they use Seek mode, not tag filters
+5. **Less is more:** Fewer features = faster app, easier onboarding, clearer purpose
+
+**Alternatives Considered:**
+1. **Keep all features but hide behind "Advanced" toggle** — Rejected: Still maintenance burden, confusing UX
+2. **Gradually deprecate with warnings** — Rejected: Rip-the-bandaid-off is cleaner
+3. **Convert to user-optional plugins** — Rejected: Over-engineering for features nobody uses
+4. **Remove features and clean up dead code** — ✅ Chosen: Clean break, simpler codebase
+
+**Impact:**
+- **Scope:** Removed 5+ features, 4 API routes, dozens of UI elements
+- **Types:** Simplified `Item` interface, reduced `ItemStatus` to 2 values
+- **Settings:** File Tracking section removed
+- **Codebase:** ~500 lines of dead code removed
+
+**Post-Cleanup App Focus:**
+1. **Memory Status:** How big is my chat history? Is it synced?
+2. **Library Overview:** How many items? What themes emerged?
+3. **Theme Explorer:** Visual exploration of patterns (the main feature)
+4. **Generate/Seek:** Occasional targeted extraction when something feels missing
+
+---
+
 ## Decision: Migrate Library from JSON to Supabase - 2026-01-09
 
 **Problem:** Vercel deployment failed with timeout errors when loading Library. With 245+ items, the `items_bank.json` file grew to 11MB. Parsing it from filesystem took 2-5 seconds locally and 30+ seconds on Vercel (often exceeding timeout limits). The app frequently crashed with "504 Gateway Timeout" errors.

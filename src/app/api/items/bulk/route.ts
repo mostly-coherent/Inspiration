@@ -17,7 +17,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    if (!status || !["active", "implemented", "posted", "archived"].includes(status)) {
+    if (!status || !["active", "archived"].includes(status)) {
       return NextResponse.json(
         { success: false, error: "Invalid status" },
         { status: 400 }

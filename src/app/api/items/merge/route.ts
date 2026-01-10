@@ -60,18 +60,13 @@ export async function POST(request: NextRequest) {
       itemType: item.item_type,
       title: item.title,
       description: item.description,
-      tags: item.tags || [],
-      status: item.status,
-      quality: item.quality,
+      status: item.status || "active",
       occurrence: item.occurrence,
       sourceConversations: item.source_conversations,
       firstSeen: item.first_seen,
       lastSeen: item.last_seen,
       categoryId: item.category_id,
       sourceDates: item.source_dates || [],
-      // Legacy fields
-      mode: item.mode,
-      theme: item.theme,
     }));
 
     // Sort by occurrence (highest first) to pick the "primary" item

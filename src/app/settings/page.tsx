@@ -5,6 +5,15 @@ import Link from "next/link";
 import { ModeSettingsManager } from "@/components/ModeSettingsManager";
 import { AdvancedConfigSection } from "@/components/AdvancedConfigSection";
 import { PromptTemplateEditor } from "@/components/PromptTemplateEditor";
+import {
+  SettingsSection,
+  WizardNavigation,
+  WorkspacesSection,
+  VectorDBSection,
+  VoiceStyleSection,
+  LLMSettingsSection,
+  PowerFeaturesSection,
+} from "@/components/settings";
 
 interface AppConfig {
   version: number;
@@ -59,8 +68,6 @@ interface AppConfig {
 }
 
 type WizardStep = "workspaces" | "vectordb" | "voice" | "llm" | "features" | "done";
-
-// Tab types for post-setup navigation
 type SettingsTab = "general" | "modes" | "advanced" | "prompts";
 
 const SETTINGS_TABS: { id: SettingsTab; label: string; icon: string }[] = [
@@ -77,26 +84,25 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<WizardStep>("workspaces");
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  
+  // Chat history detection state
   const [chatHistoryPath, setChatHistoryPath] = useState<string | null>(null);
   const [chatHistoryPlatform, setChatHistoryPlatform] = useState<"darwin" | "win32" | null>(null);
   const [chatHistoryExists, setChatHistoryExists] = useState(false);
   const [detectingChatHistory, setDetectingChatHistory] = useState(false);
-  const [newWorkspace, setNewWorkspace] = useState("");
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   
-  // Local state for Power Features (to avoid saving on every keystroke)
+  // Form state
+  const [newWorkspace, setNewWorkspace] = useState("");
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
+  // Local state for inputs (to avoid cursor jumping on every keystroke)
   const [localLinkedInEnabled, setLocalLinkedInEnabled] = useState(false);
   const [localLinkedInDirectory, setLocalLinkedInDirectory] = useState("");
   const [localSolvedStatusEnabled, setLocalSolvedStatusEnabled] = useState(false);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  
-  // Local state for Voice & Style (to avoid cursor jumping on every keystroke)
   const [localAuthorName, setLocalAuthorName] = useState("");
   const [localAuthorContext, setLocalAuthorContext] = useState("");
   const [localGoldenExamplesDir, setLocalGoldenExamplesDir] = useState("");
   const [localVoiceGuideFile, setLocalVoiceGuideFile] = useState("");
-  
-  // Local state for LLM Model (to avoid cursor jumping)
   const [localLlmModel, setLocalLlmModel] = useState("");
 
   // Load configuration
@@ -110,9 +116,9 @@ export default function SettingsPage() {
       detectChatHistory();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config]); // detectChatHistory is stable, only re-run when config changes
+  }, [config]);
 
-  // Initialize Voice & Style and LLM local state from config
+  // Initialize local state from config
   useEffect(() => {
     if (config) {
       setLocalAuthorName(config.features.customVoice.authorName || "");
@@ -120,10 +126,52 @@ export default function SettingsPage() {
       setLocalGoldenExamplesDir(config.features.customVoice.goldenExamplesDir || "");
       setLocalVoiceGuideFile(config.features.customVoice.voiceGuideFile || "");
       setLocalLlmModel(config.llm.model || "");
+      setLocalLinkedInEnabled(config.features.linkedInSync.enabled);
+      setLocalLinkedInDirectory(config.features.linkedInSync.postsDirectory || "");
+      setLocalSolvedStatusEnabled(config.features.solvedStatusSync.enabled);
     }
   }, [config]);
 
-  // Auto-detect chat history path
+  const loadConfig = async () => {
+    try {
+      const res = await fetch("/api/config");
+      const data = await res.json();
+      if (data.success && data.config) {
+        setConfig(data.config);
+      } else {
+        // Default config
+        setConfig({
+          version: 1,
+          setupComplete: false,
+          workspaces: [],
+          llm: {
+            provider: "anthropic",
+            model: "claude-sonnet-4-20250514",
+            fallbackProvider: null,
+            fallbackModel: null,
+          },
+          features: {
+            linkedInSync: { enabled: false, postsDirectory: null },
+            solvedStatusSync: { enabled: false },
+            customVoice: {
+              enabled: false,
+              voiceGuideFile: null,
+              goldenExamplesDir: null,
+              authorName: null,
+              authorContext: null,
+            },
+          },
+          ui: { defaultTool: "ideas", defaultMode: "sprint" },
+        });
+      }
+    } catch (err) {
+      setError("Failed to load configuration");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const detectChatHistory = async () => {
     setDetectingChatHistory(true);
     try {
@@ -134,7 +182,6 @@ export default function SettingsPage() {
         setChatHistoryPlatform(data.platform);
         setChatHistoryExists(data.exists);
         
-        // Save to config if not already set
         if (data.path && config && (!config.chatHistory || !config.chatHistory.path)) {
           await saveConfig({
             chatHistory: {
@@ -153,50 +200,26 @@ export default function SettingsPage() {
     }
   };
 
-  const loadConfig = async () => {
-    try {
-      const res = await fetch("/api/config");
-      const data = await res.json();
-      if (data.success) {
-        setConfig(data.config);
-        // If setup is complete, don't show wizard
-        if (data.config.setupComplete) {
-          setCurrentStep("done");
-        }
-      } else {
-        setError(data.error);
-      }
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const saveConfig = async (updates: Partial<AppConfig>) => {
+  const saveConfig = async (updates: Partial<AppConfig>): Promise<boolean> => {
+    if (!config) return false;
     setSaving(true);
-    setSaveStatus("saving");
     try {
+      const newConfig = { ...config, ...updates };
       const res = await fetch("/api/config", {
-        method: "POST",
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
+        body: JSON.stringify(newConfig),
       });
       const data = await res.json();
       if (data.success) {
-        setConfig(data.config);
-        setSaveStatus("saved");
-        // Reset save status after 2 seconds
-        setTimeout(() => setSaveStatus("idle"), 2000);
+        setConfig(newConfig);
         return true;
-      } else {
-        setError(data.error);
-        setSaveStatus("idle");
-        return false;
       }
+      setError(data.error || "Failed to save");
+      return false;
     } catch (err) {
-      setError(String(err));
-      setSaveStatus("idle");
+      setError("Failed to save configuration");
+      console.error(err);
       return false;
     } finally {
       setSaving(false);
@@ -204,27 +227,52 @@ export default function SettingsPage() {
   };
 
   const addWorkspace = () => {
-    if (!newWorkspace.trim() || !config) return;
-    const updated = [...config.workspaces, newWorkspace.trim()];
-    saveConfig({ workspaces: updated });
-    setNewWorkspace("");
+    if (newWorkspace.trim() && config) {
+      saveConfig({ workspaces: [...config.workspaces, newWorkspace.trim()] });
+      setNewWorkspace("");
+    }
   };
 
   const removeWorkspace = (index: number) => {
-    if (!config) return;
-    const updated = config.workspaces.filter((_, i) => i !== index);
-    saveConfig({ workspaces: updated });
+    if (config) {
+      saveConfig({ workspaces: config.workspaces.filter((_, i) => i !== index) });
+    }
   };
 
   const completeSetup = async () => {
-    await saveConfig({ setupComplete: true });
+    await saveConfig({
+      setupComplete: true,
+      features: {
+        ...config!.features,
+        linkedInSync: {
+          enabled: localLinkedInEnabled,
+          postsDirectory: localLinkedInDirectory || null,
+        },
+        solvedStatusSync: { enabled: localSolvedStatusEnabled },
+      },
+    });
     setCurrentStep("done");
+  };
+
+  const handleVoiceSave = (field: "authorName" | "authorContext" | "goldenExamplesDir" | "voiceGuideFile", value: string) => {
+    if (!config) return;
+    const updates: Partial<AppConfig> = {
+      features: {
+        ...config.features,
+        customVoice: {
+          ...config.features.customVoice,
+          [field]: value || null,
+          enabled: field === "goldenExamplesDir" ? !!value : config.features.customVoice.enabled,
+        },
+      },
+    };
+    saveConfig(updates);
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
-        <div className="text-slate-400">Loading configuration...</div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div>
       </div>
     );
   }
@@ -232,82 +280,60 @@ export default function SettingsPage() {
   if (!config) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
-        <div className="text-red-400">Failed to load configuration: {error}</div>
+        <p className="text-red-400">{error || "Failed to load configuration"}</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      {/* Skip link */}
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-amber-500 focus:text-slate-900 focus:rounded-lg">
+        Skip to main content
+      </a>
+
       {/* Header */}
-      <header className="border-b border-slate-800/50 backdrop-blur-sm sticky top-0 z-50 bg-slate-950/80">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="text-slate-400 hover:text-slate-200 transition-colors">
-              ← Back
-            </Link>
-            <h1 className="text-xl font-semibold bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">
-              ⚙️ Settings
-            </h1>
-          </div>
-          <div className="flex items-center gap-3">
-            {saveStatus === "saving" && (
-              <span className="text-xs text-slate-400 flex items-center gap-1">
-                <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
-                Saving...
-              </span>
-            )}
-            {saveStatus === "saved" && (
-              <span className="text-xs text-emerald-400 flex items-center gap-1">
-                <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
-                Saved ✓
-              </span>
-            )}
-            {config.setupComplete && (
-              <span className="text-xs text-emerald-400 flex items-center gap-1">
-                <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
-                Setup Complete
-              </span>
-            )}
-          </div>
+      <header className="sticky top-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-slate-800/50">
+        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2 text-slate-300 hover:text-slate-100 transition-colors">
+            <span>←</span>
+            <span>Back to App</span>
+          </Link>
+          <h1 className="text-lg font-semibold text-slate-200">
+            {config.setupComplete ? "Settings" : "Setup Wizard"}
+          </h1>
+          <div className="w-24" />
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-8">
-        {/* Progress Steps (Wizard Mode) */}
-        {!config.setupComplete && (
+      <main id="main-content" className="max-w-4xl mx-auto px-4 py-8">
+        {error && (
+          <div className="mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400">
+            {error}
+          </div>
+        )}
+
+        {/* Wizard Progress (Setup Mode) */}
+        {!config.setupComplete && currentStep !== "done" && (
           <div className="mb-8">
-            <div className="flex items-center justify-center gap-4 mb-6" role="navigation" aria-label="Setup wizard steps">
-              {(["workspaces", "vectordb", "voice", "llm", "features"] as const).map((step, i) => {
-                const stepLabels: Record<Exclude<WizardStep, "done">, string> = {
-                  workspaces: "Configure Workspaces",
-                  vectordb: "Vector DB Setup",
-                  voice: "Your Voice & Style",
-                  llm: "LLM Settings",
-                  features: "Power Features",
-                };
-                return (
-                  <div key={step} className="flex items-center">
-                    <button
-                      onClick={() => setCurrentStep(step)}
-                      aria-label={`Step ${i + 1}: ${stepLabels[step]}${currentStep === step ? " (current)" : ""}`}
-                      aria-current={currentStep === step ? "step" : undefined}
-                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
-                        currentStep === step
-                          ? "bg-amber-500 text-slate-900"
-                          : config.workspaces.length > 0 && step !== currentStep
-                          ? "bg-slate-700 text-slate-300 hover:bg-slate-600"
-                          : "bg-slate-800 text-slate-500"
-                      }`}
-                    >
-                      {i + 1}
-                    </button>
-                    {i < 4 && (
-                      <div className="w-12 h-0.5 bg-slate-800 mx-2" aria-hidden="true"></div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="flex items-center justify-center mb-4">
+              {["workspaces", "vectordb", "voice", "llm", "features"].map((step, i) => (
+                <div key={step} className="flex items-center">
+                  <button
+                    onClick={() => setCurrentStep(step as WizardStep)}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
+                      currentStep === step
+                        ? "bg-amber-500 text-slate-900"
+                        : i < ["workspaces", "vectordb", "voice", "llm", "features"].indexOf(currentStep)
+                        ? "bg-emerald-500/20 text-emerald-400"
+                        : "bg-slate-800 text-slate-500"
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                  {i < 4 && <div className="w-12 h-0.5 bg-slate-800 mx-2" />}
+                </div>
+              ))}
             </div>
             <div className="text-center text-sm text-slate-500">
               {currentStep === "workspaces" && "Step 1: Configure Workspaces"}
@@ -322,21 +348,20 @@ export default function SettingsPage() {
         {/* Tab Navigation (Setup Complete Mode) */}
         {config.setupComplete && (
           <div className="mb-8">
-            <nav className="flex items-center gap-1 p-1 bg-slate-800/50 rounded-lg border border-slate-700/30" role="tablist" aria-label="Settings sections">
+            <nav className="flex items-center gap-1 p-1 bg-slate-800/50 rounded-lg border border-slate-700/30" role="tablist">
               {SETTINGS_TABS.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   role="tab"
                   aria-selected={activeTab === tab.id}
-                  aria-controls={`${tab.id}-panel`}
                   className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md transition-all ${
                     activeTab === tab.id
                       ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
                       : "text-slate-400 hover:text-slate-200 hover:bg-slate-700/50"
                   }`}
                 >
-                  <span aria-hidden="true">{tab.icon}</span>
+                  <span>{tab.icon}</span>
                   {tab.label}
                 </button>
               ))}
@@ -346,622 +371,147 @@ export default function SettingsPage() {
 
         {/* Workspaces Section */}
         {(currentStep === "workspaces" || (config.setupComplete && activeTab === "general")) && (
-          <Section
-            title="📁 Workspaces"
-            description="Directories containing Cursor projects to analyze"
-          >
-            <div className="space-y-3">
-              {config.workspaces.map((ws, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700/50"
-                >
-                  <span className="flex-1 font-mono text-sm text-slate-300">{ws}</span>
-                  <button
-                    onClick={() => removeWorkspace(i)}
-                    className="text-slate-500 hover:text-red-400 transition-colors"
-                    aria-label={`Remove workspace: ${ws}`}
-                  >
-                    <span aria-hidden="true">✕</span>
-                  </button>
-                </div>
-              ))}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newWorkspace}
-                  onChange={(e) => setNewWorkspace(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addWorkspace()}
-                  placeholder="/path/to/your/workspace"
-                  className="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
-                />
-                <button
-                  onClick={addWorkspace}
-                  disabled={!newWorkspace.trim()}
-                  className="px-4 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Add
-                </button>
-              </div>
-              {config.workspaces.length === 0 && (
-                <p className="text-slate-500 text-sm">
-                  Add at least one workspace to get started. This is where Cursor stores your chat history.
-                </p>
-              )}
-            </div>
+          <SettingsSection title="📁 Workspaces" description="Directories containing Cursor projects to analyze">
+            <WorkspacesSection
+              workspaces={config.workspaces}
+              newWorkspace={newWorkspace}
+              setNewWorkspace={setNewWorkspace}
+              onAdd={addWorkspace}
+              onRemove={removeWorkspace}
+            />
             {!config.setupComplete && (
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={() => setCurrentStep("vectordb")}
-                  disabled={config.workspaces.length === 0}
-                  className="px-6 py-2 bg-amber-500 text-slate-900 font-medium rounded-lg hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Next →
-                </button>
-              </div>
+              <WizardNavigation
+                onNext={() => setCurrentStep("vectordb")}
+                nextDisabled={config.workspaces.length === 0}
+              />
             )}
-          </Section>
+          </SettingsSection>
         )}
 
         {/* VectorDB Setup Section */}
         {(currentStep === "vectordb" || (config.setupComplete && activeTab === "general")) && (
-          <Section
-            title="🧠 Vector Database (Memory)"
-            description="Set up Supabase Vector DB for efficient chat history search"
-          >
-            <div className="space-y-6">
-              <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/30">
-                <h4 className="text-blue-400 font-medium mb-2">Why Vector DB?</h4>
-                <p className="text-sm text-slate-400 mb-2">
-                  Vector DB enables fast semantic search across your entire chat history, 
-                  even with 2GB+ of conversations. It&apos;s required for Inspiration v1.
-                </p>
-                <p className="text-xs text-slate-500">
-                  💡 <strong>Setup:</strong> Create a free Supabase project, run the SQL script 
-                  (see link below), then enter your credentials here.
-                </p>
-              </div>
-
-              {/* Supabase Credentials (Read-Only) */}
-              <SupabaseCredentialsSection config={config} />
-
-              {/* Chat History Auto-Detection */}
-              <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
-                <div className="flex items-start justify-between mb-2">
-                  <h4 className="text-slate-200 font-medium">📁 Chat History Location</h4>
-                  <button
-                    onClick={detectChatHistory}
-                    disabled={detectingChatHistory}
-                    className="text-xs px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-slate-300 disabled:opacity-50 transition-colors"
-                  >
-                    {detectingChatHistory ? "Detecting..." : "Refresh"}
-                  </button>
-                </div>
-                {detectingChatHistory ? (
-                  <p className="text-sm text-slate-500">Detecting chat history location...</p>
-                ) : chatHistoryPath ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      {chatHistoryExists ? (
-                        <span className="text-emerald-400">✓</span>
-                      ) : (
-                        <span className="text-yellow-400">⚠</span>
-                      )}
-                      <code className="flex-1 px-2 py-1 bg-slate-900 rounded text-xs text-slate-300 break-all">
-                        {chatHistoryPath}
-                      </code>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-slate-500">
-                      <span>Platform: {chatHistoryPlatform === "darwin" ? "macOS" : chatHistoryPlatform === "win32" ? "Windows" : "Unknown"}</span>
-                      {chatHistoryExists ? (
-                        <span className="text-emerald-400">File exists</span>
-                      ) : (
-                        <span className="text-yellow-400">File not found (Cursor may not be installed)</span>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500">
-                    Click &quot;Refresh&quot; to auto-detect your Cursor chat history location.
-                  </p>
-                )}
-              </div>
-
-              {/* Setup Instructions */}
-              <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
-                <h4 className="text-slate-200 font-medium mb-2">📋 Setup Instructions</h4>
-                <ol className="text-sm text-slate-400 space-y-2 list-decimal list-inside">
-                  <li>Create a free Supabase project at <a href="https://supabase.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">supabase.com</a></li>
-                  <li>Run the SQL script: <code className="px-1.5 py-0.5 bg-slate-900 rounded text-xs">engine/scripts/init_vector_db.sql</code></li>
-                  <li>Copy your Project URL and Anon Key from Project Settings → API</li>
-                  <li>Enter them above and click &quot;Test Connection&quot;</li>
-                </ol>
-              </div>
-
-              {/* Status */}
-              {config.vectordb?.initialized && (
-                <div className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/30">
-                  <h4 className="text-emerald-400 font-medium mb-2">✓ Vector DB Configured</h4>
-                  <p className="text-sm text-slate-400">
-                    {config.vectordb.lastSync 
-                      ? `Last sync: ${new Date(config.vectordb.lastSync).toLocaleString()}`
-                      : "Ready to sync your chat history"}
-                  </p>
-                </div>
-              )}
-            </div>
+          <SettingsSection title="🧠 Vector Database (Memory)" description="Set up Supabase Vector DB for efficient chat history search">
+            <VectorDBSection
+              vectordb={config.vectordb}
+              chatHistory={{
+                path: chatHistoryPath,
+                platform: chatHistoryPlatform,
+                exists: chatHistoryExists,
+                isDetecting: detectingChatHistory,
+                onRefresh: detectChatHistory,
+              }}
+            />
             {!config.setupComplete && (
-              <div className="mt-6 flex justify-between">
-                <button
-                  onClick={() => setCurrentStep("workspaces")}
-                  className="px-6 py-2 text-slate-400 hover:text-slate-200 transition-colors"
-                >
-                  ← Back
-                </button>
-                <button
-                  onClick={() => setCurrentStep("voice")}
-                  className="px-6 py-2 bg-amber-500 text-slate-900 font-medium rounded-lg hover:bg-amber-400 transition-colors"
-                >
-                  Next →
-                </button>
-              </div>
+              <WizardNavigation
+                onBack={() => setCurrentStep("workspaces")}
+                onNext={() => setCurrentStep("voice")}
+              />
             )}
-          </Section>
+          </SettingsSection>
         )}
 
         {/* Voice & Style Section */}
         {(currentStep === "voice" || (config.setupComplete && activeTab === "general")) && (
-          <Section
-            title="✍️ Your Voice & Style"
-            description="Configure how Inspiration captures your authentic writing voice"
-          >
-            <div className="space-y-6">
-              {/* Author Info */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2">
-                    Your Name
-                  </label>
-                  <input
-                    type="text"
-                    value={localAuthorName}
-                    onChange={(e) => setLocalAuthorName(e.target.value)}
-                    onBlur={() =>
-                      saveConfig({
-                        features: {
-                          ...config.features,
-                          customVoice: {
-                            ...config.features.customVoice,
-                            authorName: localAuthorName || null,
-                          },
-                        },
-                      })
-                    }
-                    placeholder="e.g., JM"
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2">
-                    Brief Context
-                  </label>
-                  <input
-                    type="text"
-                    value={localAuthorContext}
-                    onChange={(e) => setLocalAuthorContext(e.target.value)}
-                    onBlur={() =>
-                      saveConfig({
-                        features: {
-                          ...config.features,
-                          customVoice: {
-                            ...config.features.customVoice,
-                            authorContext: localAuthorContext || null,
-                          },
-                        },
-                      })
-                    }
-                    placeholder="e.g., PM at a tech company who builds with AI"
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
-                  />
-                </div>
-              </div>
-
-              {/* Golden Examples */}
-              <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
-                <div className="flex items-start gap-3">
-                  <span className="text-2xl">📝</span>
-                  <div className="flex-1">
-                    <h4 className="text-slate-200 font-medium mb-1">Golden Examples Folder</h4>
-                    <p className="text-xs text-slate-500 mb-3">
-                      Point to a folder with your actual social media posts or writing samples. 
-                      The AI will study these to match your voice, style, and depth.
-                    </p>
-                    <input
-                      type="text"
-                      value={localGoldenExamplesDir}
-                      onChange={(e) => setLocalGoldenExamplesDir(e.target.value)}
-                      onBlur={() =>
-                        saveConfig({
-                          features: {
-                            ...config.features,
-                            customVoice: {
-                              ...config.features.customVoice,
-                              enabled: !!localGoldenExamplesDir,
-                              goldenExamplesDir: localGoldenExamplesDir || null,
-                            },
-                          },
-                        })
-                      }
-                      placeholder="/path/to/your/social-posts"
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
-                    />
-                    <p className="text-xs text-slate-600 mt-2">
-                      Tip: Save your best 5-10 posts as .md files in this folder
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Voice Guide (Optional) */}
-              <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
-                <div className="flex items-start gap-3">
-                  <span className="text-2xl">📋</span>
-                  <div className="flex-1">
-                    <h4 className="text-slate-200 font-medium mb-1">Voice Guide (Optional)</h4>
-                    <p className="text-xs text-slate-500 mb-3">
-                      A markdown file with explicit voice rules: words you use, words you avoid, 
-                      sentence style preferences, emoji usage, etc.
-                    </p>
-                    <input
-                      type="text"
-                      value={localVoiceGuideFile}
-                      onChange={(e) => setLocalVoiceGuideFile(e.target.value)}
-                      onBlur={() =>
-                        saveConfig({
-                          features: {
-                            ...config.features,
-                            customVoice: {
-                              ...config.features.customVoice,
-                              voiceGuideFile: localVoiceGuideFile || null,
-                            },
-                          },
-                        })
-                      }
-                      placeholder="/path/to/voice-guide.md"
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Preview of what's configured */}
-              {(localAuthorName || localGoldenExamplesDir) && (
-                <div className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/30">
-                  <h4 className="text-emerald-400 font-medium mb-2">✓ Voice Profile Active</h4>
-                  <ul className="text-sm text-slate-400 space-y-1">
-                    {localAuthorName && (
-                      <li>• Author: {localAuthorName}</li>
-                    )}
-                    {localAuthorContext && (
-                      <li>• Context: {localAuthorContext}</li>
-                    )}
-                    {localGoldenExamplesDir && (
-                      <li>• Examples: {localGoldenExamplesDir}</li>
-                    )}
-                    {localVoiceGuideFile && (
-                      <li>• Voice Guide: {localVoiceGuideFile}</li>
-                    )}
-                  </ul>
-                </div>
-              )}
-            </div>
+          <SettingsSection title="✍️ Your Voice & Style" description="Configure how Inspiration captures your authentic writing voice">
+            <VoiceStyleSection
+              authorName={localAuthorName}
+              setAuthorName={setLocalAuthorName}
+              authorContext={localAuthorContext}
+              setAuthorContext={setLocalAuthorContext}
+              goldenExamplesDir={localGoldenExamplesDir}
+              setGoldenExamplesDir={setLocalGoldenExamplesDir}
+              voiceGuideFile={localVoiceGuideFile}
+              setVoiceGuideFile={setLocalVoiceGuideFile}
+              onSave={handleVoiceSave}
+            />
             {!config.setupComplete && (
-              <div className="mt-6 flex justify-between">
-                <button
-                  onClick={() => setCurrentStep("workspaces")}
-                  className="px-6 py-2 text-slate-400 hover:text-slate-200 transition-colors"
-                >
-                  ← Back
-                </button>
-                <button
-                  onClick={() => setCurrentStep("llm")}
-                  className="px-6 py-2 bg-amber-500 text-slate-900 font-medium rounded-lg hover:bg-amber-400 transition-colors"
-                >
-                  Next →
-                </button>
-              </div>
+              <WizardNavigation
+                onBack={() => setCurrentStep("vectordb")}
+                onNext={() => setCurrentStep("llm")}
+              />
             )}
-          </Section>
+          </SettingsSection>
         )}
 
         {/* LLM Settings */}
         {(currentStep === "llm" || (config.setupComplete && activeTab === "general")) && (
-          <Section
-            title="🤖 LLM Provider"
-            description="Configure your AI model for generation"
-          >
-            <div className="grid gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">
-                  Primary Provider
-                </label>
-                <select
-                  value={config.llm.provider}
-                  onChange={(e) =>
-                    saveConfig({
-                      llm: { ...config.llm, provider: e.target.value as "anthropic" | "openai" | "openrouter" },
-                    })
-                  }
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500/50"
-                >
-                  <option value="anthropic">Anthropic (Claude)</option>
-                  <option value="openai">OpenAI (GPT)</option>
-                  <option value="openrouter">OpenRouter (500+ Models)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">
-                  Model
-                </label>
-                <input
-                  type="text"
-                  value={localLlmModel}
-                  onChange={(e) => setLocalLlmModel(e.target.value)}
-                  onBlur={() =>
-                    saveConfig({ llm: { ...config.llm, model: localLlmModel } })
-                  }
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500/50"
-                />
-              </div>
-              <div className="pt-4 border-t border-slate-700/50">
-                <label className="flex items-center gap-3 text-sm text-slate-400 cursor-pointer">
-                  <input
-                    id="fallback-provider-toggle"
-                    type="checkbox"
-                    checked={config.llm.fallbackProvider !== null}
-                    onChange={(e) =>
-                      saveConfig({
-                        llm: {
-                          ...config.llm,
-                          fallbackProvider: e.target.checked ? "openai" : null,
-                          fallbackModel: e.target.checked ? "gpt-4o" : null,
-                        },
-                      })
-                    }
-                    className="w-4 h-4 rounded bg-slate-800 border-slate-700"
-                  />
-                  Enable fallback provider
-                </label>
-                <p className="text-xs text-slate-500 mt-1 ml-7">
-                  If primary fails, automatically try the fallback
-                </p>
-              </div>
-              
-              {/* Prompt Compression */}
-              <div className="pt-4 border-t border-slate-700/50">
-                <label className="flex items-center gap-3 text-sm text-slate-400 cursor-pointer">
-                  <input
-                    id="prompt-compression-toggle"
-                    type="checkbox"
-                    checked={config.llm.promptCompression?.enabled ?? false}
-                    onChange={(e) =>
-                      saveConfig({
-                        llm: {
-                          ...config.llm,
-                          promptCompression: {
-                            enabled: e.target.checked,
-                            threshold: config.llm.promptCompression?.threshold ?? 10000,
-                            compressionModel: config.llm.promptCompression?.compressionModel ?? "gpt-3.5-turbo",
-                          },
-                        },
-                      })
-                    }
-                    className="w-4 h-4 rounded bg-slate-800 border-slate-700"
-                  />
-                  Enable prompt compression
-                </label>
-                <p className="text-xs text-slate-500 mt-1 ml-7">
-                  Automatically compress large conversation histories to reduce token usage and avoid rate limits
-                </p>
-                {config.llm.promptCompression?.enabled && (
-                  <div className="mt-3 ml-7 space-y-2">
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">
-                        Compression threshold (tokens)
-                      </label>
-                      <input
-                        type="number"
-                        value={config.llm.promptCompression.threshold}
-                        onChange={(e) =>
-                          saveConfig({
-                            llm: {
-                              ...config.llm,
-                              promptCompression: {
-                                ...config.llm.promptCompression!,
-                                threshold: parseInt(e.target.value) || 10000,
-                              },
-                            },
-                          })
-                        }
-                        className="w-full px-3 py-1 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200 focus:outline-none focus:border-amber-500/50"
-                        min="1000"
-                        max="100000"
-                        step="1000"
-                      />
-                      <p className="text-xs text-slate-600 mt-1">
-                        Compress prompts larger than this (default: 10,000)
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">
-                        Compression model
-                      </label>
-                      <select
-                        value={config.llm.promptCompression.compressionModel}
-                        onChange={(e) =>
-                          saveConfig({
-                            llm: {
-                              ...config.llm,
-                              promptCompression: {
-                                ...config.llm.promptCompression!,
-                                compressionModel: e.target.value,
-                              },
-                            },
-                          })
-                        }
-                        className="w-full px-3 py-1 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200 focus:outline-none focus:border-amber-500/50"
-                      >
-                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo (cheapest)</option>
-                        <option value="gpt-4o-mini">GPT-4o Mini</option>
-                        <option value="gpt-4o">GPT-4o</option>
-                      </select>
-                      <p className="text-xs text-slate-600 mt-1">
-                        Model used for compression (cheaper = lower cost)
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+          <SettingsSection title="🤖 LLM Provider" description="Configure your AI model for generation">
+            <LLMSettingsSection
+              llm={config.llm}
+              localModel={localLlmModel}
+              setLocalModel={setLocalLlmModel}
+              onSave={(updates) => saveConfig(updates as Partial<AppConfig>)}
+            />
             {!config.setupComplete && (
-              <div className="mt-6 flex justify-between">
-                <button
-                  onClick={() => setCurrentStep("voice")}
-                  className="px-6 py-2 text-slate-400 hover:text-slate-200 transition-colors"
-                >
-                  ← Back
-                </button>
-                <button
-                  onClick={() => setCurrentStep("features")}
-                  className="px-6 py-2 bg-amber-500 text-slate-900 font-medium rounded-lg hover:bg-amber-400 transition-colors"
-                >
-                  Next →
-                </button>
-              </div>
+              <WizardNavigation
+                onBack={() => setCurrentStep("voice")}
+                onNext={() => setCurrentStep("features")}
+              />
             )}
-          </Section>
+          </SettingsSection>
         )}
 
         {/* Mode Settings Section */}
-        {(config.setupComplete && activeTab === "modes") && (
-          <Section
+        {config.setupComplete && activeTab === "modes" && (
+          <SettingsSection
             title="🎯 Mode Settings"
-            description="Per-mode overrides for temperature, similarity, and search queries. Leave blank to use global defaults from Advanced tab."
+            description="Per-mode overrides for temperature, similarity, and search queries. Leave blank to use global defaults."
           >
             <div className="mb-4 p-3 bg-blue-500/10 rounded-lg border border-blue-500/20 text-xs text-slate-400">
-              <strong className="text-blue-400">💡 How to use:</strong> Each mode (Ideas, Insights, Use Cases) can have its own settings. 
-              Mode-specific settings override the global defaults in Advanced tab. Leave a field blank to use the global default.
+              <strong className="text-blue-400">💡 How to use:</strong> Each mode can have its own settings. 
+              Mode-specific settings override the global defaults in Advanced tab.
             </div>
             <ModeSettingsManager />
-          </Section>
+          </SettingsSection>
         )}
 
-        {/* Advanced Configuration Section (v3) */}
+        {/* Advanced Configuration Section */}
         {config.setupComplete && activeTab === "advanced" && (
-          <Section
+          <SettingsSection
             title="🔧 Advanced Configuration"
-            description="Global defaults for all generation modes. Each setting includes guidance on what it does and when to adjust it."
+            description="Global defaults for all generation modes"
           >
             <div className="mb-4 p-3 bg-amber-500/10 rounded-lg border border-amber-500/20 text-xs text-slate-400">
-              <strong className="text-amber-400">💡 Quick guide:</strong>{" "}
-              These are global defaults — they apply to all modes unless you set a mode-specific override in the Modes tab.
-              Changes take effect immediately after saving (no refresh needed). Each section has a &quot;Job to be done&quot; header explaining its purpose.
+              <strong className="text-amber-400">💡 Quick guide:</strong> These are global defaults — they apply to all modes unless you set a mode-specific override.
             </div>
             <AdvancedConfigSection onSave={() => loadConfig()} />
-          </Section>
+          </SettingsSection>
         )}
 
-        {/* Prompt Templates Section (v3) */}
+        {/* Prompt Templates Section */}
         {config.setupComplete && activeTab === "prompts" && (
-          <Section
+          <SettingsSection
             title="📝 Prompt Templates"
-            description="The exact instructions the AI follows when generating content. Edit these to change output style, format, or focus."
+            description="The exact instructions the AI follows when generating content"
           >
             <PromptTemplateEditor />
-          </Section>
+          </SettingsSection>
         )}
 
         {/* Power Features */}
         {(currentStep === "features" || (config.setupComplete && activeTab === "general")) && (
-          <Section
-            title="⚡ Power Features"
-            description="Optional features for advanced users"
-          >
-            <div className="space-y-6">
-              {/* Social Media Sync */}
-              <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
-                <label className="flex items-center gap-3 text-slate-200 cursor-pointer">
-                  <input
-                    id="social-sync-toggle"
-                    type="checkbox"
-                    checked={localLinkedInEnabled}
-                    onChange={(e) => {
-                      setLocalLinkedInEnabled(e.target.checked);
-                      setHasUnsavedChanges(true);
-                    }}
-                    className="w-4 h-4 rounded bg-slate-800 border-slate-700"
-                  />
-                  Social Media Sync
-                </label>
-                <p className="text-xs text-slate-500 mt-1 ml-7">
-                  Mark insights as &quot;shared&quot; when they match your social media posts
-                </p>
-                {localLinkedInEnabled && (
-                  <div className="mt-3 ml-7">
-                    <input
-                      type="text"
-                      value={localLinkedInDirectory}
-                      onChange={(e) => {
-                        setLocalLinkedInDirectory(e.target.value);
-                        setHasUnsavedChanges(true);
-                      }}
-                      placeholder="/path/to/social/posts"
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Solved Status Sync */}
-              <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
-                <label className="flex items-center gap-3 text-slate-200 cursor-pointer">
-                  <input
-                    id="solved-status-sync-toggle"
-                    type="checkbox"
-                    checked={localSolvedStatusEnabled}
-                    onChange={(e) => {
-                      setLocalSolvedStatusEnabled(e.target.checked);
-                      setHasUnsavedChanges(true);
-                    }}
-                    className="w-4 h-4 rounded bg-slate-800 border-slate-700"
-                  />
-                  Solved Status Sync
-                </label>
-                <p className="text-xs text-slate-500 mt-1 ml-7">
-                  Mark ideas as &quot;solved&quot; when they match projects in your workspaces
-                </p>
-              </div>
-            </div>
+          <SettingsSection title="⚡ Power Features" description="Optional features for advanced users">
+            <PowerFeaturesSection
+              linkedInEnabled={localLinkedInEnabled}
+              setLinkedInEnabled={setLocalLinkedInEnabled}
+              linkedInDirectory={localLinkedInDirectory}
+              setLinkedInDirectory={setLocalLinkedInDirectory}
+              solvedStatusEnabled={localSolvedStatusEnabled}
+              setSolvedStatusEnabled={setLocalSolvedStatusEnabled}
+              onUnsavedChange={() => setHasUnsavedChanges(true)}
+            />
             {!config.setupComplete && (
-              <div className="mt-6 flex justify-between">
-                <button
-                  onClick={() => setCurrentStep("llm")}
-                  className="px-6 py-2 text-slate-400 hover:text-slate-200 transition-colors"
-                >
-                  ← Back
-                </button>
-                <button
-                  onClick={completeSetup}
-                  disabled={saving}
-                  className="px-6 py-2 bg-emerald-500 text-slate-900 font-medium rounded-lg hover:bg-emerald-400 disabled:opacity-50 transition-colors"
-                >
-                  {saving ? "Saving..." : "Complete Setup ✓"}
-                </button>
-              </div>
+              <WizardNavigation
+                onBack={() => setCurrentStep("llm")}
+                onNext={completeSetup}
+                nextLabel="Complete Setup ✓"
+                saving={saving}
+                isComplete
+              />
             )}
             {config.setupComplete && activeTab === "general" && (
               <div className="mt-6 flex justify-end gap-3">
-                {hasUnsavedChanges && (
+                {hasUnsavedChanges ? (
                   <button
                     onClick={async () => {
                       const success = await saveConfig({
@@ -971,29 +521,22 @@ export default function SettingsPage() {
                             enabled: localLinkedInEnabled,
                             postsDirectory: localLinkedInDirectory || null,
                           },
-                          solvedStatusSync: {
-                            enabled: localSolvedStatusEnabled,
-                          },
+                          solvedStatusSync: { enabled: localSolvedStatusEnabled },
                         },
                       });
-                      if (success) {
-                        setHasUnsavedChanges(false);
-                      }
+                      if (success) setHasUnsavedChanges(false);
                     }}
                     disabled={saving}
                     className="px-6 py-2 bg-amber-500 text-slate-900 font-medium rounded-lg hover:bg-amber-400 disabled:opacity-50 transition-colors"
                   >
                     {saving ? "Saving..." : "Save Changes"}
                   </button>
-                )}
-                {!hasUnsavedChanges && (
-                  <div className="text-xs text-slate-500 self-center">
-                    All changes saved
-                  </div>
+                ) : (
+                  <div className="text-xs text-slate-500 self-center">All changes saved</div>
                 )}
               </div>
             )}
-          </Section>
+          </SettingsSection>
         )}
 
         {/* API Keys Notice */}
@@ -1010,168 +553,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-function Section({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="mb-8 p-6 bg-slate-900/50 rounded-xl border border-slate-800/50">
-      <h2 className="text-lg font-semibold text-slate-200 mb-1">{title}</h2>
-      <p className="text-sm text-slate-500 mb-4">{description}</p>
-      {children}
-    </section>
-  );
-}
-
-function SupabaseCredentialsSection({ config }: { config: AppConfig }) {
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{
-    success: boolean;
-    message?: string;
-    error?: string;
-    details?: Record<string, unknown>;
-  } | null>(null);
-
-  const testConnection = async () => {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const res = await fetch("/api/test-supabase");
-      const data = await res.json();
-      setTestResult(data);
-    } catch (err) {
-      setTestResult({
-        success: false,
-        error: err instanceof Error ? err.message : "Connection failed",
-      });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  return (
-    <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <h4 className="text-slate-200 font-medium">🔐 Supabase Credentials</h4>
-          <p className="text-xs text-slate-500 mt-1">
-            Configured in <code className="px-1.5 py-0.5 bg-slate-900 rounded text-amber-400">.env.local</code>
-          </p>
-        </div>
-        <button
-          onClick={testConnection}
-          disabled={testing || !config.vectordb?.url || !config.vectordb?.anonKey}
-          className="text-xs px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded text-blue-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
-        >
-          {testing ? (
-            <>
-              <span className="animate-spin">⟳</span>
-              Testing...
-            </>
-          ) : (
-            <>🔌 Test Connection</>
-          )}
-        </button>
-      </div>
-      
-      <div className="space-y-2">
-        {/* Supabase URL */}
-        <div className="flex items-center justify-between px-3 py-2 bg-slate-900/50 border border-slate-700/50 rounded-lg">
-          <span className="text-xs font-medium text-slate-500">SUPABASE_URL</span>
-          {config.vectordb?.url ? (
-            <span className="text-emerald-400 text-sm flex items-center gap-2">
-              <span>✓</span>
-              <span className="font-mono text-slate-400">•••••••••••••••</span>
-            </span>
-          ) : (
-            <span className="text-amber-400 text-xs">Not set</span>
-          )}
-        </div>
-
-        {/* Anon Key */}
-        <div className="flex items-center justify-between px-3 py-2 bg-slate-900/50 border border-slate-700/50 rounded-lg">
-          <span className="text-xs font-medium text-slate-500">SUPABASE_ANON_KEY</span>
-          {config.vectordb?.anonKey ? (
-            <span className="text-emerald-400 text-sm flex items-center gap-2">
-              <span>✓</span>
-              <span className="font-mono text-slate-400">•••••••••••••••</span>
-            </span>
-          ) : (
-            <span className="text-amber-400 text-xs">Not set</span>
-          )}
-        </div>
-
-        {/* Service Role Key */}
-        <div className="flex items-center justify-between px-3 py-2 bg-slate-900/50 border border-slate-700/50 rounded-lg">
-          <span className="text-xs font-medium text-slate-500">
-            SUPABASE_SERVICE_ROLE_KEY <span className="text-slate-600">(optional)</span>
-          </span>
-          {config.vectordb?.serviceRoleKey ? (
-            <span className="text-emerald-400 text-sm flex items-center gap-2">
-              <span>✓</span>
-              <span className="font-mono text-slate-400">•••••••••••••••</span>
-            </span>
-          ) : (
-            <span className="text-slate-500 text-xs">—</span>
-          )}
-        </div>
-      </div>
-
-      {/* Test Result */}
-      {testResult && (
-        <div className={`mt-3 p-3 rounded-lg border ${
-          testResult.success 
-            ? "bg-emerald-500/10 border-emerald-500/30" 
-            : "bg-red-500/10 border-red-500/30"
-        }`}>
-          {testResult.success ? (
-            <div className="flex items-start gap-2">
-              <span className="text-emerald-400">✓</span>
-              <div>
-                <p className="text-sm text-emerald-400 font-medium">Connection successful!</p>
-                {testResult.details && (
-                  <p className="text-xs text-slate-400 mt-1">
-                    {(testResult.details as { messageCount?: number }).messageCount?.toLocaleString() ?? 0} messages indexed
-                  </p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-start gap-2">
-              <span className="text-red-400">✗</span>
-              <div>
-                <p className="text-sm text-red-400 font-medium">{testResult.error}</p>
-                {testResult.details && (testResult.details as { hint?: string }).hint && (
-                  <p className="text-xs text-slate-400 mt-1">
-                    💡 {(testResult.details as { hint?: string }).hint}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Edit Instructions - collapsed by default */}
-      <details className="mt-3">
-        <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-400">
-          📝 How to edit credentials
-        </summary>
-        <div className="mt-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-          <ol className="text-xs text-slate-400 space-y-1 list-decimal list-inside">
-            <li>Open <code className="px-1 bg-slate-800 rounded text-slate-300">.env.local</code> in the project root</li>
-            <li>Add or update the environment variables</li>
-            <li>Restart the app (<code className="px-1 bg-slate-800 rounded text-slate-300">npm run dev</code>)</li>
-          </ol>
-        </div>
-      </details>
-    </div>
-  );
-}
-

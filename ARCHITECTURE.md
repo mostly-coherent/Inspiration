@@ -328,31 +328,98 @@ page.tsx (Orchestrator)
             └─→ ResultsPanel, ModeCard, ProgressPanel, etc.
 ```
 
-### Bounded Contexts
+### Component Categorization (Updated 2026-01-10)
+
+**Feature Components (Domain-Specific):**
+
+| Component | Purpose | Owns State | API Calls |
+|-----------|---------|------------|-----------|
+| `ScoreboardHeader` | Memory + Library stats | Yes | `/api/brain-stats`, `/api/items`, `/api/sync` |
+| `LibraryView` | Library browsing with detail panel | Yes | `/api/items`, `/api/items/bulk`, `/api/items/merge` |
+| `LibrarySearch` | Search and filter items | Yes (via parent) | None (filters parent data) |
+| `BanksOverview` | Library preview in compact mode | Yes | `/api/items` |
+| `SeekSection` | Use case search with results | Yes | `/api/seek` |
+| `ResultsPanel` | Generated results display | No | None |
+| `ProgressPanel` | Generation progress | No | None |
+
+**UI Components (Reusable):**
+
+| Component | Purpose | Props |
+|-----------|---------|-------|
+| `ItemCard` | Display single library item | `item`, `isExpanded` |
+| `ModeCard` | Mode selection card | `mode`, `isSelected`, `onClick` |
+| `ViewToggle` | View mode switcher | `viewMode`, `onChange` |
+| `LoadingSpinner` | Loading indicator | None |
+| `StopIcon` | Stop button icon | None |
+| `MarkdownContent` | Render markdown | `content` |
+| `ExpectedOutput` | Cost/time estimate | Config props |
+| `AnalysisCoverage` | Analysis scope display | Stats props |
+
+**Configuration Components:**
+
+| Component | Purpose | API |
+|-----------|---------|-----|
+| `AdvancedConfigSection` | Full configuration (🔴 needs splitting) | `/api/config` |
+| `AdvancedSettings` | Generation settings | None (props) |
+| `ModeSettingsEditor` | Per-mode settings | `/api/modes` |
+| `ModeSettingsManager` | Mode CRUD | `/api/modes` |
+| `ModeForm` | Create/edit mode | `/api/modes` |
+| `PromptTemplateEditor` | Edit prompt templates | `/api/prompts` |
+| `SimpleModeSelector` | Simple mode dropdown | None |
+
+**Infrastructure Components:**
+
+| Component | Purpose | Scope |
+|-----------|---------|-------|
+| `ErrorBoundary` | Catch React errors | App-level |
+| `SectionErrorBoundary` | Catch section errors | Section-level |
+| `LogoutButton` | Auth logout | Navigation |
+
+---
+
+### Bounded Contexts (Updated 2026-01-10)
 
 **1. Generation Context** (`page.tsx`, `ResultsPanel`, `ProgressPanel`, `ModeCard`, `AdvancedSettings`, `ExpectedOutput`)
 - **Purpose**: Generate insights/ideas from chat history
-- **Boundaries**: Tool selection → Mode selection → Generate → Results display
-- **State**: `selectedTool`, `selectedMode`, `isGenerating`, `result`, `progress`
-- **API**: `/api/generate`
+- **Boundaries**: Mode selection → Generate → Results display → Harmonize to Library
+- **State**: `selectedModeId`, `selectedTheme`, `isGenerating`, `result`, `progress`
+- **API**: `/api/generate`, `/api/harmonize`
 
 **2. Seek Context** (`page.tsx`, `SeekSection`)
-- **Purpose**: Search chat history for evidence of user-provided insights/ideas
-- **Boundaries**: Query input → Search → Results display
-- **State**: `reverseQuery`, `reverseDaysBack`, `reverseTopK`, `reverseMinSimilarity`, `reverseResult`
-- **API**: `/api/reverse-match`
+- **Purpose**: Search chat history for evidence of user-provided queries
+- **Boundaries**: Query input → Search → Results display → Harmonize to Library
+- **State**: `reverseQuery`, `reverseDaysBack`, `reverseTopK`, `reverseMinSimilarity`, `seekResult`
+- **API**: `/api/seek`
 
-**3. Bank Context** (`BanksOverview`)
-- **Purpose**: Display and manage idea/insight banks
-- **Boundaries**: Load stats → Display → Expand → Export
-- **State**: `ideaStats`, `insightStats`, `expandedBank`, `bankMarkdown`
-- **API**: `/api/banks`
+**3. Library Context** (`LibraryView`, `LibrarySearch`, `BanksOverview`, `ItemCard`)
+- **Purpose**: Browse, search, filter, and manage Library items
+- **Boundaries**: Search → Filter → View items → Bulk actions → Merge → Detail panel
+- **State**: `items`, `filters`, `selectedIds`, `expandedItem`, `staleCount`
+- **API**: `/api/items`, `/api/items/bulk`, `/api/items/merge`, `/api/items/cleanup`
 
-**4. Settings Context** (`settings/page.tsx`)
-- **Purpose**: Configure workspaces, voice, LLM, features
-- **Boundaries**: Multi-step wizard → Save config
-- **State**: `config`, `currentStep`, form state
-- **API**: `/api/config`
+**4. Theme Explorer Context** (`themes/page.tsx`)
+- **Purpose**: Interactive theme grouping with LLM synthesis
+- **Boundaries**: Adjust zoom → View themes → Click theme → See synthesis
+- **State**: `themes`, `zoomLevel`, `selectedTheme`, `synthesis`, `isLoading`
+- **API**: `/api/items/themes`, `/api/items/themes/preview`, `/api/items/themes/synthesize`
+
+**5. Settings Context** (`settings/page.tsx`, `AdvancedConfigSection`)
+- **Purpose**: Configure all app settings
+- **Boundaries**: Tab navigation → Edit settings → Save config
+- **State**: `config`, `activeTab`, form states
+- **API**: `/api/config`, `/api/modes`, `/api/prompts`
+
+**6. Onboarding Context** (`onboarding/page.tsx`)
+- **Purpose**: New user setup wizard
+- **Boundaries**: Welcome → API Keys → Sync → Complete
+- **State**: `step`, `apiKeys`, `syncStatus`
+- **API**: `/api/config/env`, `/api/config`, `/api/sync`
+
+**7. Scoreboard Context** (`ScoreboardHeader`)
+- **Purpose**: Always-visible Memory + Library status
+- **Boundaries**: Display stats → Sync action → Navigate to Library/Theme Explorer
+- **State**: `memoryStats`, `libraryStats`, `isSyncing`
+- **API**: `/api/brain-stats`, `/api/items`, `/api/sync`
 
 ---
 
@@ -369,8 +436,8 @@ page.tsx (Orchestrator)
 │  SCOREBOARD HEADER (always visible)                                         │
 │  ┌─────────────────────────────┬───────────────────────────────────────────┐│
 │  │ 🧠 MEMORY                   │ 📚 LIBRARY                                ││
-│  │ 2.1GB | Jul 15 → Jan 1     │ 247 items | +12 this week | 14 categories ││
-│  │ 3 workspaces [🔄 Sync]     │ 8 implemented [View All →]                ││
+│  │ 2.1GB | Jul 15 → Jan 1     │ 247 items | +12 this week                 ││
+│  │ 3 workspaces [🔄 Sync]     │ 14 themes [View All →]                    ││
 │  └─────────────────────────────┴───────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────────────────┘
 ┌───────────────────────────────┬─────────────────────────────────────────────┐
@@ -401,9 +468,9 @@ page.tsx (Orchestrator)
 
 ```
 page.tsx
-├─→ ScoreboardHeader (new)
+├─→ ScoreboardHeader
 │   ├─→ MemoryStats (size, coverage, workspaces, sync button)
-│   └─→ LibraryStats (total items, weekly delta, categories, implemented)
+│   └─→ LibraryStats (total items, weekly delta, themes)
 │
 ├─→ MainLayout (two-panel)
 │   │
@@ -424,8 +491,8 @@ page.tsx
 │       └─→ ResultsPanel (after generation)
 │           └─→ ItemCard (with source context)
 │               ├─→ ItemContent
-│               ├─→ SourceContext (dates, workspace, related chats)
-│               └─→ ItemActions (copy, export, mark implemented)
+│               ├─→ SourceContext (dates, workspace)
+│               └─→ ItemActions (copy, export, archive)
 ```
 
 **New Bounded Contexts (v3):**
@@ -570,17 +637,36 @@ import type { ToolType } from "@/lib/types";
 
 ### API & Data Layer Architecture
 
-**API Client Organization:**
+**API Client Organization (Updated 2026-01-10):**
 ```
 src/app/api/
 ├── generate/route.ts          # Content generation endpoint
-├── generate-stream/route.ts  # Streaming generation endpoint
-├── seek/route.ts             # Seek (Use Case) search endpoint
-├── sync/route.ts             # Vector DB sync endpoint
-├── banks/route.ts            # Bank reading endpoint
-├── config/route.ts          # Config CRUD endpoint
-├── login/route.ts           # Authentication endpoint
-└── logout/route.ts          # Logout endpoint
+├── generate-stream/route.ts   # Streaming generation endpoint
+├── seek/route.ts              # Seek (Use Case) search endpoint
+├── sync/route.ts              # Vector DB sync endpoint
+├── config/                    # Configuration
+│   ├── route.ts               # Config CRUD
+│   ├── env/route.ts           # Environment variables
+│   └── validate/route.ts      # Config validation
+├── items/                     # Library items
+│   ├── route.ts               # Items CRUD
+│   ├── bulk/route.ts          # Bulk operations
+│   ├── cleanup/route.ts       # Stale item cleanup
+│   ├── merge/route.ts         # Merge similar items
+│   └── themes/                # Theme grouping
+│       ├── route.ts           # Theme listing
+│       ├── preview/route.ts   # Theme preview
+│       └── synthesize/route.ts # LLM synthesis
+├── brain-stats/route.ts       # Memory stats endpoint
+├── brain-diagnostics/route.ts # Diagnostics endpoint
+├── chat-history/route.ts      # Chat history endpoint
+├── harmonize/route.ts         # Item harmonization
+├── modes/route.ts             # Mode management
+├── prompts/route.ts           # Prompt templates
+├── themes/route.ts            # Themes config
+├── login/route.ts             # Authentication
+├── logout/route.ts            # Logout
+└── test-supabase/route.ts     # DB connection test
 ```
 
 **Data Fetching Patterns:**
@@ -637,16 +723,37 @@ Component re-renders unnecessarily?
 - Dynamic imports: Not used (components are small)
 - Bundle analysis: Not configured (future enhancement)
 
-**Component Size Analysis:**
+**Component Size Analysis (Updated 2026-01-10 — Post-Refactoring):**
 
-| Component | Lines | Status | Recommendation |
-|-----------|-------|--------|----------------|
-| `page.tsx` | 511 | ⚠️ Large | Consider splitting into `GenerationSection`, `SeekSection` |
-| `SeekSection.tsx` | 469 | ⚠️ Large | Consider splitting into `MatchList`, `MatchItem` |
-| `AdvancedSettings.tsx` | 235 | ✅ Good | Acceptable size |
-| `BanksOverview.tsx` | 220 | ✅ Good | Acceptable size |
-| `ResultsPanel.tsx` | 170 | ✅ Good | Acceptable size |
-| Others | <105 | ✅ Excellent | Well-sized |
+| Component | Lines | Status | Notes |
+|-----------|-------|--------|-------|
+| `onboarding/page.tsx` | 870 | ⚠️ Large | Wizard flow - tightly coupled by design |
+| `page.tsx` | 782 | ⚠️ Large | Main page - acceptable for orchestration |
+| `LibraryView.tsx` | 741 | ✅ Acceptable | Self-contained with co-located sub-components |
+| `settings/page.tsx` | 555 | ✅ Refactored | Was 1,177 → Extracted 6 components |
+| `generate/route.ts` | 501 | ⚠️ Large | Consider: Split complex logic |
+| `themes/page.tsx` | 450 | ✅ Acceptable | Theme Explorer - complex by nature |
+| `SeekSection.tsx` | 387 | ✅ Good | Single-purpose component |
+| `ResultsPanel.tsx` | 378 | ✅ Good | Well-sized |
+| `BanksOverview.tsx` | 296 | ✅ Good | Well-sized |
+| `ScoreboardHeader.tsx` | 282 | ✅ Good | Well-sized |
+| `AdvancedConfigSection.tsx` | 259 | ✅ Refactored | Was 1,228 → Extracted 9 components |
+| Others | <250 | ✅ Excellent | Well-sized |
+
+**Refactoring Completed (2026-01-10):**
+
+| Component | Before | After | Extracted Components |
+|-----------|--------|-------|----------------------|
+| `AdvancedConfigSection.tsx` | 1,228 | 259 | `config/LLMConfigSection`, `config/ThresholdsSection`, `config/TimePresetsSection`, `config/GenerationSection`, `config/SeekDefaultsSection`, `config/SemanticSearchSection`, `config/ThemeExplorerSection`, `config/ThemeSynthesisSection`, `config/ConfigHelpers` |
+| `settings/page.tsx` | 1,177 | 555 | `settings/SettingsSection`, `settings/WorkspacesSection`, `settings/VectorDBSection`, `settings/VoiceStyleSection`, `settings/LLMSettingsSection`, `settings/PowerFeaturesSection` |
+
+**Not Refactored (Intentionally):**
+
+| Component | Lines | Reason |
+|-----------|-------|--------|
+| `LibraryView.tsx` | 741 | Sub-components (`ItemCard`, `ItemDetailPanel`) are co-located in same file - no reuse benefit from extraction |
+| `onboarding/page.tsx` | 870 | Wizard flow is tightly coupled by design |
+| `page.tsx` | 782 | Main orchestration page with complex state |
 
 **Performance Recommendations:**
 1. **Split `page.tsx`**: Extract `GenerationSection` and `SeekSection` components

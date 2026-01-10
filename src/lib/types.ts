@@ -38,23 +38,10 @@ export interface SeekDefaults {
   minSimilarity: number; // Minimum relevance score
 }
 
-// v3: Quality Scoring - Item grading thresholds
-export interface QualityScoring {
-  tierA: number; // Score >= this = Grade A
-  tierB: number; // Score >= this = Grade B
-  tierC: number; // Score >= this = Grade C
-}
-
 // v3: Semantic Search defaults
 export interface SemanticSearchDefaults {
   defaultTopK: number; // Default number of results
   defaultMinSimilarity: number; // Default minimum relevance
-}
-
-// v3: File Tracking configuration
-export interface FileTrackingConfig {
-  textExtensions: string[]; // Extensions to scan
-  implementedMatchThreshold: number; // Similarity for "implemented" match
 }
 
 // v3: Theme Explorer configuration
@@ -291,8 +278,7 @@ export interface SeekResult {
 export type ThemeType = "generation" | "seek";
 export type ModeType = string; // User-defined: "idea", "insight", "use_case", etc.
 export type ItemType = "insight" | "idea" | "use_case";
-export type ItemStatus = "active" | "implemented" | "posted" | "archived";
-export type ItemQuality = "A" | "B" | "C" | null; // A = high value, C = low value, null = unrated
+export type ItemStatus = "active" | "archived";
 
 export interface Item {
   id: string;
@@ -300,23 +286,22 @@ export interface Item {
   itemType: ItemType;
   title: string;
   description: string;
-  tags: string[];
+  tags?: string[]; // Optional, not displayed in UI
   status: ItemStatus;
-  quality?: ItemQuality; // Quality tier for prioritization
   sourceConversations: number; // Number of distinct conversations
   // Core metadata
   occurrence: number;
   firstSeen: string; // ISO date string
   lastSeen: string; // ISO date string
   categoryId: string | null;
+  // Source tracking
+  sourceDates?: string[]; // Dates when this item appeared
+  sourceWorkspaces?: string[]; // Workspaces where this appeared
   // Legacy fields (for backward compatibility)
   mode?: ModeType;
   theme?: ThemeType;
   name?: string; // Maps to title
   content?: Record<string, unknown>; // Deprecated - use title + description
-  implemented?: boolean; // Deprecated - use status
-  implementedDate?: string | null;
-  implementedSource?: string | null;
   embedding?: number[]; // For category grouping
 }
 
@@ -342,7 +327,6 @@ export interface ItemsBankStats {
   totalCategories: number;
   byMode: Record<string, number>;
   byTheme: Record<string, number>;
-  implemented: number;
 }
 
 // v1 Theme/Mode Types
@@ -351,7 +335,6 @@ export interface ModeSettings {
   minSimilarity: number | null;
   deduplicationThreshold: number | null; // v2: Similarity threshold for item deduplication (0.0-1.0)
   goldenExamplesFolder: string | null;
-  implementedItemsFolder: string | null;
   semanticSearchQueries: string[] | null; // Semantic search queries for finding relevant conversations
 }
 

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useMemo, memo } from "react";
-import Link from "next/link";
 
 // Format YYYY-MM date string to readable format (e.g., "2025-12" → "Dec 2025")
 function formatMonthYear(dateStr: string): string {
@@ -31,15 +30,11 @@ interface Item {
   itemType: string;
   title: string;
   description: string;
-  tags: string[];
-  status: "active" | "implemented" | "posted" | "archived";
-  quality?: "A" | "B" | "C" | null;
   occurrence: number;
-  implementedStatus: string;
   categoryId: string | null;
   firstSeen: string;
   lastSeen: string;
-  sourceDates: string[];
+  sourceDates?: string[];
 }
 
 interface Category {
@@ -64,19 +59,15 @@ interface LibraryData {
   stats: {
     totalItems: number;
     totalCategories: number;
-    implementedCount: number;
   };
   pagination: PaginationInfo | null;
 }
 
-type SortOption = "recent" | "oldest" | "occurrence" | "alphabetical";
+type SortOption = "recent" | "oldest";
 
 interface FilterState {
   search: string;
   itemType: "all" | string;
-  status: "all" | "implemented" | "pending";
-  quality: "all" | "A" | "B" | "C" | "unrated";
-  tag: "all" | string;
   category: "all" | string;
   sort: SortOption;
 }
@@ -99,48 +90,10 @@ export const LibraryView = memo(function LibraryView() {
   const [staleCount, setStaleCount] = useState<number>(0);
   const [cleanupLoading, setCleanupLoading] = useState(false);
   
-  // Top recommendations
-  interface TopItem {
-    id: string;
-    title: string;
-    description: string;
-    itemType: string;
-    quality?: string | null;
-    occurrence: number;
-    score: number;
-    reasons: string[];
-  }
-  const [topItems, setTopItems] = useState<TopItem[]>([]);
-  const [buildNext, setBuildNext] = useState<TopItem[]>([]);
-  const [shareNext, setShareNext] = useState<TopItem[]>([]);
-  const [showRecommendations, setShowRecommendations] = useState(true);
-  
-  // Theme synthesis
-  interface ThemeSummary {
-    name: string;
-    itemCount: number;
-    topTags: string[];
-    recentActivity: string;
-    qualityBreakdown: { A: number; B: number; C: number; unrated: number };
-  }
-  interface ThemeStats {
-    totalItems: number;
-    totalThemes: number;
-    topTheme: string | null;
-    qualityDistribution: { A: number; B: number; C: number; unrated: number };
-    typeDistribution: { ideas: number; insights: number; useCases: number };
-  }
-  const [themes, setThemes] = useState<ThemeSummary[]>([]);
-  const [themeStats, setThemeStats] = useState<ThemeStats | null>(null);
-  const [showThemes, setShowThemes] = useState(true);
-  
   // Filter state
   const [filters, setFilters] = useState<FilterState>({
     search: "",
     itemType: "all",
-    status: "all",
-    quality: "all",
-    tag: "all",
     category: "all",
     sort: "recent",
   });
@@ -182,33 +135,13 @@ export const LibraryView = memo(function LibraryView() {
       items = items.filter(
         (item) =>
           item.title.toLowerCase().includes(searchLower) ||
-          item.description.toLowerCase().includes(searchLower) ||
-          (item.tags?.some((t) => t.toLowerCase().includes(searchLower)) ?? false)
+          item.description.toLowerCase().includes(searchLower)
       );
     }
     
     // Type filter
     if (filters.itemType !== "all") {
       items = items.filter((item) => item.itemType === filters.itemType);
-    }
-    
-    // Status filter
-    if (filters.status !== "all") {
-      items = items.filter((item) => item.status === filters.status);
-    }
-    
-    // Quality filter
-    if (filters.quality !== "all") {
-      if (filters.quality === "unrated") {
-        items = items.filter((item) => !item.quality);
-      } else {
-        items = items.filter((item) => item.quality === filters.quality);
-      }
-    }
-    
-    // Tag filter
-    if (filters.tag !== "all") {
-      items = items.filter((item) => item.tags?.includes(filters.tag));
     }
     
     // Category filter (matches items by their category name)
@@ -233,12 +166,6 @@ export const LibraryView = memo(function LibraryView() {
       case "oldest":
         items.sort((a, b) => new Date(a.firstSeen).getTime() - new Date(b.firstSeen).getTime());
         break;
-      case "occurrence":
-        items.sort((a, b) => b.occurrence - a.occurrence);
-        break;
-      case "alphabetical":
-        items.sort((a, b) => a.title.localeCompare(b.title));
-        break;
     }
     
     return items;
@@ -248,16 +175,6 @@ export const LibraryView = memo(function LibraryView() {
   const categories = useMemo(() => {
     return data?.categories || [];
   }, [data?.categories]);
-  
-  // Get all unique tags for filter dropdown
-  const allTags = useMemo(() => {
-    if (!data?.items) return [];
-    const tagSet = new Set<string>();
-    data.items.forEach((item) => {
-      item.tags?.forEach((tag) => tagSet.add(tag));
-    });
-    return Array.from(tagSet).sort();
-  }, [data?.items]);
 
   // Refetch library data
   const refetchLibrary = async () => {
@@ -290,48 +207,17 @@ export const LibraryView = memo(function LibraryView() {
     }
   };
 
-  // Fetch stale count and top items on load
+  // Fetch stale count on load
   useEffect(() => {
     if (data) {
       fetchStaleCount();
-      fetchTopItems();
-      fetchThemes();
     }
   }, [data]);
-
-  // Fetch top recommendations
-  const fetchTopItems = async () => {
-    try {
-      const res = await fetch("/api/items/top");
-      if (res.ok) {
-        const json = await res.json();
-        setTopItems(json.items || []);
-        setBuildNext(json.buildNext || []);
-        setShareNext(json.shareNext || []);
-      }
-    } catch (err) {
-      console.error("Top items error:", err);
-    }
-  };
-  
-  // Fetch themes
-  const fetchThemes = async () => {
-    try {
-      const res = await fetch("/api/items/themes");
-      if (res.ok) {
-        const json = await res.json();
-        setThemes(json.themes || []);
-        setThemeStats(json.stats || null);
-      }
-    } catch (err) {
-      console.error("Themes error:", err);
-    }
-  };
 
   // Run cleanup
   const runCleanup = async () => {
     if (staleCount === 0) return;
-    if (!confirm(`Archive ${staleCount} stale items? (Items >90 days old, not A-tier, not implemented/posted)`)) return;
+    if (!confirm(`Archive ${staleCount} stale items? (Items not seen in >90 days)`)) return;
     setCleanupLoading(true);
     try {
       const res = await fetch("/api/items/cleanup", {
@@ -417,7 +303,7 @@ export const LibraryView = memo(function LibraryView() {
   };
 
   // Bulk status change
-  const bulkSetStatus = async (status: Item["status"]) => {
+  const bulkSetStatus = async (status: string) => {
     if (selectedIds.size === 0) return;
     setBulkActionLoading(true);
     try {
@@ -459,26 +345,6 @@ export const LibraryView = memo(function LibraryView() {
     }
   };
 
-  // Set quality for an item
-  const setItemQuality = async (itemId: string, quality: "A" | "B" | "C" | null) => {
-    try {
-      const res = await fetch("/api/items/quality", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: itemId, quality }),
-      });
-      if (res.ok) {
-        await refetchLibrary();
-        // Update selected item if it's the one being changed
-        if (selectedItem?.id === itemId) {
-          setSelectedItem({ ...selectedItem, quality });
-        }
-      }
-    } catch (err) {
-      console.error("Quality change error:", err);
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -499,139 +365,6 @@ export const LibraryView = memo(function LibraryView() {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Main Items List */}
       <div className="lg:col-span-2 space-y-4">
-        {/* Top 3 Today - Mixed ideas and insights, ranked by score */}
-        {showRecommendations && topItems.length > 0 && (
-          <div className="glass-card p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-white flex items-center gap-2">
-                <span className="text-lg">🎯</span> Top 3 Today
-                <span className="text-xs text-adobe-gray-500 font-normal">(ranked by score)</span>
-              </h3>
-              <button
-                onClick={() => setShowRecommendations(false)}
-                className="text-xs text-adobe-gray-500 hover:text-adobe-gray-300"
-              >
-                Hide
-              </button>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {topItems.map((item, idx) => {
-                const isIdea = item.itemType === "idea";
-                const colorClass = isIdea ? "inspiration-ideas" : "inspiration-insights";
-                const icon = isIdea ? "🔨" : "✨";
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      const fullItem = data?.items.find((i) => i.id === item.id);
-                      if (fullItem) setSelectedItem(fullItem);
-                    }}
-                    className={`w-full text-left p-3 rounded-lg bg-gradient-to-br from-${colorClass}/10 to-adobe-gray-900/50 border border-${colorClass}/20 hover:border-${colorClass}/50 transition-all`}
-                    style={{
-                      background: `linear-gradient(to bottom right, ${isIdea ? 'rgba(59, 130, 246, 0.1)' : 'rgba(168, 85, 247, 0.1)'}, rgba(30, 30, 30, 0.5))`,
-                      borderColor: isIdea ? 'rgba(59, 130, 246, 0.2)' : 'rgba(168, 85, 247, 0.2)'
-                    }}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-xs font-bold ${isIdea ? 'text-inspiration-ideas' : 'text-inspiration-insights'}`}>#{idx + 1}</span>
-                      <span className="text-xs">{icon}</span>
-                      {item.quality === "A" && <span className="text-xs">⭐</span>}
-                      <span className="text-[10px] text-adobe-gray-500 ml-auto">{item.score} pts</span>
-                    </div>
-                    <h5 className="text-sm font-medium text-white line-clamp-1 mb-1">{item.title}</h5>
-                    <p className="text-xs text-adobe-gray-500 line-clamp-1">
-                      {item.reasons?.join(" • ") || ""}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-        
-        {/* Themes Overview */}
-        {showThemes && themes.length > 0 && (
-          <div className="glass-card p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-white flex items-center gap-2">
-                <span className="text-lg">🗺️</span> Themes ({themeStats?.totalThemes || 0})
-              </h3>
-              <button
-                onClick={() => setShowThemes(false)}
-                className="text-xs text-adobe-gray-500 hover:text-adobe-gray-300"
-              >
-                Hide
-              </button>
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-              {themes.slice(0, 8).map((theme) => (
-                <button
-                  key={theme.name}
-                  onClick={() => setFilters({ ...filters, category: filters.category === theme.name ? "all" : theme.name })}
-                  className={`text-left p-2 rounded-lg border transition-all ${
-                    filters.category === theme.name 
-                      ? "bg-adobe-blue-500/20 border-adobe-blue-500/50" 
-                      : "bg-adobe-gray-800/50 border-adobe-gray-700/50 hover:border-adobe-gray-600"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-white truncate max-w-[80%]">{theme.name}</span>
-                    <span className="text-xs text-adobe-gray-500">{theme.itemCount}</span>
-                  </div>
-                  <div className="flex gap-1">
-                    {theme.qualityBreakdown.A > 0 && (
-                      <span className="text-[10px] px-1 rounded bg-yellow-500/20 text-yellow-400">
-                        {theme.qualityBreakdown.A}⭐
-                      </span>
-                    )}
-                    {theme.qualityBreakdown.B > 0 && (
-                      <span className="text-[10px] px-1 rounded bg-blue-500/20 text-blue-400">
-                        {theme.qualityBreakdown.B}B
-                      </span>
-                    )}
-                    {theme.qualityBreakdown.C > 0 && (
-                      <span className="text-[10px] px-1 rounded bg-gray-500/20 text-gray-400">
-                        {theme.qualityBreakdown.C}C
-                      </span>
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
-            
-            {/* Distribution summary */}
-            {themeStats && (
-              <div className="mt-3 pt-3 border-t border-adobe-gray-700/50 flex flex-wrap gap-3 text-xs text-adobe-gray-500">
-                <span>Ideas: {themeStats.typeDistribution.ideas}</span>
-                <span>Insights: {themeStats.typeDistribution.insights}</span>
-                <span>Use Cases: {themeStats.typeDistribution.useCases}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Link to Theme Explorer */}
-        <Link 
-          href="/themes"
-          className="glass-card p-4 flex items-center justify-between hover:bg-slate-800/60 transition-colors mb-4 group"
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">🔭</span>
-            <div>
-              <h3 className="font-medium text-white">Explore Themes</h3>
-              <p className="text-sm text-slate-400">Zoom in/out to see patterns in your ideas</p>
-            </div>
-          </div>
-          <svg 
-            className="w-5 h-5 text-slate-400 group-hover:text-white group-hover:translate-x-1 transition-all" 
-            fill="none" stroke="currentColor" viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </Link>
-
         {/* Search & Filters */}
         <div className="glass-card p-4 space-y-4">
           {/* Search Input */}
@@ -663,45 +396,6 @@ export const LibraryView = memo(function LibraryView() {
               <option value="use_case">Use Cases</option>
             </select>
             
-            {/* Status Filter */}
-            <select
-              value={filters.status}
-              onChange={(e) => setFilters({ ...filters, status: e.target.value as FilterState["status"] })}
-              aria-label="Filter by status"
-              className="px-3 py-2 bg-adobe-gray-800 border border-adobe-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-inspiration-ideas"
-            >
-              <option value="all">All Status</option>
-              <option value="pending">Pending</option>
-              <option value="implemented">Implemented</option>
-            </select>
-            
-            {/* Quality Filter */}
-            <select
-              value={filters.quality}
-              onChange={(e) => setFilters({ ...filters, quality: e.target.value as FilterState["quality"] })}
-              aria-label="Filter by quality"
-              className="px-3 py-2 bg-adobe-gray-800 border border-adobe-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-inspiration-ideas"
-            >
-              <option value="all">All Quality</option>
-              <option value="A">⭐ A-Tier</option>
-              <option value="B">B-Tier</option>
-              <option value="C">C-Tier</option>
-              <option value="unrated">Unrated</option>
-            </select>
-            
-          {/* Tag Filter */}
-          <select
-              value={filters.tag}
-              onChange={(e) => setFilters({ ...filters, tag: e.target.value })}
-              aria-label="Filter by tag"
-              className="px-3 py-2 bg-adobe-gray-800 border border-adobe-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-inspiration-ideas"
-            >
-              <option value="all">All Tags ({allTags.length})</option>
-              {allTags.map((tag) => (
-                <option key={tag} value={tag}>{tag}</option>
-              ))}
-            </select>
-            
             {/* Sort */}
             <select
               value={filters.sort}
@@ -711,8 +405,6 @@ export const LibraryView = memo(function LibraryView() {
             >
               <option value="recent">Most Recent</option>
               <option value="oldest">Oldest First</option>
-              <option value="occurrence">Most Occurrences</option>
-              <option value="alphabetical">A-Z</option>
             </select>
           </div>
         </div>
@@ -745,7 +437,7 @@ export const LibraryView = memo(function LibraryView() {
               <select
                 onChange={(e) => {
                   if (e.target.value) {
-                    bulkSetStatus(e.target.value as Item["status"]);
+                    bulkSetStatus(e.target.value);
                     e.target.value = "";
                   }
                 }}
@@ -755,8 +447,6 @@ export const LibraryView = memo(function LibraryView() {
               >
                 <option value="" disabled>Set Status...</option>
                 <option value="active">Active</option>
-                <option value="implemented">Implemented</option>
-                <option value="posted">Posted</option>
                 <option value="archived">Archived</option>
               </select>
               {selectedIds.size >= 2 && (
@@ -791,7 +481,6 @@ export const LibraryView = memo(function LibraryView() {
             </div>
           ) : (
             <div className="flex items-center gap-3">
-              <span>{data?.stats.implementedCount || 0} implemented</span>
               {staleCount > 0 && (
                 <button
                   onClick={runCleanup}
@@ -878,7 +567,6 @@ export const LibraryView = memo(function LibraryView() {
             <ItemDetailPanel 
               item={selectedItem} 
               category={categories.find((c) => c.id === selectedItem.categoryId)}
-              onQualityChange={(quality) => setItemQuality(selectedItem.id, quality)}
             />
           ) : (
             <div className="glass-card p-6 text-center text-adobe-gray-400">
@@ -918,7 +606,6 @@ const ItemCard = memo(function ItemCard({
   };
   
   const typeColor = typeColors[item.itemType] || typeColors.idea;
-  const isImplemented = item.implementedStatus === "implemented";
   
   return (
     <div
@@ -950,11 +637,6 @@ const ItemCard = memo(function ItemCard({
           <span className={`text-xs px-2 py-0.5 rounded-full border ${typeColor}`}>
             {item.itemType}
           </span>
-          {isImplemented && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30">
-              ✓ Done
-            </span>
-          )}
         </div>
         <span className="text-xs text-adobe-gray-500">
           ×{item.occurrence}
@@ -984,14 +666,10 @@ const ItemCard = memo(function ItemCard({
 const ItemDetailPanel = memo(function ItemDetailPanel({
   item,
   category,
-  onQualityChange,
 }: {
   item: Item;
   category?: Category;
-  onQualityChange?: (quality: "A" | "B" | "C" | null) => void;
 }) {
-  const isImplemented = item.implementedStatus === "implemented";
-  
   return (
     <div className="glass-card p-5 space-y-4">
       {/* Header */}
@@ -1000,22 +678,6 @@ const ItemDetailPanel = memo(function ItemDetailPanel({
           <span className="text-xs px-2 py-1 rounded-full bg-inspiration-ideas/20 text-inspiration-ideas border border-inspiration-ideas/30">
             {item.itemType}
           </span>
-          {isImplemented && (
-            <span className="text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400 border border-green-500/30">
-              ✓ Implemented
-            </span>
-          )}
-          {item.quality && (
-            <span className={`text-xs px-2 py-1 rounded-full ${
-              item.quality === "A" 
-                ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" 
-                : item.quality === "B"
-                ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
-            }`}>
-              {item.quality === "A" ? "⭐ A-Tier" : `${item.quality}-Tier`}
-            </span>
-          )}
           {category && (
             <span className="text-xs px-2 py-1 rounded-full bg-adobe-gray-700 text-adobe-gray-300">
               {category.name}
@@ -1025,50 +687,10 @@ const ItemDetailPanel = memo(function ItemDetailPanel({
         <h2 className="text-xl font-semibold text-white">{item.title}</h2>
       </div>
       
-      {/* Quality Rating */}
-      {onQualityChange && (
-        <div className="space-y-2">
-          <h4 className="text-xs font-medium text-adobe-gray-400 uppercase tracking-wider">Quality</h4>
-          <div className="flex gap-2">
-            {(["A", "B", "C"] as const).map((q) => (
-              <button
-                key={q}
-                onClick={() => onQualityChange(item.quality === q ? null : q)}
-                className={`px-3 py-1.5 rounded text-sm transition-colors ${
-                  item.quality === q
-                    ? q === "A"
-                      ? "bg-yellow-500/30 text-yellow-300 border border-yellow-500/50"
-                      : q === "B"
-                      ? "bg-blue-500/30 text-blue-300 border border-blue-500/50"
-                      : "bg-gray-500/30 text-gray-300 border border-gray-500/50"
-                    : "bg-adobe-gray-800 text-adobe-gray-400 hover:bg-adobe-gray-700"
-                }`}
-              >
-                {q === "A" ? "⭐ A" : q}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      
       {/* Description */}
       <div className="prose prose-invert prose-sm max-w-none">
         <p className="text-adobe-gray-300 whitespace-pre-wrap">{item.description}</p>
       </div>
-      
-      {/* Tags */}
-      {item.tags && item.tags.length > 0 && (
-        <div className="space-y-2">
-          <h4 className="text-xs font-medium text-adobe-gray-400 uppercase tracking-wider">Tags</h4>
-          <div className="flex flex-wrap gap-1">
-            {item.tags.map((tag, i) => (
-              <span key={i} className="text-xs px-2 py-1 rounded bg-adobe-gray-700 text-adobe-gray-300">
-                {tag}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
       
       {/* Metadata */}
       <div className="space-y-2 pt-4 border-t border-adobe-gray-700">
@@ -1116,4 +738,3 @@ const ItemDetailPanel = memo(function ItemDetailPanel({
     </div>
   );
 });
-

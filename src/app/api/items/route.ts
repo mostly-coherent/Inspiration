@@ -4,14 +4,13 @@ import { ItemsBank } from "@/lib/types";
 
 export const maxDuration = 10; // 10 seconds (much faster than JSON parsing)
 
-// GET /api/items-supabase?theme=generation&mode=idea&view=items|categories&implemented=false&page=1&pageSize=50
+// GET /api/items?theme=generation&mode=idea&view=items|categories&page=1&pageSize=50
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const theme = searchParams.get("theme") as "generation" | "seek" | null;
     const mode = searchParams.get("mode");
     const view = searchParams.get("view") || "items"; // "items" or "categories"
-    const implemented = searchParams.get("implemented");
     
     // Pagination parameters
     const page = parseInt(searchParams.get("page") || "1", 10);
@@ -43,10 +42,6 @@ export async function GET(request: NextRequest) {
     if (mode) {
       itemsQuery = itemsQuery.eq("mode", mode);
     }
-    if (implemented !== null) {
-      const isImplemented = implemented === "true";
-      itemsQuery = itemsQuery.eq("status", isImplemented ? "implemented" : "active");
-    }
     
     // Apply sorting
     itemsQuery = itemsQuery.order("occurrence", { ascending: false });
@@ -74,20 +69,13 @@ export async function GET(request: NextRequest) {
       itemType: item.item_type,
       title: item.title,
       description: item.description,
-      tags: item.tags || [],
-      status: item.status,
-      quality: item.quality,
+      status: item.status || "active",
       sourceConversations: item.source_conversations,
       occurrence: item.occurrence,
       firstSeen: item.first_seen,
       lastSeen: item.last_seen,
       categoryId: item.category_id,
-      // Legacy fields
-      mode: item.mode,
-      theme: item.theme,
-      name: item.name,
-      content: item.content,
-      implemented: item.implemented,
+      sourceDates: item.source_dates || [],
     }));
     
     // Build categories query
@@ -138,7 +126,6 @@ export async function GET(request: NextRequest) {
       totalCategories: categories.length,
       byMode: {} as Record<string, number>,
       byTheme: {} as Record<string, number>,
-      implemented: items.filter((item) => item.status === "implemented").length,
     };
     
     // Count by mode and theme

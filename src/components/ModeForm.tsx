@@ -39,8 +39,9 @@ export function ModeForm({ theme, mode, onSave, onCancel }: ModeFormProps) {
         settings: {
           temperature,
           minSimilarity: null,
+          deduplicationThreshold: null,
           goldenExamplesFolder: null,
-          implementedItemsFolder: null,
+          semanticSearchQueries: null,
         },
         defaultBestOf,
         createdBy: "user",

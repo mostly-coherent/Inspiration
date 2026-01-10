@@ -58,7 +58,7 @@ export const LibrarySearch = memo(function LibrarySearch({
     // Status filter
     if (filterStatus !== "all") {
       filtered = filtered.filter((item) => {
-        const status = item.status || (item.implemented ? "implemented" : "active");
+        const status = item.status || "active";
         return status === filterStatus;
       });
     }
@@ -151,8 +151,6 @@ export const LibrarySearch = memo(function LibrarySearch({
         >
           <option value="all">All Status</option>
           <option value="active">💡 Active</option>
-          <option value="implemented">✅ Built</option>
-          <option value="posted">📝 Posted</option>
           <option value="archived">📦 Archived</option>
         </select>
 
