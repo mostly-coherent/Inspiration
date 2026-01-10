@@ -3,12 +3,17 @@ Supabase-based Items Bank Management
 
 Replaces JSON file storage with Supabase for scalable cloud storage.
 API-compatible with items_bank.py for easy migration.
+
+OPTIMIZATIONS (H-1, H-2):
+- Batch similarity search using pgvector RPC
+- Parallel processing with ThreadPoolExecutor
 """
 
 import uuid
 from datetime import datetime
 from typing import Any, Literal, Optional
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .vector_db import get_supabase_client
 from .semantic_search import get_embedding, cosine_similarity
@@ -139,10 +144,62 @@ class ItemsBankSupabase:
         its source date range to include the new period. This prevents false coverage
         gaps where the same concept appears across multiple weeks.
         
+        OPTIMIZED: Uses pgvector RPC function for server-side similarity search.
+        Falls back to client-side search if RPC not available (during migration).
+        
         Returns the existing item ID if updated, None if no similar item found.
         """
+        best_match_id = None
+        
+        # Try server-side similarity search first (fast path)
+        try:
+            result = self.client.rpc(
+                "search_similar_library_items",
+                {
+                    "query_embedding": embedding,
+                    "match_threshold": threshold,
+                    "match_count": 1,  # We only need the best match
+                    "filter_item_type": item_type,
+                }
+            ).execute()
+            
+            if result.data and len(result.data) > 0:
+                best_match_id = result.data[0]["id"]
+        except Exception as e:
+            # RPC not available, fall back to client-side search
+            # This happens before the migration is run
+            if "function search_similar_library_items" in str(e):
+                best_match_id = self._find_similar_client_side(
+                    embedding, item_type, threshold
+                )
+            else:
+                raise
+        
+        if best_match_id:
+            # Update existing item: increment occurrence + expand date range
+            self._update_existing_item_on_dedup(
+                item_id=best_match_id,
+                source_start_date=source_start_date,
+                source_end_date=source_end_date,
+            )
+            return best_match_id
+        
+        return None
+    
+    def _find_similar_client_side(
+        self,
+        embedding: list[float],
+        item_type: ItemType,
+        threshold: float = 0.85,
+    ) -> Optional[str]:
+        """
+        Client-side fallback for similarity search.
+        Used when pgvector RPC is not yet available.
+        """
         # Fetch all items of this type with embeddings
-        query = self.client.table("library_items").select("*").eq("item_type", item_type)
+        query = self.client.table("library_items").select(
+            "id, embedding"
+        ).eq("item_type", item_type).neq("status", "archived")
         result = query.execute()
         items = result.data if result.data else []
         
@@ -159,16 +216,7 @@ class ItemsBankSupabase:
                 best_similarity = similarity
                 best_match_id = item["id"]
         
-        if best_match_id:
-            # Update existing item: increment occurrence + expand date range
-            self._update_existing_item_on_dedup(
-                item_id=best_match_id,
-                source_start_date=source_start_date,
-                source_end_date=source_end_date,
-            )
-            return best_match_id
-        
-        return None
+        return best_match_id
     
     def _update_existing_item_on_dedup(
         self,
@@ -219,27 +267,63 @@ class ItemsBankSupabase:
         description: str,
         threshold: float = 0.85,
         item_type: Optional[ItemType] = None,
+        limit: int = 10,
     ) -> list[dict[str, Any]]:
-        """Find similar items using embeddings (for deduplication)."""
-        # Generate embedding for query
+        """
+        Find similar items using embeddings (for deduplication).
+        
+        OPTIMIZED: Uses pgvector RPC function for server-side similarity search.
+        Falls back to client-side search if RPC not available.
+        """
+        # Generate embedding for query (one API call)
         query_text = f"{title} {description}"
         query_embedding = get_embedding(query_text)
         
-        # Fetch all items (or filtered by type)
-        query = self.client.table("library_items").select("*")
+        # Try server-side similarity search first (fast path)
+        try:
+            result = self.client.rpc(
+                "search_similar_library_items",
+                {
+                    "query_embedding": query_embedding,
+                    "match_threshold": threshold,
+                    "match_count": limit,
+                    "filter_item_type": item_type,
+                }
+            ).execute()
+            
+            if result.data:
+                return [
+                    {
+                        "id": item["id"],
+                        "title": item["title"],
+                        "similarity": item["similarity"],
+                        "occurrence": item["occurrence"],
+                    }
+                    for item in result.data
+                ]
+            return []
+        except Exception as e:
+            # RPC not available, fall back to client-side search
+            if "function search_similar_library_items" not in str(e):
+                raise
+        
+        # Fallback: Client-side search using stored embeddings
+        query = self.client.table("library_items").select(
+            "id, title, embedding, occurrence"
+        ).neq("status", "archived")
         if item_type:
             query = query.eq("item_type", item_type)
         
         result = query.execute()
         items = result.data if result.data else []
         
-        # Calculate similarity (assuming embeddings stored if available)
+        # Calculate similarity using stored embeddings (no regeneration!)
         similar_items = []
         for item in items:
-            # For now, use basic text similarity
-            # TODO: Add embedding column to library_items table
-            item_text = f"{item.get('title', '')} {item.get('description', '')}"
-            item_embedding = get_embedding(item_text)
+            item_embedding = item.get("embedding")
+            if not item_embedding:
+                continue  # Skip items without embeddings
+            
             similarity = cosine_similarity(query_embedding, item_embedding)
             
             if similarity >= threshold:
@@ -252,7 +336,7 @@ class ItemsBankSupabase:
         
         # Sort by similarity (descending)
         similar_items.sort(key=lambda x: x["similarity"], reverse=True)
-        return similar_items
+        return similar_items[:limit]
     
     def increment_occurrence(self, item_id: str) -> bool:
         """Increment occurrence count for an existing item."""
@@ -374,3 +458,185 @@ class ItemsBankSupabase:
         except Exception as e:
             print(f"❌ Failed to clear Supabase bank: {e}")
             return False
+    
+    # =========================================================================
+    # BATCH OPERATIONS (H-1, H-2 Optimizations)
+    # =========================================================================
+    
+    def batch_add_items(
+        self,
+        items: list[dict[str, Any]],
+        item_type: ItemType,
+        source_start_date: Optional[str] = None,
+        source_end_date: Optional[str] = None,
+        threshold: float = 0.85,
+        max_workers: int = 5,
+    ) -> dict[str, Any]:
+        """
+        Batch add items with parallel deduplication.
+        
+        OPTIMIZATION: Uses ThreadPoolExecutor for parallel similarity searches,
+        then batches inserts/updates for efficiency.
+        
+        Args:
+            items: List of item dicts with keys: title, description, tags, embedding, first_seen_date, quality
+            item_type: Type of items ("idea", "insight", "use_case")
+            source_start_date: Coverage tracking start date
+            source_end_date: Coverage tracking end date
+            threshold: Similarity threshold for deduplication
+            max_workers: Number of parallel workers for similarity search
+        
+        Returns:
+            Stats dict with added, updated, total counts
+        """
+        if not items:
+            return {"added": 0, "updated": 0, "total": 0}
+        
+        # Extract embeddings (already pre-computed)
+        embeddings = [item.get("embedding") for item in items]
+        
+        # PHASE 1: Parallel similarity search using ThreadPoolExecutor
+        print(f"   ⚡ Parallel dedup check for {len(items)} items (workers={max_workers})...", file=__import__('sys').stderr)
+        
+        similar_matches = self._batch_find_similar_parallel(
+            embeddings=embeddings,
+            item_type=item_type,
+            threshold=threshold,
+            max_workers=max_workers,
+        )
+        
+        # PHASE 2: Separate items into new vs update
+        items_to_insert = []
+        items_to_update = []
+        
+        for i, item in enumerate(items):
+            match_id = similar_matches[i]
+            if match_id:
+                # Existing item found - prepare update
+                items_to_update.append({
+                    "existing_id": match_id,
+                    "source_start_date": source_start_date,
+                    "source_end_date": source_end_date,
+                })
+            else:
+                # New item - prepare insert
+                item_id = f"item-{uuid.uuid4().hex[:8]}"
+                items_to_insert.append({
+                    "id": item_id,
+                    "item_type": item_type,
+                    "title": item.get("title", ""),
+                    "description": item.get("description", ""),
+                    "tags": (item.get("tags") or [])[:10],
+                    "status": "active",
+                    "quality": item.get("quality"),
+                    "source_conversations": item.get("source_conversations", 1),
+                    "occurrence": 1,
+                    "first_seen": item.get("first_seen_date") or datetime.now().strftime("%Y-%m"),
+                    "last_seen": datetime.now().strftime("%Y-%m"),
+                    "category_id": None,
+                    "embedding": item.get("embedding"),
+                    "source_start_date": source_start_date,
+                    "source_end_date": source_end_date,
+                    "mode": item_type,
+                    "theme": "generation",
+                    "name": None,
+                    "content": None,
+                    "implemented": False,
+                })
+        
+        # PHASE 3: Batch insert new items
+        added = 0
+        if items_to_insert:
+            try:
+                # Supabase supports batch insert
+                result = self.client.table("library_items").insert(items_to_insert).execute()
+                added = len(result.data) if result.data else 0
+            except Exception as e:
+                print(f"   ⚠️ Batch insert failed, falling back to individual inserts: {e}", file=__import__('sys').stderr)
+                for item_data in items_to_insert:
+                    try:
+                        self.client.table("library_items").insert(item_data).execute()
+                        added += 1
+                    except Exception:
+                        pass
+        
+        # PHASE 4: Batch update existing items (expand date ranges)
+        updated = 0
+        if items_to_update:
+            # Group updates and process in parallel
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(
+                        self._update_existing_item_on_dedup,
+                        update["existing_id"],
+                        update["source_start_date"],
+                        update["source_end_date"],
+                    )
+                    for update in items_to_update
+                ]
+                for future in as_completed(futures):
+                    if future.result():
+                        updated += 1
+        
+        return {
+            "added": added,
+            "updated": updated,
+            "total": len(items),
+            "dedup_matches": len(items_to_update),
+        }
+    
+    def _batch_find_similar_parallel(
+        self,
+        embeddings: list[list[float]],
+        item_type: ItemType,
+        threshold: float = 0.85,
+        max_workers: int = 5,
+    ) -> list[Optional[str]]:
+        """
+        Find similar items for multiple embeddings in parallel.
+        
+        Returns:
+            List of existing item IDs (or None if no match) for each embedding.
+        """
+        results = [None] * len(embeddings)
+        
+        def search_one(idx: int, embedding: list[float]) -> tuple[int, Optional[str]]:
+            """Search for similar item for one embedding."""
+            if not embedding or all(v == 0.0 for v in embedding[:10]):
+                return (idx, None)  # Skip zero vectors
+            
+            try:
+                result = self.client.rpc(
+                    "search_similar_library_items",
+                    {
+                        "query_embedding": embedding,
+                        "match_threshold": threshold,
+                        "match_count": 1,
+                        "filter_item_type": item_type,
+                    }
+                ).execute()
+                
+                if result.data and len(result.data) > 0:
+                    return (idx, result.data[0]["id"])
+            except Exception as e:
+                # RPC not available, fall back to client-side
+                if "function search_similar_library_items" in str(e):
+                    match_id = self._find_similar_client_side(embedding, item_type, threshold)
+                    return (idx, match_id)
+                # Other errors - return no match
+                pass
+            
+            return (idx, None)
+        
+        # Run searches in parallel
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(search_one, i, emb)
+                for i, emb in enumerate(embeddings)
+            ]
+            
+            for future in as_completed(futures):
+                idx, match_id = future.result()
+                results[idx] = match_id
+        
+        return results

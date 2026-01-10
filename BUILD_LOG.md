@@ -6,6 +6,134 @@
 
 ---
 
+## Progress - 2026-01-10 (Harmonization Performance Optimization)
+
+**Done:**
+- ✅ **Optimized Harmonization with pgvector Server-Side Similarity Search (IMP-15)**
+  - **Problem:** As Library grew (275+ items), harmonization became increasingly slow. The `find_similar_items()` method was regenerating embeddings for EVERY existing item on EVERY comparison—O(n*m) API calls where n=new items, m=existing items.
+  - **Solution:** Use pgvector's native vector similarity search on the server side:
+    1. Store embeddings in proper `vector(1536)` column (not JSONB)
+    2. Create RPC function `search_similar_library_items()` for server-side search
+    3. Update `_find_and_update_similar()` and `find_similar_items()` to use RPC
+    4. Fallback to client-side search using stored embeddings (no regeneration)
+
+- ✅ **Batch + Parallel Deduplication (IMP-16)**
+  - **Problem:** Even with pgvector RPC, deduplication was sequential—N items = N RPC calls.
+  - **Solution:** Use ThreadPoolExecutor for parallel similarity searches:
+    1. Added `batch_add_items()` method to `ItemsBankSupabase`
+    2. Added `_batch_find_similar_parallel()` for concurrent RPC calls (5 workers)
+    3. Batch inserts for new items (Supabase supports batch insert)
+    4. Parallel updates for existing items (date range expansion)
+    5. Updated `harmonize_all_outputs()` to use batch method
+
+  **Combined Performance Impact:**
+  | Metric | Before | After IMP-15 | After IMP-16 |
+  |--------|--------|--------------|--------------|
+  | Embedding API calls per new item | 275+ | 1 | 1 |
+  | RPC calls for 10 items | N/A | 10 sequential | 10 parallel (5 workers) |
+  | DB inserts for 10 new items | 10 sequential | 10 sequential | 1 batch |
+  | Expected speedup | baseline | 50-100x | 100-200x |
+
+  **Files Modified:**
+  - `engine/scripts/optimize_harmonization.sql` — SQL migration for vector column + RPC function
+  - `engine/common/items_bank_supabase.py` — Added `batch_add_items()`, `_batch_find_similar_parallel()`, parallel RPC calls
+  - `engine/scripts/backfill_library_embeddings.py` — New script to backfill embeddings for existing items
+  - `engine/generate.py` — Updated `harmonize_all_outputs()` to use `batch_add_items()`
+  - `PLAN.md` — Marked IMP-15, IMP-16 as Done
+
+**Next Steps:**
+1. ~~Run `optimize_harmonization.sql` in Supabase SQL Editor~~ ✅
+2. ~~Run `python3 engine/scripts/backfill_library_embeddings.py` to populate embeddings for existing items~~ ✅
+3. Test generation to verify harmonization uses new fast path
+
+---
+
+## Progress - 2026-01-10 (Pre-Generation Topic Filter - IMP-17)
+
+**Done:**
+- ✅ **Implemented Pre-Generation Topic Filter (IMP-17/H-6)**
+  - **Problem:** Even with fast harmonization, LLM generation is still costly ($0.02-0.10 per run). If conversations cover topics already in the Library, we waste LLM calls generating items that will just be deduplicated.
+  - **Solution:** Pre-filter conversations before LLM generation:
+    1. Generate embeddings for each conversation (batch API call)
+    2. Search Library for similar items (parallel pgvector RPC)
+    3. For covered topics: Skip generation but expand item's date range (coverage stays accurate)
+    4. For uncovered topics: Include in generation
+  
+  **How It Keeps Coverage % Truthful:**
+  - When a topic is "skipped," we still update the matching item's `source_start_date`/`source_end_date`
+  - The Library item now "covers" the new period even though no new item was created
+  - Coverage Intelligence sees the expanded date range and doesn't flag it as a gap
+
+  **Expected Impact:**
+  | Metric | Before | After |
+  |--------|--------|-------|
+  | LLM calls for redundant topics | 100% | 0% |
+  | Cost reduction (repeat topics) | baseline | 50-80% estimated |
+  | Coverage % accuracy | ✅ | ✅ (date ranges expanded) |
+
+  **Files Created:**
+  - `engine/common/topic_filter.py` — New module for topic filtering
+  
+  **Files Modified:**
+  - `engine/generate.py` — Integrated topic filter into `process_aggregated_range()`
+  - `src/app/api/generate/route.ts` — Pass explicit date range to enable topic filter
+  - `engine/common/coverage.py` — Skip incomplete weeks from suggested runs
+  - `PLAN.md` — Marked IMP-17 as Done
+
+  **CLI Usage:**
+  ```bash
+  # Topic filter enabled by default for coverage runs (--start-date/--end-date)
+  python3 generate.py --mode ideas --start-date 2026-01-01 --end-date 2026-01-05 --source-tracking
+  
+  # Disable topic filter if needed
+  python3 generate.py --mode ideas --start-date 2026-01-01 --end-date 2026-01-05 --source-tracking --no-topic-filter
+  ```
+
+**Evidence:**
+- Files compile without errors
+- Topic filter automatically enabled for coverage runs via API
+
+---
+
+## Progress - 2026-01-10 (Occurrence Signal Fix)
+
+**Done:**
+- ✅ **Fixed Occurrence Signal Loss in Topic Filter**
+  - **Problem:** When topic filter skipped a conversation (topic already covered), it only expanded date ranges but didn't increment `occurrence` or update `last_seen`. Theme Explorer uses occurrence to surface "validated" topics — this signal was being lost.
+  - **Solution:** Updated `_batch_expand_date_ranges()` in `topic_filter.py` to ALWAYS:
+    1. Increment `occurrence` by 1 (topic match = validation)
+    2. Update `last_seen` to current month
+    3. Expand date ranges as before
+
+  **Impact:**
+  | Scenario | Before Fix | After Fix |
+  |----------|-----------|-----------|
+  | Topic in 10 conversations, 9 filtered | `occurrence=1` | `occurrence=10` |
+  | Theme Explorer ranking | Undervalued | Correctly ranked |
+
+**Files Modified:**
+- `engine/common/topic_filter.py` — Added occurrence increment and last_seen update
+
+---
+
+## Progress - 2026-01-10 (Coverage Visualization Page)
+
+**Done:**
+- ✅ **Created Explore Coverage Page with Visualization (COV-1, COV-2, COV-3)**
+  - New `/explore-coverage` page with normalized bar chart showing:
+    - Chat Terrain (conversations per week) — cyan bars
+    - Ideas coverage — purple bars  
+    - Insights coverage — blue bars
+    - Coverage gaps highlighted in red
+  - All metrics normalized to percentages for fair visual comparison
+  - Added navigation links from main page (Library card, Suggested Runs header)
+  - Shows all suggested runs with inline expansion
+
+**Evidence:**
+- Screenshot: `e2e-results/explore-coverage-final.png`
+
+---
+
 ## Progress - 2026-01-10 (Critical Fix: Date Range Expansion on Deduplication)
 
 **Done:**

@@ -1,6 +1,7 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
+import Link from "next/link";
 
 export interface SuggestedRun {
   weekLabel: string;
@@ -20,7 +21,7 @@ interface CoverageSuggestionsProps {
   suggestedRuns: SuggestedRun[];
   onRunSuggestion: (run: SuggestedRun) => void;
   isGenerating: boolean;
-  maxDisplay?: number;
+  initialDisplay?: number;
 }
 
 const PRIORITY_STYLES = {
@@ -48,15 +49,18 @@ export const CoverageSuggestions = memo(function CoverageSuggestions({
   suggestedRuns,
   onRunSuggestion,
   isGenerating,
-  maxDisplay = 6,
+  initialDisplay = 6,
 }: CoverageSuggestionsProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   if (suggestedRuns.length === 0) {
     return null;
   }
 
-  const displayRuns = suggestedRuns.slice(0, maxDisplay);
+  const displayRuns = isExpanded ? suggestedRuns : suggestedRuns.slice(0, initialDisplay);
   const totalCost = displayRuns.reduce((sum, r) => sum + r.estimatedCost, 0);
   const highPriorityCount = suggestedRuns.filter((r) => r.priority === "high").length;
+  const hasMore = suggestedRuns.length > initialDisplay;
 
   return (
     <div className="space-y-3">
@@ -73,9 +77,18 @@ export const CoverageSuggestions = memo(function CoverageSuggestions({
             </span>
           )}
         </div>
-        <span className="text-xs text-slate-500">
-          Est. ${totalCost.toFixed(2)} total
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-500">
+            Est. ${totalCost.toFixed(2)} total
+          </span>
+          <Link
+            href="/explore-coverage"
+            className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1"
+          >
+            <span>📊</span>
+            <span>Explore Coverage</span>
+          </Link>
+        </div>
       </div>
 
       {/* Suggestion Cards - Grid Layout */}
@@ -133,15 +146,17 @@ export const CoverageSuggestions = memo(function CoverageSuggestions({
         })}
       </div>
 
-      {/* Show more link if there are more runs */}
-      {suggestedRuns.length > maxDisplay && (
+      {/* Expand/Collapse button if there are more runs */}
+      {hasMore && (
         <div className="text-center">
-          <a
-            href="/coverage"
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
             className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
           >
-            View all {suggestedRuns.length} suggestions →
-          </a>
+            {isExpanded 
+              ? "Show less ↑" 
+              : `View all ${suggestedRuns.length} suggestions →`}
+          </button>
         </div>
       )}
     </div>

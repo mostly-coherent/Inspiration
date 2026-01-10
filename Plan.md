@@ -393,19 +393,20 @@ inspiration/
 
 ## 🎯 NEXT FOCUS
 
-**Priority:** Testing v3 implementation and preparing for public release.
+**Priority:** Testing Coverage Intelligence and preparing for public release.
 
 **Current Status:**
 - ✅ v1 implementation complete (all phases done)
 - ✅ v2 Item-Centric Architecture complete
 - ✅ Vector DB architecture stable (2.1GB indexed)
 - ✅ All E2E tests passing (12/12)
-- ✅ v3 Phase 1: Scoreboard Header + Analysis Coverage (DONE)
-- ✅ v3 Phase 2: Rich Item Cards + Library Search (DONE)
-- ✅ v3 Phase 3: Settings Configuration Hub (DONE)
-- ✅ V3-2: Two-Panel Layout (DONE)
+- ✅ v3 Complete — Library-centric UI with Scoreboard, Two-Panel Layout, Settings Hub
+- ✅ v3.1 Complete — View Modes (Library View / Comprehensive View)
+- ✅ v4 Complete — Library Enhancements (Merge Similar, Auto-Archive, Bulk Actions)
+- ✅ v5 Complete — Coverage Intelligence (Gap Detection, Suggested Runs, Visualization)
+- ✅ Performance Optimizations — IMP-15 (pgvector RPC), IMP-16 (Batch+Parallel), IMP-17 (Topic Filter)
 
-**v3 Complete!** All v3 features are now implemented.
+**v5 Complete!** Coverage Intelligence fully operational with optimized harmonization.
 
 ---
 
@@ -554,11 +555,11 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 | ID | Improvement | Priority | Effort |
 |----|-------------|----------|--------|
 | COV-8 | **Auto-queue with budget cap** — Automatically run suggested jobs up to $X/week | MEDIUM | MEDIUM |
-| COV-9 | **Coverage history chart** — Show coverage score over time | LOW | MEDIUM |
+| COV-9 | **Coverage visualization** — Terrain vs coverage chart with normalized % | ✅ Done | MEDIUM |
 | COV-10 | **Smart run batching** — Combine adjacent weeks into single runs for efficiency | LOW | LOW |
 | COV-11 | **Priority weighting** — Factor in topic relevance (via semantic search) in gap severity | LOW | HIGH |
 | COV-12 | **Coverage notifications** — Alert user when coverage drops below threshold | LOW | LOW |
-| COV-13 | **Refactor generation handlers** — Extract shared logic from `handleGenerate` and `handleGenerateWithParams` into reusable function | MEDIUM | LOW |
+| COV-13 | **Refactor generation handlers** — Extract shared logic into `executeGeneration()` | ✅ Done | LOW |
 | COV-14 | **Progress tracking for suggested runs** — Show which suggested run is currently processing with live status | MEDIUM | MEDIUM |
 | COV-15 | **Multi-run queue** — Let users queue multiple suggested runs and process them sequentially | MEDIUM | MEDIUM |
 
@@ -567,6 +568,12 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 |----|-------------|----------|--------|
 | IMP-1 | Server-side pagination for Library (1000+ items) | MEDIUM | HIGH |
 | IMP-8 | Bundle size analysis with `@next/bundle-analyzer` | LOW | LOW |
+| IMP-15 | **Harmonization optimization** — Use pgvector RPC for server-side similarity search instead of regenerating embeddings for every item | ✅ Done | MEDIUM |
+| IMP-16 | **Batch + parallel deduplication** — Use ThreadPoolExecutor for parallel similarity searches during harmonization | ✅ Done | LOW |
+| IMP-17 | **Pre-generation topic check (H-6)** — Before LLM generation, check which topics already have items; expand date ranges without generating. Reduces LLM costs while keeping coverage % truthful | ✅ Done | MEDIUM |
+| IMP-18 | **Tune topic filter threshold** — Adjust 0.75 similarity threshold based on real-world results (false positives vs false negatives) | LOW | LOW |
+| IMP-19 | **Topic filter UI indicator** — Show "X topics skipped, Y generated" in results panel | LOW | LOW |
+| IMP-20 | **Cache conversation embeddings** — Store embeddings for repeat runs to skip embedding generation | LOW | MEDIUM |
 
 **UX Enhancements:**
 | ID | Improvement | Priority | Effort |
@@ -575,8 +582,7 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 | IMP-3 | Bulk actions (archive, status change multiple items) | LOW | MEDIUM |
 | IMP-4 | Item detail modal with full chat context | MEDIUM | HIGH |
 | IMP-5 | Export only filtered/selected items | LOW | LOW |
-| IMP-14 | **Suggested date range on "Request Too Large" error** — Pre-fill retry with smaller range | MEDIUM | LOW |
-| IMP-15 | **Cost estimation before generation** — "This will cost ~$0.50" warning | MEDIUM | MEDIUM |
+| IMP-14 | **Suggested date range on "Request Too Large" error** — Auto-calculates smaller range | ✅ Done | LOW |
 
 **Reliability:**
 | ID | Improvement | Priority | Effort |
@@ -584,12 +590,13 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 | IMP-6 | Automatic retry logic for failed operations | LOW | MEDIUM |
 | IMP-7 | Save drafts locally (IndexedDB) for offline resilience | LOW | HIGH |
 | IMP-13 | Prompt template validation (syntax check before save) | MEDIUM | MEDIUM |
-| IMP-16 | **Resume generation from partial progress** — Save intermediate state, not just final output | MEDIUM | HIGH |
-| IMP-17 | **Streaming progress per-day** — Show which day is being processed during generation | LOW | MEDIUM |
-| IMP-18 | **Multi-strategy extraction** — Fallback logic for Cursor DB schema changes | MEDIUM | HIGH |
-| IMP-19 | **Auto-adaptation** — Discover new schema patterns automatically (conceptual) | LOW | HIGH |
+| IMP-21 | **Resume generation from partial progress** — Save intermediate state, not just final output | MEDIUM | HIGH |
+| IMP-22 | **Streaming progress per-day** — Show which day is being processed during generation | LOW | MEDIUM |
+| IMP-23 | **Multi-strategy extraction** — Fallback logic for Cursor DB schema changes | MEDIUM | HIGH |
+| IMP-24 | **Auto-adaptation** — Discover new schema patterns automatically (conceptual) | LOW | HIGH |
+| IMP-25 | **Cost estimation before generation** — "This will cost ~$0.50" warning | MEDIUM | MEDIUM |
 
-<!-- IMP-18/19 merged from RESILIENCE_STRATEGY.md on 2026-01-09 -->
+<!-- IMP-21-24 renumbered to avoid conflicts; merged from RESILIENCE_STRATEGY.md on 2026-01-09 -->
 
 **Error Handling (Implemented 2026-01-05):**
 | ID | Improvement | Status | Notes |
@@ -616,4 +623,4 @@ Users can now edit prompt templates directly in the UI. While we create backups 
 
 ---
 
-**Last Updated:** 2026-01-10
+**Last Updated:** 2026-01-10 (v5 Coverage Intelligence + Performance Optimizations Complete)

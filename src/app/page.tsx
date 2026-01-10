@@ -335,41 +335,18 @@ export default function Home() {
     fetchCoverageAnalysis();
   }, [fetchCoverageAnalysis]);
 
-  // Handle running a suggested coverage run
-  const handleRunSuggestion = async (run: SuggestedRun) => {
-    // Set mode based on item type
-    const newModeId = run.itemType === "idea" ? "idea" : "insight";
-    setSelectedModeId(newModeId as ModeType);
-    setSelectedTheme("generation");
-    
-    // Enable advanced mode with custom dates
-    setShowAdvanced(true);
-    setUseCustomDates(true);
-    setFromDate(run.startDate);
-    setToDate(run.endDate);
-    setCustomItemCount(run.expectedItems);
-    
-    // Small delay to let state update, then trigger generation
-    setTimeout(() => {
-      // Trigger generation (the state is already set)
-      handleGenerateWithParams({
-        theme: "generation",
-        modeId: newModeId,
-        fromDate: run.startDate,
-        toDate: run.endDate,
-        itemCount: run.expectedItems,
-      });
-    }, 100);
-  };
-
-  // Generate with explicit params (for suggested runs)
-  const handleGenerateWithParams = async (params: {
-    theme: string;
-    modeId: string;
-    fromDate: string;
-    toDate: string;
-    itemCount: number;
-  }) => {
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // UNIFIED GENERATION LOGIC (COV-13 refactor)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  
+  /**
+   * Core generation executor - handles all the common logic for running generation.
+   * Called by both handleGenerate (manual) and handleRunSuggestion (coverage runs).
+   */
+  const executeGeneration = async (
+    body: Record<string, unknown>,
+    displayInfo: { tool: ToolType; mode: PresetMode; itemCount: number }
+  ) => {
     setIsGenerating(true);
     setResult(null);
     setProgress(0);
@@ -378,7 +355,7 @@ export default function Home() {
     setLibraryCountBefore(null);
     setLibraryCountAfter(null);
     
-    // v3: Fetch library count before generation
+    // Fetch library count before generation
     try {
       const libRes = await fetch("/api/items?view=items");
       const libData = await libRes.json();
@@ -392,7 +369,7 @@ export default function Home() {
     // Create new AbortController for this request
     abortController.current = new AbortController();
     
-    const totalEstimate = estimateTime(params.itemCount);
+    const totalEstimate = estimateTime(displayInfo.itemCount);
     setEstimatedSeconds(totalEstimate);
 
     // Start progress simulation
@@ -409,7 +386,7 @@ export default function Home() {
       } else if (rawProgress < 30) {
         setProgressPhase("Analyzing conversations...");
       } else if (rawProgress < 60) {
-        setProgressPhase(`Generating ${params.itemCount} items...`);
+        setProgressPhase(`Generating ${displayInfo.itemCount} items...`);
       } else if (rawProgress < 75) {
         setProgressPhase("Deduplicating items...");
       } else if (rawProgress < 90) {
@@ -420,15 +397,6 @@ export default function Home() {
     }, 500);
 
     try {
-      const body = {
-        theme: params.theme,
-        modeId: params.modeId,
-        mode: "custom",
-        fromDate: params.fromDate,
-        toDate: params.toDate,
-        itemCount: params.itemCount,
-      };
-
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -436,7 +404,12 @@ export default function Home() {
         signal: abortController.current.signal,
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error("Invalid JSON response from server");
+      }
       
       if (!response.ok) {
         throw new Error(data.error || `Request failed with status ${response.status}`);
@@ -446,7 +419,7 @@ export default function Home() {
       setProgressPhase("Complete!");
       setResult(data);
       
-      // v3: Update analysis coverage from result
+      // Update analysis coverage from result
       if (data.success && data.stats) {
         setAnalysisCoverage({
           conversationsAnalyzed: data.stats.conversationsAnalyzed,
@@ -474,8 +447,8 @@ export default function Home() {
       } else {
         setResult({
           success: false,
-          tool: params.modeId === "idea" ? "ideas" : "insights",
-          mode: "custom",
+          tool: displayInfo.tool,
+          mode: displayInfo.mode,
           error: error instanceof Error ? error.message : "Unknown error",
           stats: {
             daysProcessed: 0,
@@ -498,151 +471,82 @@ export default function Home() {
     }
   };
 
-  const handleGenerate = async () => {
-    setIsGenerating(true);
-    setResult(null);
-    setProgress(0);
-    setElapsedSeconds(0);
-    setAnalysisCoverage(null);
-    setLibraryCountBefore(null);
-    setLibraryCountAfter(null);
+  // Handle running a suggested coverage run (clicks from CoverageSuggestions)
+  const handleRunSuggestion = (run: SuggestedRun) => {
+    const body = {
+      theme: "generation",
+      modeId: run.itemType,
+      mode: "custom",
+      fromDate: run.startDate,
+      toDate: run.endDate,
+      itemCount: run.expectedItems,
+    };
     
-    // v3: Fetch library count before generation
-    try {
-      const libRes = await fetch("/api/items?view=items");
-      const libData = await libRes.json();
-      if (libData.success) {
-        setLibraryCountBefore(libData.stats?.totalItems || 0);
+    const displayInfo = {
+      tool: (run.itemType === "idea" ? "ideas" : "insights") as ToolType,
+      mode: "custom" as PresetMode,
+      itemCount: run.expectedItems,
+    };
+    
+    executeGeneration(body, displayInfo);
+  };
+
+  // Handle manual generation (Generate button click)
+  const handleGenerate = () => {
+    const itemCount = getCurrentItemCount();
+    
+    // Build request body based on current UI state
+    const body: Record<string, unknown> = {
+      theme: selectedTheme,
+      modeId: selectedModeId,
+      mode: showAdvanced ? "custom" : selectedMode,
+    };
+
+    if (showAdvanced) {
+      if (useCustomDates && fromDate && toDate) {
+        body.fromDate = fromDate;
+        body.toDate = toDate;
+      } else {
+        body.days = customDays;
       }
-    } catch (e) {
-      console.error("Failed to fetch library count before:", e);
+      body.itemCount = customItemCount;
+      body.temperature = customTemperature;
     }
     
-    // Create new AbortController for this request
-    abortController.current = new AbortController();
+    const displayInfo = {
+      tool: displayTool,
+      mode: selectedMode,
+      itemCount,
+    };
+    
+    executeGeneration(body, displayInfo);
+  };
+
+  // Handle retry with suggested smaller date range (IMP-14)
+  const handleRetryWithDays = (days: number) => {
+    // Update UI to show advanced mode with the suggested days
+    setShowAdvanced(true);
+    setUseCustomDates(false);
+    setCustomDays(days);
     
     const itemCount = getCurrentItemCount();
-    const totalEstimate = estimateTime(itemCount);
-    setEstimatedSeconds(totalEstimate);
+    
+    const body: Record<string, unknown> = {
+      theme: selectedTheme,
+      modeId: selectedModeId,
+      mode: "custom",
+      days: days,
+      itemCount: itemCount,
+      temperature: customTemperature,
+    };
+    
+    const displayInfo = {
+      tool: displayTool,
+      mode: "custom" as PresetMode,
+      itemCount,
+    };
 
-    // Start progress simulation (v2: Item-centric phases)
-    const startTime = Date.now();
-    progressInterval.current = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      setElapsedSeconds(elapsed);
-      
-      // Calculate progress (cap at 95% until complete)
-      const rawProgress = Math.min((elapsed / totalEstimate) * 100, 95);
-      setProgress(rawProgress);
-      
-      // v2: Update phase based on progress (item-centric flow)
-      if (rawProgress < 10) {
-        setProgressPhase("Reading chat history...");
-      } else if (rawProgress < 30) {
-        setProgressPhase("Analyzing conversations...");
-      } else if (rawProgress < 60) {
-        setProgressPhase(`Generating ${itemCount} items...`);
-      } else if (rawProgress < 75) {
-        setProgressPhase("Deduplicating items...");
-      } else if (rawProgress < 90) {
-        setProgressPhase("Ranking items...");
-      } else {
-        setProgressPhase("Harmonizing to bank...");
-      }
-    }, 500);
-
-    try {
-      const body: Record<string, unknown> = {
-        theme: selectedTheme,
-        modeId: selectedModeId,
-        mode: showAdvanced ? "custom" : selectedMode,
-      };
-
-      if (showAdvanced) {
-        if (useCustomDates && fromDate && toDate) {
-          body.fromDate = fromDate;
-          body.toDate = toDate;
-        } else {
-          body.days = customDays;
-        }
-        body.itemCount = customItemCount;
-        body.temperature = customTemperature;
-      }
-
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: abortController.current.signal,
-      });
-
-      let data;
-      try {
-        data = await response.json();
-      } catch {
-        throw new Error("Invalid JSON response from server");
-      }
-      
-      if (!response.ok) {
-        throw new Error(data.error || `Request failed with status ${response.status}`);
-      }
-      
-      setProgress(100);
-      setProgressPhase("Complete!");
-      setResult(data);
-      
-      // v3: Update analysis coverage from result
-      if (data.success && data.stats) {
-        setAnalysisCoverage({
-          conversationsAnalyzed: data.stats.conversationsAnalyzed,
-          workspaces: 3, // TODO: Get actual workspace count from API
-        });
-        
-        // v3: Fetch library count after generation
-        try {
-          const libRes = await fetch("/api/items?view=items");
-          const libData = await libRes.json();
-          if (libData.success) {
-            setLibraryCountAfter(libData.stats?.totalItems || 0);
-          }
-        } catch (e) {
-          console.error("Failed to fetch library count after:", e);
-        }
-        
-        // v5: Refresh coverage analysis after successful generation
-        fetchCoverageAnalysis();
-      }
-      
-    } catch (error) {
-      // Check if this was an abort
-      if (error instanceof Error && error.name === "AbortError") {
-        setProgressPhase("Stopped");
-        // Don't set an error result for user-initiated stops
-      } else {
-        setResult({
-          success: false,
-          tool: displayTool,
-          mode: selectedMode,
-          error: error instanceof Error ? error.message : "Unknown error",
-          stats: {
-            daysProcessed: 0,
-            daysWithActivity: 0,
-            daysWithOutput: 0,
-            itemsGenerated: 0,
-            itemsAfterDedup: 0,
-            itemsReturned: 0,
-          },
-          timestamp: new Date().toISOString(),
-        });
-      }
-    } finally {
-      if (progressInterval.current) {
-        clearInterval(progressInterval.current);
-        progressInterval.current = null;
-      }
-      abortController.current = null;
-      setIsGenerating(false);
-    }
+    executeGeneration(body, displayInfo);
   };
 
   const handleStop = () => {
@@ -788,7 +692,7 @@ export default function Home() {
               suggestedRuns={suggestedRuns}
               onRunSuggestion={handleRunSuggestion}
               isGenerating={isGenerating}
-              maxDisplay={6}
+              initialDisplay={6}
             />
           </div>
         )}
@@ -972,7 +876,7 @@ export default function Home() {
                 )}
 
                 {/* Results */}
-                {result && <ResultsPanel result={result} onRetry={handleGenerate} />}
+                {result && <ResultsPanel result={result} onRetry={handleGenerate} onRetryWithDays={handleRetryWithDays} />}
               </>
             )}
           </main>

@@ -12,9 +12,10 @@ import { validateAndLog } from "@/lib/statsValidator";
 interface ResultsPanelProps {
   result: GenerateResult;
   onRetry?: () => void;
+  onRetryWithDays?: (days: number) => void;
 }
 
-export const ResultsPanel = memo(function ResultsPanel({ result, onRetry }: ResultsPanelProps) {
+export const ResultsPanel = memo(function ResultsPanel({ result, onRetry, onRetryWithDays }: ResultsPanelProps) {
   const [showRaw, setShowRaw] = useState(false);
   const router = useRouter();
   
@@ -85,6 +86,14 @@ export const ResultsPanel = memo(function ResultsPanel({ result, onRetry }: Resu
       switch (friendlyError.cta.action) {
         case "retry":
           onRetry?.();
+          break;
+        case "retry_smaller":
+          // Retry with suggested smaller date range
+          if (friendlyError.suggestedDays && onRetryWithDays) {
+            onRetryWithDays(friendlyError.suggestedDays);
+          } else {
+            onRetry?.();
+          }
           break;
         case "settings":
           router.push("/settings");

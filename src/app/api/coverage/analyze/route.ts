@@ -109,6 +109,20 @@ export async function GET() {
       );
     }
 
+    // Get library coverage by week AND type (for visualization)
+    let libraryByTypeData: { week_label: string; week_start: string; item_type: string; item_count: number }[] = [];
+    try {
+      const { data: typeData, error: typeError } = await supabase.rpc(
+        "get_library_coverage_by_week_and_type"
+      );
+      if (!typeError && typeData) {
+        libraryByTypeData = typeData;
+      }
+    } catch {
+      // Function might not exist yet, that's OK - we have fallback
+      console.log("get_library_coverage_by_week_and_type not available, using combined data");
+    }
+
     const memoryDensity: WeekDensity[] = memoryData || [];
     const libraryCoverage: WeekCoverage[] = libraryData || [];
 
@@ -120,10 +134,16 @@ export async function GET() {
 
     // Detect gaps
     const gaps: CoverageGap[] = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalize to start of day
 
     for (const week of memoryDensity) {
       const conversations = week.conversation_count;
       if (conversations === 0) continue;
+
+      // Skip incomplete weeks (week hasn't ended yet)
+      const weekEndDate = new Date(week.week_end);
+      if (weekEndDate >= today) continue;
 
       const existingItems = coverageMap.get(week.week_label) || 0;
       const expected = Math.max(1, Math.floor(conversations / CONVERSATIONS_PER_ITEM));
@@ -269,6 +289,12 @@ export async function GET() {
         weeks: libraryCoverage.map((w) => ({
           weekLabel: w.week_label,
           weekStart: w.week_start,
+          itemCount: w.item_count,
+        })),
+        weeksByType: libraryByTypeData.map((w) => ({
+          weekLabel: w.week_label,
+          weekStart: w.week_start,
+          itemType: w.item_type,
           itemCount: w.item_count,
         })),
       },

@@ -9,10 +9,12 @@ export interface FriendlyError {
   message: string;
   cta?: {
     label: string;
-    action: "retry" | "settings" | "external_link" | "harmonize";
+    action: "retry" | "settings" | "external_link" | "harmonize" | "retry_smaller";
     url?: string;
   };
   severity: "error" | "warning" | "info";
+  /** Suggested days for retry (when request was too large) */
+  suggestedDays?: number;
 }
 
 /**
@@ -74,15 +76,34 @@ export function getFriendlyError(rawError: string): FriendlyError {
   // Request Too Large
   if (errorLower.includes("request_too_large") || errorLower.includes("tokens exceeds")) {
     const tokensMatch = rawError.match(/~?([\d,]+)\s*tokens/);
-    const tokens = tokensMatch ? tokensMatch[1] : "unknown";
+    const tokensStr = tokensMatch ? tokensMatch[1] : "unknown";
+    const tokens = parseInt(tokensStr.replace(/,/g, ""), 10) || 0;
+    
+    // Extract days from error message (e.g., "days=14" or "14 days")
+    const daysMatch = rawError.match(/days[=:\s]+(\d+)|(\d+)\s*days/i);
+    const originalDays = daysMatch ? parseInt(daysMatch[1] || daysMatch[2], 10) : 14;
+    
+    // Calculate suggested days based on token ratio (target: ~80k tokens for safety)
+    // Model limit is ~100k, so aim for 80% to be safe
+    const targetTokens = 80000;
+    let suggestedDays = originalDays;
+    if (tokens > 0) {
+      const ratio = targetTokens / tokens;
+      suggestedDays = Math.max(1, Math.floor(originalDays * ratio));
+    } else {
+      // If we can't parse tokens, suggest half the days
+      suggestedDays = Math.max(1, Math.floor(originalDays / 2));
+    }
+    
     return {
       title: "Request Too Large",
-      message: `Your request (~${tokens} tokens) exceeds model limits. Try a smaller date range.`,
+      message: `Your request (~${tokensStr} tokens) exceeds model limits. Try ${suggestedDays} days instead of ${originalDays}.`,
       cta: {
-        label: "Use Fewer Days",
-        action: "retry",
+        label: `Retry with ${suggestedDays} days`,
+        action: "retry_smaller",
       },
       severity: "error",
+      suggestedDays,
     };
   }
   

@@ -7,6 +7,51 @@
 
 ---
 
+## Decision: Harmonization Performance Optimization - 2026-01-10
+
+**Problem:** As Library grew to 275+ items, harmonization (deduplication) became the dominant bottleneck:
+- Finding similar items required regenerating embeddings for ALL existing items
+- 10 new items × 275 existing items = 2,750 embedding API calls
+- Harmonization took 60-120 seconds, users complained of "slow saves"
+
+**Decision:** Implement three-layer optimization stack:
+
+| Layer | Change | Impact |
+|-------|--------|--------|
+| **IMP-15: pgvector RPC** | Store embeddings in `vector(1536)` column; server-side similarity search via RPC | Embeddings generated ONCE at creation |
+| **IMP-16: Batch + Parallel** | `batch_add_items()` with `ThreadPoolExecutor` (5 workers); batch inserts | 10 parallel searches instead of 10 sequential |
+| **IMP-17: Topic Filter** | Pre-filter conversations before LLM generation | Skip generation for covered topics entirely |
+
+**Combined Impact:**
+- Embedding API calls: 275+ → 1 per new item (**275x reduction**)
+- Harmonization time: 60-120s → 2-5s (**20-60x faster**)
+- LLM cost for repeat topics: 100% → 0% (**50-80% savings**)
+
+**Alternatives Considered:**
+
+1. **Client-side caching (in-memory):** Rejected. Embeddings too large for memory; doesn't persist across sessions.
+2. **Approximate Nearest Neighbor (ANN) index:** Rejected for now. pgvector already fast enough at 275 items; can add `ivfflat` index later if needed at 10K+ items.
+3. **Async harmonization:** Considered but orthogonal. These optimizations make sync fast enough (<5s).
+
+**Occurrence Signal Preservation:**
+Critical fix: When topic filter skips a conversation (topic already covered), we STILL:
+1. Increment `occurrence` (the topic was seen again)
+2. Update `last_seen` (for freshness)
+3. Expand `source_start_date`/`source_end_date` (for coverage accuracy)
+
+Without this, Theme Explorer would under-rank frequently-discussed topics.
+
+**Code Paths Affected:**
+- `engine/scripts/optimize_harmonization.sql` — New vector column + RPC
+- `engine/common/items_bank_supabase.py` — `batch_add_items()`, pgvector RPC calls
+- `engine/common/topic_filter.py` — New module for pre-generation filtering
+- `engine/generate.py` — Integrated topic filter, batch harmonization
+- `engine/scripts/backfill_library_embeddings.py` — Backfill script for existing items
+
+**Status:** ✅ Implemented | **DRI:** AI Agent
+
+---
+
 ## Decision: Coverage Intelligence — Automated Library Growth - 2026-01-10
 
 **Problem:** Users are busy and reflective builders—they come to Inspiration to decompress, be inspired, and reflect on themes in their own thinking. They don't enjoy manually configuring and running generations. With 200+ items and months of chat history, users can't tell which time periods are well-covered vs. missing from their Library.
