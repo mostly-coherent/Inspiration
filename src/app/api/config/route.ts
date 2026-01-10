@@ -260,14 +260,32 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT /api/config - Replace entire configuration
+// PUT /api/config - Update configuration (merges with existing)
 export async function PUT(request: NextRequest) {
   try {
-    const config: AppConfig = await request.json();
-    const saved = await saveConfig(config);
+    const body = await request.json();
+    const currentConfig = await loadConfig();
+    
+    // Merge updates with existing config (preserves fields not in body)
+    const updatedConfig = {
+      ...currentConfig,
+      ...body,
+      // Preserve nested objects that might not be in body
+      llm: body.llm ? { ...currentConfig.llm, ...body.llm } : currentConfig.llm,
+      features: body.features 
+        ? {
+            customVoice: { ...currentConfig.features.customVoice, ...body.features?.customVoice },
+            v1Enabled: body.features?.v1Enabled ?? currentConfig.features.v1Enabled,
+          }
+        : currentConfig.features,
+      ui: body.ui ? { ...currentConfig.ui, ...body.ui } : currentConfig.ui,
+      vectordb: body.vectordb ? { ...currentConfig.vectordb, ...body.vectordb } : currentConfig.vectordb,
+    };
+    
+    const saved = await saveConfig(updatedConfig);
     
     if (saved) {
-      return NextResponse.json({ success: true, config });
+      return NextResponse.json({ success: true, config: updatedConfig });
     } else {
       return NextResponse.json(
         { success: false, error: "Failed to save configuration" },

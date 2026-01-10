@@ -2,11 +2,37 @@ import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "child_process";
 import { readFile } from "fs/promises";
 import path from "path";
-import { GenerateRequest, GenerateResult, TOOL_CONFIG, PRESET_MODES, getToolPath, ThemeType, ModeType, ToolType } from "@/lib/types";
+import { existsSync } from "fs";
+import { GenerateRequest, GenerateResult, TOOL_CONFIG, PRESET_MODES, getToolPath, ThemeType, ModeType, ToolType, GenerationDefaults } from "@/lib/types";
 import { logger } from "@/lib/logger";
 import { parseRankedItems, extractEstimatedCost } from "@/lib/resultParser";
 import { resolveThemeModeFromTool, validateThemeMode, getModeSettings, getMode } from "@/lib/themes";
 import { getPythonPath } from "@/lib/pythonPath";
+
+// Default generation settings (fallback if config not found)
+const DEFAULT_GENERATION: GenerationDefaults = {
+  temperature: 0.5,
+  deduplicationThreshold: 0.80,
+  maxTokens: 4000,
+  maxTokensJudge: 500,
+};
+
+// Load generation defaults from config
+async function loadGenerationDefaults(): Promise<GenerationDefaults> {
+  try {
+    const configPath = path.join(process.cwd(), "data", "config.json");
+    if (existsSync(configPath)) {
+      const content = await readFile(configPath, "utf-8");
+      const config = JSON.parse(content);
+      if (config.generationDefaults) {
+        return { ...DEFAULT_GENERATION, ...config.generationDefaults };
+      }
+    }
+  } catch (error) {
+    logger.error("[Generate] Failed to load generation defaults:", error);
+  }
+  return DEFAULT_GENERATION;
+}
 
 // Performance note (v2 Item-Centric Architecture):
 // - itemCount: Single LLM call generates N items (no more parallel candidate calls)
@@ -138,11 +164,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Override with custom values if provided, or use mode defaults
+    // Load global generation defaults from config
+    const generationDefaults = await loadGenerationDefaults();
+    
+    // Override with custom values if provided, or use mode defaults, or use global defaults
+    // Priority: per-request > per-mode > global config > hardcoded fallback
     // v2: itemCount replaces bestOf (backward compatible - bestOf still accepted)
     const effectiveItemCount = itemCount ?? bestOf ?? themeMode?.defaultItemCount ?? modeConfig?.itemCount ?? 10;
-    const effectiveTemperature = temperature ?? modeSettings?.temperature ?? modeConfig?.temperature ?? 0.2;
-    const effectiveDeduplicationThreshold = deduplicationThreshold ?? modeSettings?.deduplicationThreshold ?? 0.85;
+    const effectiveTemperature = temperature ?? modeSettings?.temperature ?? modeConfig?.temperature ?? generationDefaults.temperature;
+    const effectiveDeduplicationThreshold = deduplicationThreshold ?? modeSettings?.deduplicationThreshold ?? generationDefaults.deduplicationThreshold;
     
     args.push("--item-count", effectiveItemCount.toString());
     args.push("--temperature", effectiveTemperature.toString());

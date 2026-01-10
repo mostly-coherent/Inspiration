@@ -1811,7 +1811,7 @@ def process_aggregated_range(
                 "output_file": None,
                 "topic_filter": topic_filter_stats,
                 "skipped_reason": "all_topics_covered",
-            }
+        }
     
     # Step 4: Compress/distill each conversation individually (lossless compression)
     # Users want signals/reminders, not all details - compression preserves key info
