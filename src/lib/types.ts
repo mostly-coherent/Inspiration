@@ -18,7 +18,6 @@ export interface AdvancedLLMConfig {
 
 // v3: Global Thresholds
 export interface GlobalThresholds {
-  categorySimilarity: number; // Default: 0.75 - for grouping items into categories
   judgeTemperature: number; // Default: 0.0 - for ranking/judging
   compressionTokenThreshold: number; // Default: 10000 - when to compress
   compressionDateThreshold: number; // Default: 7 - skip compression for ranges under this

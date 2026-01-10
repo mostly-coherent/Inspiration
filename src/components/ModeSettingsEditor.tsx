@@ -109,7 +109,7 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
       {modeData.settings.temperature !== null && (
         <div>
           <label className="block text-sm text-adobe-gray-400 mb-1">
-            Temperature
+            Temperature (Mode-Specific Override)
           </label>
           <input
             type="number"
@@ -122,6 +122,10 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
             }
             className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-white"
           />
+          <p className="text-xs text-adobe-gray-500 mt-1">
+            Controls creativity for this specific mode. Low (0.2-0.3) = focused, predictable. High (0.7+) = creative, varied.
+            Leave blank to use the global default from Settings → Advanced.
+          </p>
         </div>
       )}
 
@@ -129,7 +133,7 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
       {modeData.settings.minSimilarity !== null && (
         <div>
           <label className="block text-sm text-adobe-gray-400 mb-1">
-            Minimum Similarity
+            Minimum Similarity (Mode-Specific Override)
           </label>
           <input
             type="number"
@@ -142,13 +146,17 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
             }
             className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-white"
           />
+          <p className="text-xs text-adobe-gray-500 mt-1">
+            Only include results at least this similar to your query. 0 = show all matches (broad). 0.5+ = only highly relevant (focused).
+            Leave blank to use the global default from Settings → Advanced.
+          </p>
         </div>
       )}
 
       {/* Deduplication Threshold (v2) */}
       <div>
         <label className="block text-sm text-adobe-gray-400 mb-1">
-          Deduplication Threshold
+          Deduplication Threshold (Mode-Specific Override)
         </label>
         <div className="flex items-center gap-4">
           <input
@@ -161,11 +169,13 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
             className="flex-1 h-2 bg-black/30 rounded-lg appearance-none cursor-pointer"
           />
           <span className="text-sm font-mono text-white w-12">
-            {(deduplicationThreshold ?? 0.85).toFixed(2)}
+            {((deduplicationThreshold ?? 0.85) * 100).toFixed(0)}%
           </span>
         </div>
         <p className="text-xs text-adobe-gray-500 mt-1">
-          Items with similarity above this threshold are deduplicated. Higher = stricter (fewer duplicates removed). Default: 0.85
+          Two items are considered duplicates if this similar. Lower (70%) = aggressive (removes more near-duplicates). Higher (90%) = strict (keeps more variations).
+          <br />
+          💡 Recommendation: 80% works well for most modes.
         </p>
       </div>
 
@@ -182,7 +192,9 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
           className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-white font-mono text-sm"
         />
         <p className="text-xs text-adobe-gray-500 mt-1">
-          Folder containing example outputs for this mode
+          Point to a folder with example outputs you love. The AI uses these as style references when generating.
+          <br />
+          💡 Example: For insights, use a folder of your best blog post drafts.
         </p>
       </div>
 
@@ -205,8 +217,10 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
           />
           <p className="text-xs text-adobe-gray-500 mt-1">
             {mode === "idea"
-              ? "Folder containing implemented projects (items will be marked as implemented if found)"
-              : "Folder containing published posts (items will be marked as implemented if found)"}
+              ? "Point to your code projects folder. Ideas that match files there get marked as 'implemented' — so you can focus on what's left to build."
+              : "Point to your published content folder (blog posts, notes). Insights matching published work get marked as 'implemented' — so you focus on new topics."}
+            <br />
+            💡 This helps you avoid duplicating work you&apos;ve already done.
           </p>
         </div>
       )}
@@ -218,8 +232,8 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
             Semantic Search Queries
           </label>
           <p className="text-xs text-adobe-gray-500 mb-2">
-            Queries used to find relevant conversations. One query per line.
-            {mode === "use_case" && " These queries will be combined with your search query to find similar examples."}
+            Tell the AI what to look for in your chat history. One query per line — multiple queries find different angles.
+            {mode === "use_case" && " These are combined with your search to find relevant examples."}
           </p>
           <textarea
             value={semanticSearchQueries.join("\n")}
@@ -236,9 +250,9 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
             className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-white font-mono text-sm"
           />
           <p className="text-xs text-adobe-gray-500 mt-1">
-            {mode === "use_case" 
-              ? "Each query will be combined with your search query (e.g., 'Examples of similar projects related to: [your query]'). Multiple queries help find different types of relevant content."
-              : "Each query searches your chat history for semantically similar conversations. Multiple queries help find different types of relevant content."}
+            💡 <strong>How it works:</strong> {mode === "use_case" 
+              ? "These queries combine with your search term. For example, if you search 'chatbot' and have query 'Examples of similar projects', it finds chats about 'chatbot projects I worked on'."
+              : "Each query finds different types of relevant conversations. 'What did I learn?' finds educational chats. 'What problems did I solve?' finds debugging sessions. More queries = broader coverage."}
           </p>
         </div>
       )}

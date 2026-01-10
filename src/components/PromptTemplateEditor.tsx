@@ -133,6 +133,12 @@ export function PromptTemplateEditor() {
         </div>
       )}
 
+      {/* Introduction */}
+      <div className="p-3 bg-amber-500/10 rounded-lg border border-amber-500/20 text-xs text-slate-400">
+        <strong className="text-amber-400">🎯 Job to be done:</strong> Customize the exact instructions the AI follows when generating content.
+        Select a template below to view and edit it. Changes take effect immediately — no refresh needed.
+      </div>
+
       {/* Prompt Selector */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
         {prompts.map((prompt) => (
@@ -208,9 +214,11 @@ export function PromptTemplateEditor() {
           {/* Editor Footer */}
           <div className="p-3 bg-slate-800/30 border-t border-slate-700/50 text-xs text-slate-500">
             <p>
-              <strong>Tip:</strong> Use <code className="text-amber-400">{"{item_count}"}</code> for
-              item count, <code className="text-amber-400">{"{voice_profile}"}</code> for voice
-              settings. Changes create a backup before saving.
+              <strong>Available variables:</strong>{" "}
+              <code className="text-amber-400">{"{item_count}"}</code> (how many items to generate),{" "}
+              <code className="text-amber-400">{"{voice_profile}"}</code> (your writing style),{" "}
+              <code className="text-amber-400">{"{conversations}"}</code> (source chat history).
+              A backup is created before each save.
             </p>
           </div>
         </div>
@@ -218,14 +226,40 @@ export function PromptTemplateEditor() {
 
       {/* Help Section */}
       <div className="p-4 bg-slate-800/20 rounded-lg border border-slate-700/30">
-        <h4 className="text-sm font-medium text-slate-300 mb-2">📝 About Prompt Templates</h4>
-        <ul className="text-xs text-slate-500 space-y-1">
-          <li>• <strong>Base Template:</strong> Common rules applied to all modes</li>
-          <li>• <strong>Ideas/Insights:</strong> Mode-specific generation prompts</li>
-          <li>• <strong>Use Cases:</strong> Seek mode synthesis prompt</li>
-          <li>• <strong>Judge:</strong> Ranking/filtering prompt for generated items</li>
-          <li>• Changes are saved immediately; a backup is created automatically</li>
-        </ul>
+        <h4 className="text-sm font-medium text-slate-300 mb-2">🎯 Job to be done: Customize How AI Writes for You</h4>
+        <p className="text-xs text-slate-400 mb-3">
+          Prompts are the instructions the AI follows. Edit them to change the style, format, or focus of generated content.
+          Every time Inspiration generates ideas, insights, or use cases, it uses these templates.
+        </p>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+          <div className="p-2 bg-slate-700/20 rounded">
+            <div className="text-xs font-medium text-blue-400">📋 Base Template</div>
+            <div className="text-xs text-slate-500">Global rules for all modes. Add your writing style, constraints, or voice here.</div>
+          </div>
+          <div className="p-2 bg-slate-700/20 rounded">
+            <div className="text-xs font-medium text-amber-400">💡 Ideas / 🧠 Insights</div>
+            <div className="text-xs text-slate-500">Mode-specific prompts. Control format, detail level, or focus for each type.</div>
+          </div>
+          <div className="p-2 bg-slate-700/20 rounded">
+            <div className="text-xs font-medium text-purple-400">🔍 Use Cases</div>
+            <div className="text-xs text-slate-500">How Seek synthesizes evidence. Adjust to change synthesis depth or structure.</div>
+          </div>
+          <div className="p-2 bg-slate-700/20 rounded">
+            <div className="text-xs font-medium text-emerald-400">⭐ Judge</div>
+            <div className="text-xs text-slate-500">How items are scored. Adjust criteria if your grades feel off.</div>
+          </div>
+        </div>
+
+        <div className="text-xs text-slate-500">
+          <strong>💡 Tips:</strong>
+          <ul className="mt-1 space-y-1 pl-3">
+            <li>• Changes take effect immediately — no refresh needed</li>
+            <li>• A backup is created automatically before each save</li>
+            <li>• Use variables like <code className="text-amber-400">{"{item_count}"}</code> and <code className="text-amber-400">{"{voice_profile}"}</code></li>
+            <li>• If results feel off, try tweaking the prompt before changing other settings</li>
+          </ul>
+        </div>
       </div>
     </div>
   );

@@ -59,7 +59,6 @@ DEFAULT_CONFIG = {
     },
     # v3 Advanced Thresholds
     "advancedThresholds": {
-        "categorySimilarity": 0.75,  # Threshold for grouping items into categories
         "judgeTemperature": 0.0,  # Temperature for ranking/judging LLM calls
         "compressionTokenThreshold": 10000,  # Compress conversations exceeding this token count
         "compressionDateThreshold": 7,  # Skip compression for date ranges < this many days
@@ -67,9 +66,11 @@ DEFAULT_CONFIG = {
     # v3 Custom Time Presets
     "customTimePresets": [],
     # v3 Generation Defaults - Control how AI generates content
+    # Temperature 0.5: Better balance of creativity & focus for ideation
+    # Dedup 0.80: Slightly more aggressive duplicate detection
     "generationDefaults": {
-        "temperature": 0.2,  # How creative the AI should be (0.0 = focused, 1.0 = creative)
-        "deduplicationThreshold": 0.85,  # How similar items need to be to count as duplicates (0.0-1.0)
+        "temperature": 0.5,  # How creative the AI should be (0.0 = focused, 1.0 = creative)
+        "deduplicationThreshold": 0.80,  # How similar items need to be to count as duplicates (0.0-1.0)
         "maxTokens": 4000,  # Maximum length of generated content (in tokens, ~4 chars each)
         "maxTokensJudge": 500,  # Maximum length for quality judging responses
     },
@@ -293,19 +294,12 @@ def get_advanced_thresholds() -> dict[str, Any]:
     
     Returns:
         Dict with keys:
-        - categorySimilarity: float (0.0-1.0)
         - judgeTemperature: float (0.0-1.0)
         - compressionTokenThreshold: int
         - compressionDateThreshold: int (days)
     """
     config = load_config()
     return config.get("advancedThresholds", DEFAULT_CONFIG["advancedThresholds"])
-
-
-def get_category_similarity_threshold() -> float:
-    """Get the category similarity threshold for grouping items."""
-    thresholds = get_advanced_thresholds()
-    return thresholds.get("categorySimilarity", 0.75)
 
 
 def get_judge_temperature() -> float:
