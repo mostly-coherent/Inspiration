@@ -51,6 +51,10 @@ class ItemsBank:
             except (json.JSONDecodeError, IOError):
                 self._bank = {"version": self.CURRENT_VERSION, "items": [], "categories": []}
     
+    def get_all_item_ids(self) -> set[str]:
+        """Get all item IDs from the bank."""
+        return {item["id"] for item in self._bank["items"]}
+    
     def save(self) -> bool:
         """Save bank to disk."""
         try:

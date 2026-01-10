@@ -403,6 +403,13 @@ export function CoverageDashboard() {
                       <span className="text-slate-400">⏸</span>
                     )}
                     <span className="font-medium text-slate-200">{run.week_label}</span>
+                    <span className={`px-1.5 py-0.5 rounded text-xs ${
+                      run.item_type === "idea" 
+                        ? "bg-purple-500/20 text-purple-400" 
+                        : "bg-blue-500/20 text-blue-400"
+                    }`}>
+                      {run.item_type === "idea" ? "💡" : "✨"}
+                    </span>
                     <span
                       className={`px-2 py-0.5 rounded text-xs ${
                         SEVERITY_COLORS[run.priority as keyof typeof SEVERITY_COLORS]?.bg || "bg-slate-700"
@@ -492,6 +499,13 @@ export function CoverageDashboard() {
                       <span className={`w-2 h-2 rounded-full ${colors.dot}`}></span>
                       <div>
                         <span className="font-medium text-slate-200">{run.weekLabel}</span>
+                        <span className={`ml-2 px-1.5 py-0.5 rounded text-xs ${
+                          run.itemType === "idea" 
+                            ? "bg-purple-500/20 text-purple-400" 
+                            : "bg-blue-500/20 text-blue-400"
+                        }`}>
+                          {run.itemType === "idea" ? "💡 Ideas" : "✨ Insights"}
+                        </span>
                         <span className="text-slate-500 mx-2">•</span>
                         <span className="text-sm text-slate-400">
                           {run.conversationCount} convos → {run.expectedItems} items

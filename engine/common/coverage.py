@@ -286,45 +286,57 @@ def estimate_cost(item_count: int, item_type: str) -> float:
 
 def generate_suggested_runs(
     gaps: list[CoverageGap],
-    item_type: str = "idea",
-    max_runs: int = 10,
+    item_types: list[str] | None = None,
+    max_gaps: int = 10,
 ) -> list[SuggestedRun]:
     """
     Generate suggested runs to fill coverage gaps.
     
     Args:
         gaps: List of detected coverage gaps
-        item_type: Type of items to generate ("idea", "insight", "use_case")
-        max_runs: Maximum number of runs to suggest
+        item_types: Types of items to generate (default: ["idea", "insight"])
+        max_gaps: Maximum number of gaps to process (each gap gets one run per type)
     
     Returns:
-        List of SuggestedRun objects
+        List of SuggestedRun objects (sorted by priority, then by type)
     """
+    if item_types is None:
+        item_types = ["idea", "insight"]  # Generate both by default
+    
     runs: list[SuggestedRun] = []
     
-    for gap in gaps[:max_runs]:
+    for gap in gaps[:max_gaps]:
         run_size = calculate_run_size(gap)
-        estimated_cost = estimate_cost(run_size, item_type)
         
-        # Build reason string
+        # Build base reason string
         if gap.existing_items == 0:
-            reason = f"{gap.conversation_count} conversations with no items covering this period"
+            base_reason = f"{gap.conversation_count} conversations with no items covering this period"
         else:
-            reason = f"{gap.conversation_count} conversations with only {gap.existing_items} items (expected {gap.expected_items})"
+            base_reason = f"{gap.conversation_count} conversations with only {gap.existing_items} items (expected {gap.expected_items})"
         
-        runs.append(SuggestedRun(
-            week_label=gap.week_label,
-            start_date=gap.week_start,
-            end_date=gap.week_end,
-            item_type=item_type,
-            expected_items=run_size,
-            conversation_count=gap.conversation_count,
-            message_count=gap.message_count,
-            existing_items=gap.existing_items,
-            priority=gap.severity,
-            reason=reason,
-            estimated_cost=estimated_cost,
-        ))
+        # Create a run for each item type
+        for item_type in item_types:
+            estimated_cost = estimate_cost(run_size, item_type)
+            type_label = "Ideas" if item_type == "idea" else "Insights" if item_type == "insight" else item_type.title()
+            
+            runs.append(SuggestedRun(
+                week_label=gap.week_label,
+                start_date=gap.week_start,
+                end_date=gap.week_end,
+                item_type=item_type,
+                expected_items=run_size,
+                conversation_count=gap.conversation_count,
+                message_count=gap.message_count,
+                existing_items=gap.existing_items,
+                priority=gap.severity,
+                reason=f"[{type_label}] {base_reason}",
+                estimated_cost=estimated_cost,
+            ))
+    
+    # Sort: high priority first, then by week, then ideas before insights
+    type_order = {"idea": 0, "insight": 1, "use_case": 2}
+    severity_order = {"high": 0, "medium": 1, "low": 2}
+    runs.sort(key=lambda r: (severity_order.get(r.priority, 9), r.week_label, type_order.get(r.item_type, 9)))
     
     return runs
 
@@ -384,8 +396,8 @@ def get_coverage_summary() -> dict[str, Any]:
     # Detect gaps
     gaps = detect_gaps(memory_density, library_coverage)
     
-    # Generate suggested runs (default to ideas)
-    suggested_runs = generate_suggested_runs(gaps, item_type="idea")
+    # Generate suggested runs for both ideas and insights
+    suggested_runs = generate_suggested_runs(gaps, item_types=["idea", "insight"])
     
     # Calculate coverage score
     coverage_score = calculate_coverage_score(memory_density, library_coverage)

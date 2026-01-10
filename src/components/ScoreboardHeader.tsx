@@ -16,16 +16,24 @@ interface LibraryStats {
   byMode: Record<string, number>;
 }
 
+interface CoverageStats {
+  coverageScore: number;
+  gapCounts: { high: number; medium: number; low: number };
+  totalGaps: number;
+}
+
 interface ScoreboardHeaderProps {
   onSyncClick: () => void;
   isSyncing: boolean;
   syncStatus: string | null;
+  coverageStats?: CoverageStats | null;
 }
 
 export const ScoreboardHeader = memo(function ScoreboardHeader({
   onSyncClick,
   isSyncing,
   syncStatus,
+  coverageStats,
 }: ScoreboardHeaderProps) {
   const [memoryStats, setMemoryStats] = useState<MemoryStats>({
     localSize: null,
@@ -242,6 +250,20 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
               </div>
               <div className="text-xs text-slate-500">total items</div>
             </div>
+            
+            {/* Coverage Score */}
+            {coverageStats && (
+              <div className="pb-1">
+                <div className={`text-lg font-semibold ${
+                  coverageStats.coverageScore >= 80 ? "text-emerald-400" :
+                  coverageStats.coverageScore >= 50 ? "text-amber-400" :
+                  "text-red-400"
+                }`}>
+                  {coverageStats.coverageScore}%
+                </div>
+                <div className="text-xs text-slate-500">coverage</div>
+              </div>
+            )}
             
             {/* This Week Delta */}
             {libraryStats.thisWeek > 0 && (

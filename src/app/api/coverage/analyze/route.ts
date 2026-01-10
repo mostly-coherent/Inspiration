@@ -166,8 +166,11 @@ export async function GET() {
       return b.gapScore - a.gapScore;
     });
 
-    // Generate suggested runs
-    const suggestedRuns: SuggestedRun[] = gaps.slice(0, 10).map((gap) => {
+    // Generate suggested runs (both ideas and insights for each gap)
+    const suggestedRuns: SuggestedRun[] = [];
+    const itemTypes = ["idea", "insight"] as const;
+    
+    for (const gap of gaps.slice(0, 10)) {
       // Calculate run size based on severity and conversation count
       let expectedItems: number;
       if (gap.severity === "high") {
@@ -178,30 +181,43 @@ export async function GET() {
         expectedItems = 3;
       }
 
-      const itemType = "idea"; // Default to ideas
-      const estimatedCost = Number(
-        (expectedItems * COST_PER_ITEM[itemType as keyof typeof COST_PER_ITEM]).toFixed(4)
-      );
-
       // Build reason
-      const reason =
+      const baseReason =
         gap.existingItems === 0
           ? `${gap.conversationCount} conversations with no items covering this period`
           : `${gap.conversationCount} conversations with only ${gap.existingItems} items (expected ${gap.expectedItems})`;
 
-      return {
-        weekLabel: gap.weekLabel,
-        startDate: gap.weekStart,
-        endDate: gap.weekEnd,
-        itemType,
-        expectedItems,
-        conversationCount: gap.conversationCount,
-        messageCount: gap.messageCount,
-        existingItems: gap.existingItems,
-        priority: gap.severity,
-        reason,
-        estimatedCost,
-      };
+      // Create a run for each item type
+      for (const itemType of itemTypes) {
+        const estimatedCost = Number(
+          (expectedItems * COST_PER_ITEM[itemType]).toFixed(4)
+        );
+
+        suggestedRuns.push({
+          weekLabel: gap.weekLabel,
+          startDate: gap.weekStart,
+          endDate: gap.weekEnd,
+          itemType,
+          expectedItems,
+          conversationCount: gap.conversationCount,
+          messageCount: gap.messageCount,
+          existingItems: gap.existingItems,
+          priority: gap.severity,
+          reason: baseReason,
+          estimatedCost,
+        });
+      }
+    }
+    
+    // Sort: high priority first, then by week, then ideas before insights
+    suggestedRuns.sort((a, b) => {
+      if (severityOrder[a.priority] !== severityOrder[b.priority]) {
+        return severityOrder[a.priority] - severityOrder[b.priority];
+      }
+      if (a.weekLabel !== b.weekLabel) {
+        return b.weekLabel.localeCompare(a.weekLabel); // Newer weeks first
+      }
+      return a.itemType === "idea" ? -1 : 1; // Ideas before insights
     });
 
     // Calculate coverage score
