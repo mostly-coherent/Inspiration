@@ -1,11 +1,10 @@
 "use client";
 
 import { memo, useState } from "react";
-import { Item, Category } from "@/lib/types";
+import { Item } from "@/lib/types";
 
 interface ItemCardProps {
   item: Item;
-  category?: Category;
   onStatusChange?: (id: string, status: Item["status"]) => void;
   isExpanded?: boolean;
 }
@@ -59,7 +58,6 @@ const STATUS_CONFIG: Record<Item["status"], { icon: string; label: string; bgCol
 
 export const ItemCard = memo(function ItemCard({
   item,
-  category,
   onStatusChange,
   isExpanded: initialExpanded = false,
 }: ItemCardProps) {
@@ -122,14 +120,6 @@ export const ItemCard = memo(function ItemCard({
             <span className="opacity-50">💬</span>
             <span>{item.occurrence || item.sourceConversations || 1}x mentioned</span>
           </div>
-          
-          {/* Category */}
-          {category && (
-            <div className="flex items-center gap-1 text-slate-500">
-              <span className="opacity-50">📁</span>
-              <span className="truncate max-w-32">{category.name}</span>
-            </div>
-          )}
           
           {/* Status */}
           <div className={`ml-auto flex items-center gap-1 px-2 py-0.5 rounded-full ${statusConfig.bgColor} ${statusConfig.textColor}`}>

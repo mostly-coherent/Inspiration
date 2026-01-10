@@ -1,25 +1,20 @@
 "use client";
 
 import { memo, useState, useCallback, useMemo, useEffect } from "react";
-import { Item, Category, ModeType, ItemStatus } from "@/lib/types";
+import { Item, ModeType, ItemStatus } from "@/lib/types";
 
 interface LibrarySearchProps {
   items: Item[];
-  categories: Category[];
   onFilteredItemsChange: (items: Item[]) => void;
-  onFilteredCategoriesChange: (categories: Category[]) => void;
 }
 
 export const LibrarySearch = memo(function LibrarySearch({
   items,
-  categories,
   onFilteredItemsChange,
-  onFilteredCategoriesChange,
 }: LibrarySearchProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterMode, setFilterMode] = useState<ModeType | "all">("all");
   const [filterStatus, setFilterStatus] = useState<ItemStatus | "all">("all");
-  const [filterCategory, setFilterCategory] = useState<string | "all">("all");
   const [sortBy, setSortBy] = useState<"recency" | "occurrence" | "title">("recency");
 
   // Get unique modes from items
@@ -68,14 +63,6 @@ export const LibrarySearch = memo(function LibrarySearch({
       });
     }
 
-    // Category filter
-    if (filterCategory !== "all") {
-      const category = categories.find((c) => c.id === filterCategory);
-      if (category) {
-        filtered = filtered.filter((item) => category.itemIds.includes(item.id));
-      }
-    }
-
     // Sort
     filtered.sort((a, b) => {
       if (sortBy === "recency") {
@@ -95,38 +82,23 @@ export const LibrarySearch = memo(function LibrarySearch({
     });
 
     return filtered;
-  }, [items, searchQuery, filterMode, filterStatus, filterCategory, sortBy, categories]);
-
-  // Filter categories to only show those with matching items
-  const filterCategories = useCallback(
-    (filteredItems: Item[]) => {
-      const itemIds = new Set(filteredItems.map((i) => i.id));
-      return categories.filter((cat) =>
-        cat.itemIds.some((id) => itemIds.has(id))
-      );
-    },
-    [categories]
-  );
+  }, [items, searchQuery, filterMode, filterStatus, sortBy]);
 
   // Apply filters when any filter changes (useEffect for side effects, not useMemo)
   useEffect(() => {
     const filteredItems = filterItems();
-    const filteredCategories = filterCategories(filteredItems);
     onFilteredItemsChange(filteredItems);
-    onFilteredCategoriesChange(filteredCategories);
-  }, [filterItems, filterCategories, onFilteredItemsChange, onFilteredCategoriesChange]);
+  }, [filterItems, onFilteredItemsChange]);
 
   const hasActiveFilters =
     searchQuery.trim() !== "" ||
     filterMode !== "all" ||
-    filterStatus !== "all" ||
-    filterCategory !== "all";
+    filterStatus !== "all";
 
   const clearFilters = () => {
     setSearchQuery("");
     setFilterMode("all");
     setFilterStatus("all");
-    setFilterCategory("all");
   };
 
   return (
@@ -182,21 +154,6 @@ export const LibrarySearch = memo(function LibrarySearch({
           <option value="implemented">✅ Built</option>
           <option value="posted">📝 Posted</option>
           <option value="archived">📦 Archived</option>
-        </select>
-
-        {/* Category Filter */}
-        <select
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          className="bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-inspiration-ideas/50"
-          aria-label="Filter by theme"
-        >
-          <option value="all">All Themes</option>
-          {categories.slice(0, 20).map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.name.length > 15 ? cat.name.slice(0, 15) + "..." : cat.name}
-            </option>
-          ))}
         </select>
 
         {/* Sort */}

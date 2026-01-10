@@ -1,14 +1,12 @@
 "use client";
 
-import { useState, useEffect, memo, useMemo, useCallback } from "react";
+import { useState, useEffect, memo, useCallback } from "react";
 import { copyToClipboard, downloadFile } from "@/lib/utils";
-import { Item, Category } from "@/lib/types";
+import { Item } from "@/lib/types";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { SectionErrorBoundary } from "./SectionErrorBoundary";
 import { ItemCard } from "./ItemCard";
 import { LibrarySearch } from "./LibrarySearch";
-
-type ViewMode = "items" | "categories";
 
 interface BanksOverviewProps {
   compact?: boolean;
@@ -16,9 +14,7 @@ interface BanksOverviewProps {
 
 export const BanksOverview = memo(function BanksOverview({ compact = false }: BanksOverviewProps) {
   const [items, setItems] = useState<Item[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [filteredItems, setFilteredItems] = useState<Item[]>([]);
-  const [filteredCategories, setFilteredCategories] = useState<Category[]>([]);
   const [stats, setStats] = useState<{
     totalItems: number;
     totalCategories: number;
@@ -28,7 +24,6 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(true); // v3: Default expanded for two-panel layout
-  const [viewMode, setViewMode] = useState<ViewMode>("items");
   const [error, setError] = useState<string | null>(null);
 
   // Load items on mount
@@ -36,31 +31,16 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
     loadItems();
   }, []);
 
-  // Category lookup map for ItemCard
-  const categoryMap = useMemo(() => {
-    const map = new Map<string, Category>();
-    categories.forEach((cat) => {
-      cat.itemIds.forEach((itemId) => {
-        map.set(itemId, cat);
-      });
-    });
-    return map;
-  }, [categories]);
-
   // Callbacks for LibrarySearch
   const handleFilteredItemsChange = useCallback((items: Item[]) => {
     setFilteredItems(items);
-  }, []);
-
-  const handleFilteredCategoriesChange = useCallback((categories: Category[]) => {
-    setFilteredCategories(categories);
   }, []);
 
   const loadItems = async () => {
     setError(null);
     setLoading(true);
     try {
-      // Load all items and categories (filtering done client-side via LibrarySearch)
+      // Load all items (filtering done client-side via LibrarySearch)
       const params = new URLSearchParams({
         view: "items",
         // No implemented filter - include all statuses, filter client-side
@@ -71,13 +51,10 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
         const data = await res.json();
         if (data.success) {
           const loadedItems = data.items || [];
-          const loadedCategories = data.categories || [];
           setItems(loadedItems);
-          setCategories(loadedCategories);
           setStats(data.stats);
           // Initial filtered state is all items
           setFilteredItems(loadedItems);
-          setFilteredCategories(loadedCategories);
         } else {
           setError(data.error || "Failed to load items");
         }
@@ -92,16 +69,11 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
   };
 
   const downloadMarkdown = (content: string) => {
-    const filename = viewMode === "items" ? "ITEMS_BANK.md" : "CATEGORIES_BANK.md";
-    downloadFile(content, filename);
+    downloadFile(content, "ITEMS_BANK.md");
   };
 
   const generateMarkdown = (): string => {
-    if (viewMode === "items") {
-      return generateItemsMarkdown(filteredItems);
-    } else {
-      return generateCategoriesMarkdown(filteredCategories, filteredItems);
-    }
+    return generateItemsMarkdown(filteredItems);
   };
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -197,34 +169,8 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
     return lines.join("\n");
   };
 
-  const generateCategoriesMarkdown = (categories: Category[], items: Item[]): string => {
-    const lines = ["# Categories Library", ""];
-    lines.push(`> **${categories.length} categories**`);
-    lines.push("");
-    lines.push("---");
-    lines.push("");
-
-    categories.forEach((category, idx) => {
-      lines.push(`## ${idx + 1}. ${category.name}`);
-      lines.push("");
-      lines.push(`*Theme: ${category.theme} | Mode: ${category.mode} | Items: ${category.itemIds.length}*`);
-      lines.push("");
-      
-      // List items in category
-      const categoryItems = items.filter((item) => category.itemIds.includes(item.id));
-      categoryItems.forEach((item) => {
-        lines.push(`- **${item.name}** (${item.occurrence}x)`);
-      });
-      
-      lines.push("");
-      lines.push("---");
-      lines.push("");
-    });
-
-    return lines.join("\n");
-  };
-
   // v3: Filters are now handled by LibrarySearch component
+  // NOTE: Category/Themes view removed - use Theme Explorer for pattern discovery
 
   if (loading && !stats) {
     return (
@@ -256,12 +202,12 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
             <div className="text-slate-500">items</div>
           </div>
           <div className="text-center p-2 bg-slate-800/50 rounded-lg">
-            <div className="text-lg font-bold text-slate-300">{stats.totalCategories}</div>
-            <div className="text-slate-500">themes</div>
-          </div>
-          <div className="text-center p-2 bg-slate-800/50 rounded-lg">
             <div className="text-lg font-bold text-emerald-400">{stats.implemented}</div>
             <div className="text-slate-500">done</div>
+          </div>
+          <div className="text-center p-2 bg-slate-800/50 rounded-lg">
+            <div className="text-lg font-bold text-amber-400">{stats.totalItems - stats.implemented}</div>
+            <div className="text-slate-500">active</div>
           </div>
         </div>
         
@@ -331,14 +277,10 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
       {stats && (
         <>
           {/* Stats Summary - Compact for sidebar */}
-          <div className="grid grid-cols-4 gap-2 text-sm">
+          <div className="grid grid-cols-3 gap-2 text-sm">
             <div className="p-2 bg-black/20 rounded-lg text-center">
               <div className="text-white font-medium">{stats.totalItems}</div>
               <div className="text-adobe-gray-500 text-xs">Items</div>
-            </div>
-            <div className="p-2 bg-black/20 rounded-lg text-center">
-              <div className="text-white font-medium">{stats.totalCategories}</div>
-              <div className="text-adobe-gray-500 text-xs">Themes</div>
             </div>
             <div className="p-2 bg-black/20 rounded-lg text-center">
               <div className="text-emerald-400 font-medium">{stats.implemented}</div>
@@ -355,34 +297,13 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
             {/* v3: Search and Filters */}
             <LibrarySearch
               items={items}
-              categories={categories}
               onFilteredItemsChange={handleFilteredItemsChange}
-              onFilteredCategoriesChange={handleFilteredCategoriesChange}
             />
 
-            {/* View Toggle - Compact */}
+            {/* Header with count and export actions */}
             <div className="flex items-center justify-between gap-2">
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setViewMode("items")}
-                  className={`px-2 py-1 text-xs rounded-lg transition-colors ${
-                    viewMode === "items"
-                      ? "bg-white/20 text-white"
-                      : "bg-white/10 text-adobe-gray-400 hover:bg-white/15"
-                  }`}
-                >
-                  Items ({filteredItems.length})
-                </button>
-                <button
-                  onClick={() => setViewMode("categories")}
-                  className={`px-2 py-1 text-xs rounded-lg transition-colors ${
-                    viewMode === "categories"
-                      ? "bg-white/20 text-white"
-                      : "bg-white/10 text-adobe-gray-400 hover:bg-white/15"
-                  }`}
-                >
-                  Themes ({filteredCategories.length})
-                </button>
+              <div className="text-xs text-adobe-gray-400">
+                {filteredItems.length} item{filteredItems.length !== 1 ? "s" : ""}
               </div>
 
               {/* Export Actions - Compact */}
@@ -408,64 +329,21 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
 
             {/* Content - Scrollable */}
             <div className="bg-black/20 rounded-xl border border-white/10 max-h-[50vh] lg:max-h-[60vh] overflow-y-auto">
-              {viewMode === "items" ? (
-                <div className="p-3 space-y-2">
-                  {filteredItems.length === 0 ? (
-                    <div className="text-center py-6">
-                      <p className="text-adobe-gray-400 text-sm">No items found.</p>
-                      <p className="text-adobe-gray-500 text-xs mt-1">Try adjusting your search or filters.</p>
-                    </div>
-                  ) : (
-                    filteredItems.map((item) => (
-                      <ItemCard
-                        key={item.id}
-                        item={item}
-                        category={categoryMap.get(item.id)}
-                      />
-                    ))
-                  )}
-                </div>
-              ) : (
-                <div className="p-3 space-y-3">
-                  {filteredCategories.length === 0 ? (
-                    <p className="text-adobe-gray-400 text-sm">No categories found.</p>
-                  ) : (
-                    filteredCategories.map((category) => {
-                      const categoryItems = filteredItems.filter((item) =>
-                        category.itemIds.includes(item.id)
-                      );
-                      return (
-                        <div
-                          key={category.id}
-                          className="p-3 rounded-lg border border-white/10 bg-white/5"
-                        >
-                          <h3 className="font-medium text-white text-sm mb-1">
-                            {category.name}
-                          </h3>
-                          <p className="text-xs text-adobe-gray-500 mb-2">
-                            {categoryItems.length} items
-                          </p>
-                          <div className="space-y-1">
-                            {categoryItems.slice(0, 5).map((item) => (
-                              <div
-                                key={item.id}
-                                className="text-xs text-adobe-gray-300 pl-2 border-l border-white/10"
-                              >
-                                {item.title || item.name}
-                              </div>
-                            ))}
-                            {categoryItems.length > 5 && (
-                              <div className="text-xs text-adobe-gray-500 pl-2">
-                                +{categoryItems.length - 5} more
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
+              <div className="p-3 space-y-2">
+                {filteredItems.length === 0 ? (
+                  <div className="text-center py-6">
+                    <p className="text-adobe-gray-400 text-sm">No items found.</p>
+                    <p className="text-adobe-gray-500 text-xs mt-1">Try adjusting your search or filters.</p>
+                  </div>
+                ) : (
+                  filteredItems.map((item) => (
+                    <ItemCard
+                      key={item.id}
+                      item={item}
+                    />
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </>

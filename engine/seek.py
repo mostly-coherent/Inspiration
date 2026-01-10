@@ -27,7 +27,6 @@ from common.config import (
     load_config,
     load_env_file,
     get_llm_config,
-    get_category_similarity_threshold,
     get_compression_date_threshold,
 )
 from common.llm import create_llm, LLMProvider
@@ -347,35 +346,9 @@ def seek_use_case(
         bank.save()
         print(f"📊 Added {len(items)} use case(s) to ItemsBank", file=sys.stderr)
         
-        # Step 7: Generate categories (non-blocking)
-        # OPTIMIZATION: Generate categories asynchronously (non-blocking)
-        # Category generation takes 15-30 seconds but doesn't need to block the response
-        if len(items) > 0:
-            print(f"\n📂 Generating categories for use_case mode (non-blocking)...", file=sys.stderr)
-            try:
-                import threading
-                # Get category similarity threshold from config
-                cat_sim_threshold = get_category_similarity_threshold()
-                def generate_categories_async():
-                    try:
-                        bank = ItemsBank()
-                        categories = bank.generate_categories(mode="use_case", similarity_threshold=cat_sim_threshold)
-                        bank.save()
-                        print(f"✅ Created/updated {len(categories)} categor{'y' if len(categories) == 1 else 'ies'} (background)", file=sys.stderr)
-                    except Exception as e:
-                        print(f"⚠️  Category generation failed (non-critical): {e}", file=sys.stderr)
-                
-                # Start category generation in background thread
-                category_thread = threading.Thread(target=generate_categories_async, daemon=True)
-                category_thread.start()
-                print(f"   ⏳ Categories will be generated in background (results available immediately)", file=sys.stderr)
-            except Exception as e:
-                # Fallback to synchronous if threading fails
-                print(f"⚠️  Failed to start async category generation, running synchronously: {e}", file=sys.stderr)
-                cat_sim_threshold = get_category_similarity_threshold()
-                categories = bank.generate_categories(mode="use_case", similarity_threshold=cat_sim_threshold)
-                bank.save()
-                print(f"✅ Created/updated {len(categories)} categor{'y' if len(categories) == 1 else 'ies'}", file=sys.stderr)
+        # NOTE: Category grouping removed - redundant with Theme Explorer and tags
+        # Theme Explorer provides dynamic similarity-based grouping
+        # Tags provide user-managed organization
     
     return {
         "query": query,

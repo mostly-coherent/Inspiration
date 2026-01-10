@@ -845,9 +845,13 @@ export default function SettingsPage() {
         {/* Mode Settings Section */}
         {(config.setupComplete && activeTab === "modes") && (
           <Section
-            title="⚙️ Mode Settings"
-            description="Configure settings for each generation mode"
+            title="🎯 Mode Settings"
+            description="Per-mode overrides for temperature, similarity, and search queries. Leave blank to use global defaults from Advanced tab."
           >
+            <div className="mb-4 p-3 bg-blue-500/10 rounded-lg border border-blue-500/20 text-xs text-slate-400">
+              <strong className="text-blue-400">💡 How to use:</strong> Each mode (Ideas, Insights, Use Cases) can have its own settings. 
+              Mode-specific settings override the global defaults in Advanced tab. Leave a field blank to use the global default.
+            </div>
             <ModeSettingsManager />
           </Section>
         )}
@@ -856,8 +860,13 @@ export default function SettingsPage() {
         {config.setupComplete && activeTab === "advanced" && (
           <Section
             title="🔧 Advanced Configuration"
-            description="Fine-tune LLM assignments, thresholds, and presets"
+            description="Global defaults for all generation modes. Each setting includes guidance on what it does and when to adjust it."
           >
+            <div className="mb-4 p-3 bg-amber-500/10 rounded-lg border border-amber-500/20 text-xs text-slate-400">
+              <strong className="text-amber-400">💡 Quick guide:</strong>{" "}
+              These are global defaults — they apply to all modes unless you set a mode-specific override in the Modes tab.
+              Changes take effect immediately after saving (no refresh needed). Each section has a &quot;Job to be done&quot; header explaining its purpose.
+            </div>
             <AdvancedConfigSection onSave={() => loadConfig()} />
           </Section>
         )}
@@ -866,7 +875,7 @@ export default function SettingsPage() {
         {config.setupComplete && activeTab === "prompts" && (
           <Section
             title="📝 Prompt Templates"
-            description="View and edit system prompts for each generation mode"
+            description="The exact instructions the AI follows when generating content. Edit these to change output style, format, or focus."
           >
             <PromptTemplateEditor />
           </Section>

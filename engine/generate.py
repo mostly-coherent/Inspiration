@@ -32,7 +32,6 @@ from common import (
     DEFAULT_ANTHROPIC_MODEL,
 )
 from common.config import (
-    get_category_similarity_threshold,
     get_judge_temperature,
     get_compression_token_threshold,
     get_compression_date_threshold,
@@ -1174,36 +1173,9 @@ def harmonize_all_outputs(mode: Literal["insights", "ideas"], llm: LLMProvider, 
             print(f"   🗑️  Deleted: {f.name}")
         processed += len(batch)
     
-    # OPTIMIZATION: Generate categories asynchronously (non-blocking)
-    # Category generation takes 15-30 seconds but doesn't need to block the response
-    # User gets results immediately; categories update in background
-    if total_items_added > 0:
-        print(f"\n📂 Generating categories for {mode_id} mode (non-blocking)...", file=sys.stderr)
-        try:
-            import threading
-            # Get category similarity threshold from config
-            cat_sim_threshold = get_category_similarity_threshold()
-            def generate_categories_async():
-                try:
-                    bank = ItemsBank()
-                    categories = bank.generate_categories(item_type=mode_id, similarity_threshold=cat_sim_threshold)
-                    bank.save()
-                    print(f"✅ Created/updated {len(categories)} categor{'y' if len(categories) == 1 else 'ies'} (background)", file=sys.stderr)
-                except Exception as e:
-                    print(f"⚠️  Category generation failed (non-critical): {e}", file=sys.stderr)
-            
-            # Start category generation in background thread
-            category_thread = threading.Thread(target=generate_categories_async, daemon=True)
-            category_thread.start()
-            print(f"   ⏳ Categories will be generated in background (results available immediately)", file=sys.stderr)
-        except Exception as e:
-            # Fallback to synchronous if threading fails
-            print(f"⚠️  Failed to start async category generation, running synchronously: {e}", file=sys.stderr)
-            bank = ItemsBank()
-            cat_sim_threshold = get_category_similarity_threshold()
-            categories = bank.generate_categories(item_type=mode_id, similarity_threshold=cat_sim_threshold)
-            bank.save()
-            print(f"✅ Created/updated {len(categories)} categor{'y' if len(categories) == 1 else 'ies'}")
+    # NOTE: Category grouping removed - redundant with Theme Explorer and tags
+    # Theme Explorer provides dynamic similarity-based grouping
+    # Tags provide user-managed organization
     
     return processed
 
