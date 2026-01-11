@@ -64,8 +64,8 @@ export const LibrarySearch = memo(function LibrarySearch({
         return (b.occurrence || 0) - (a.occurrence || 0);
       }
       if (sortBy === "title") {
-        const titleA = (a.title || a.name || "").toLowerCase();
-        const titleB = (b.title || b.name || "").toLowerCase();
+        const titleA = (a.title || "").toLowerCase();
+        const titleB = (b.title || "").toLowerCase();
         return titleA.localeCompare(titleB);
       }
       return 0;
