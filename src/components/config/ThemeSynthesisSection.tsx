@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 
-// Default theme synthesis configuration
+// Default theme synthesis configuration (exported for compatibility)
 export const DEFAULT_THEME_SYNTHESIS = {
   maxItemsToSynthesize: 15,
   maxTokens: 800,
@@ -173,7 +173,7 @@ export function ThemeSynthesisSection() {
       <div className="p-3 bg-indigo-500/10 rounded-lg border border-indigo-500/20 text-xs text-slate-400">
         <strong className="text-indigo-400">✨ Theme Synthesis Prompts:</strong>{" "}
         Customize how AI synthesizes patterns when you click on a theme. Each item type (Ideas, Insights, Use Cases) can have its own prompt style.
-      </div>
+          </div>
 
       {/* Prompt Tabs */}
       <div className="flex flex-wrap gap-2">
