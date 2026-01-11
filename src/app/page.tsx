@@ -615,7 +615,7 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-2">
             <a 
-              href="/coverage" 
+              href="/explore-coverage" 
               className="p-2 text-slate-400 hover:text-emerald-400 transition-colors"
               title="Coverage Intelligence"
               aria-label="Open coverage intelligence"

@@ -72,6 +72,7 @@ interface CoverageAnalysis {
   suggestedRuns: SuggestedRun[];
   memory: {
     totalWeeks: number;
+    coveredWeeks?: number; // Weeks with both conversations AND library items
     totalConversations: number;
     totalMessages: number;
     earliestDate: string | null;
@@ -331,7 +332,7 @@ export function CoverageDashboard() {
               </div>
             </div>
             <div className="text-xs text-slate-500 mt-2">
-              {analysis.library.weeksWithItems} of {analysis.memory.totalWeeks} weeks have items
+              {analysis.memory.coveredWeeks ?? analysis.library.weeksWithItems} of {analysis.memory.totalWeeks} weeks have items
             </div>
           </div>
 
@@ -356,7 +357,7 @@ export function CoverageDashboard() {
               {analysis.library.totalItems} items
             </div>
             <div className="text-xs text-slate-500 mt-1">
-              Covering {analysis.library.weeksWithItems} weeks
+              Covering {analysis.memory.coveredWeeks ?? analysis.library.weeksWithItems} weeks
             </div>
           </div>
         </div>

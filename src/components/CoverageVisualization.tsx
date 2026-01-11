@@ -74,20 +74,21 @@ export function CoverageVisualization({
   }, [memoryWeeks, libraryWeeksByType, libraryWeeks]);
 
   // Calculate max values for percentage normalization
+  // Use 90th percentile instead of absolute max to avoid outlier compression
+  const getPercentileMax = (values: number[], percentile: number = 90) => {
+    const sorted = [...values].filter(v => v > 0).sort((a, b) => a - b);
+    if (sorted.length === 0) return 1;
+    const index = Math.floor(sorted.length * (percentile / 100));
+    return Math.max(sorted[Math.min(index, sorted.length - 1)], 1);
+  };
+
   const maxConversations = useMemo(
-    () => Math.max(...chartData.map((d) => d.conversations), 1),
+    () => getPercentileMax(chartData.map((d) => d.conversations)),
     [chartData]
   );
-  const maxItems = useMemo(
-    () => Math.max(...chartData.map((d) => d.totalItems), 1),
-    [chartData]
-  );
-  const maxIdeas = useMemo(
-    () => Math.max(...chartData.map((d) => d.ideas), 1),
-    [chartData]
-  );
-  const maxInsights = useMemo(
-    () => Math.max(...chartData.map((d) => d.insights), 1),
+  // Use combined max for both ideas and insights so they're on same scale
+  const maxItemsForType = useMemo(
+    () => getPercentileMax([...chartData.map((d) => d.ideas), ...chartData.map((d) => d.insights)]),
     [chartData]
   );
 
@@ -116,26 +117,22 @@ export function CoverageVisualization({
   return (
     <div className="space-y-6">
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="glass-card p-4 text-center">
           <div className="text-2xl font-bold text-slate-200">{chartData.length}</div>
-          <div className="text-xs text-slate-500">Weeks</div>
+          <div className="text-xs text-slate-500">Weeks Tracked</div>
         </div>
         <div className="glass-card p-4 text-center">
           <div className="text-2xl font-bold text-cyan-400">{totals.totalConvos.toLocaleString()}</div>
-          <div className="text-xs text-slate-500">Conversations</div>
+          <div className="text-xs text-slate-500">Total Conversations</div>
         </div>
         <div className="glass-card p-4 text-center">
-          <div className="text-2xl font-bold text-purple-400">{totals.totalIdeas}</div>
-          <div className="text-xs text-slate-500">Ideas</div>
-        </div>
-        <div className="glass-card p-4 text-center">
-          <div className="text-2xl font-bold text-blue-400">{totals.totalInsights}</div>
-          <div className="text-xs text-slate-500">Insights</div>
+          <div className="text-2xl font-bold text-emerald-400">{totals.weeksWithCoverage}</div>
+          <div className="text-xs text-slate-500">Weeks with Items</div>
         </div>
         <div className="glass-card p-4 text-center">
           <div className="text-2xl font-bold text-emerald-400">{totals.coveragePercent}%</div>
-          <div className="text-xs text-slate-500">Coverage</div>
+          <div className="text-xs text-slate-500">Coverage Score</div>
         </div>
       </div>
 
@@ -143,42 +140,47 @@ export function CoverageVisualization({
       <div className="flex items-center justify-center gap-6 text-sm">
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded bg-cyan-500/30 border border-cyan-500/50"></div>
-          <span className="text-slate-400">Chat Terrain (% of max)</span>
+          <span className="text-slate-400">Chat Activity</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded bg-purple-500"></div>
-          <span className="text-slate-400">Ideas (% of max)</span>
+          <span className="text-slate-400">Idea Coverage</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded bg-blue-500"></div>
-          <span className="text-slate-400">Insights (% of max)</span>
+          <span className="text-slate-400">Insight Coverage</span>
         </div>
       </div>
 
       {/* Chart */}
       <div className="glass-card p-6">
         <div className="relative">
-          {/* Y-axis labels (percentage) */}
-          <div className="absolute left-0 top-0 bottom-8 w-12 flex flex-col justify-between text-xs text-slate-500">
-            <span>100%</span>
-            <span>50%</span>
-            <span>0%</span>
+          {/* Y-axis label */}
+          <div className="absolute -left-2 top-1/2 -translate-y-1/2 -rotate-90 text-xs text-slate-500 whitespace-nowrap">
+            Conversations
+          </div>
+          {/* Y-axis values (absolute numbers) */}
+          <div className="absolute left-6 top-0 bottom-8 w-10 flex flex-col justify-between text-xs text-slate-500 text-right pr-1">
+            <span>{maxConversations}</span>
+            <span>{Math.round(maxConversations / 2)}</span>
+            <span>0</span>
           </div>
 
           {/* Chart area */}
-          <div className="ml-14 overflow-x-auto">
+          <div className="ml-16 overflow-x-auto pb-12">
             <div className="flex items-end gap-1 min-w-max" style={{ height: "280px" }}>
               {chartData.map((week, index) => {
-                // Normalize to percentages (0-100% of their respective maximums)
-                const terrainHeight = (week.conversations / maxConversations) * 100;
-                const ideaHeight = (week.ideas / maxIdeas) * 100;
-                const insightHeight = (week.insights / maxInsights) * 100;
+                // Normalize to percentages, capped at 100% (outliers still show full height)
+                const terrainHeight = Math.min((week.conversations / maxConversations) * 100, 100);
+                // Use same scale for ideas and insights so they're comparable
+                const ideaHeight = Math.min((week.ideas / maxItemsForType) * 100, 100);
+                const insightHeight = Math.min((week.insights / maxItemsForType) * 100, 100);
                 const hasGap = week.conversations > 0 && week.totalItems === 0;
 
                 return (
                   <div
                     key={week.weekLabel}
-                    className="relative flex flex-col items-center group"
+                    className="relative flex flex-col items-center group h-full"
                     style={{ width: "36px" }}
                   >
                     {/* Terrain bar (background) - full width */}
@@ -188,20 +190,20 @@ export function CoverageVisualization({
                           ? "bg-red-500/30 border-2 border-red-500/50" 
                           : "bg-cyan-500/30 border border-cyan-500/40"
                       }`}
-                      style={{ height: `${terrainHeight}%`, minHeight: week.conversations > 0 ? "4px" : "0px" }}
+                      style={{ height: `${terrainHeight}%`, minHeight: week.conversations > 0 ? "8px" : "0px" }}
                     />
 
                     {/* Item bars (side by side, foreground) */}
-                    <div className="absolute bottom-0 w-full flex justify-center gap-1 px-1.5">
+                    <div className="absolute bottom-0 w-full flex justify-center gap-0.5 px-1">
                       {/* Ideas (left) */}
                       <div
-                        className={`w-3 rounded-t transition-all ${week.ideas > 0 ? "bg-purple-500 shadow-lg shadow-purple-500/30" : ""}`}
-                        style={{ height: `${ideaHeight}%`, minHeight: week.ideas > 0 ? "4px" : "0px" }}
+                        className={`w-4 rounded-t transition-all ${week.ideas > 0 ? "bg-purple-500 shadow-lg shadow-purple-500/30" : ""}`}
+                        style={{ height: `${ideaHeight}%`, minHeight: week.ideas > 0 ? "12px" : "0px" }}
                       />
                       {/* Insights (right) */}
                       <div
-                        className={`w-3 rounded-t transition-all ${week.insights > 0 ? "bg-blue-500 shadow-lg shadow-blue-500/30" : ""}`}
-                        style={{ height: `${insightHeight}%`, minHeight: week.insights > 0 ? "4px" : "0px" }}
+                        className={`w-4 rounded-t transition-all ${week.insights > 0 ? "bg-blue-500 shadow-lg shadow-blue-500/30" : ""}`}
+                        style={{ height: `${insightHeight}%`, minHeight: week.insights > 0 ? "12px" : "0px" }}
                       />
                     </div>
 
@@ -212,15 +214,15 @@ export function CoverageVisualization({
                         <div className="space-y-1">
                           <div className="flex items-center justify-between gap-4">
                             <span className="text-cyan-400">Conversations</span>
-                            <span className="text-slate-300">{week.conversations} ({Math.round(terrainHeight)}%)</span>
+                            <span className="text-slate-300">{week.conversations}</span>
                           </div>
                           <div className="flex items-center justify-between gap-4">
                             <span className="text-purple-400">Ideas</span>
-                            <span className="text-slate-300">{week.ideas} ({Math.round(ideaHeight)}%)</span>
+                            <span className="text-slate-300">{week.ideas}</span>
                           </div>
                           <div className="flex items-center justify-between gap-4">
                             <span className="text-blue-400">Insights</span>
-                            <span className="text-slate-300">{week.insights} ({Math.round(insightHeight)}%)</span>
+                            <span className="text-slate-300">{week.insights}</span>
                           </div>
                         </div>
                         {hasGap && (
@@ -229,9 +231,9 @@ export function CoverageVisualization({
                       </div>
                     </div>
 
-                    {/* X-axis label (every 3rd week for better readability) */}
-                    {index % 3 === 0 && (
-                      <div className="absolute -bottom-7 text-[10px] text-slate-500 -rotate-45 origin-top-left whitespace-nowrap">
+                    {/* X-axis label (every 4th week for better readability) */}
+                    {index % 4 === 0 && (
+                      <div className="absolute top-full mt-1 text-[10px] text-slate-400 -rotate-45 origin-top-left whitespace-nowrap">
                         {week.weekLabel.replace("-W", " W")}
                       </div>
                     )}
@@ -242,10 +244,9 @@ export function CoverageVisualization({
           </div>
         </div>
 
-        {/* X-axis line */}
-        <div className="ml-14 mt-8 border-t border-slate-700" />
-        <div className="ml-14 text-center text-xs text-slate-500 mt-2">
-          Week (Oldest → Newest)
+        {/* X-axis label */}
+        <div className="ml-16 text-center text-xs text-slate-500 mt-2">
+          ← Older weeks · · · Newer weeks →
         </div>
       </div>
 

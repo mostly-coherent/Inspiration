@@ -2055,9 +2055,8 @@ def main():
             use_aggregated = True
             mode_name = "coverage"
             
-            # Store source dates for tracking
-            if args.source_tracking:
-                source_date_range = (args.start_date, args.end_date)
+            # ALWAYS track source dates for Coverage Intelligence
+            source_date_range = (args.start_date, args.end_date)
             
             print(f"📅 Processing: {start_date} to {end_date} (coverage run)")
         except ValueError as e:
@@ -2070,6 +2069,9 @@ def main():
         timestamp_range = (start_ts, end_ts)
         # Still create dates_to_process for display purposes (covers the hours window)
         dates_to_process = [today - timedelta(days=1), today]  # Yesterday and today
+        # Track source dates for Coverage Intelligence (approximate from hours)
+        start_date_for_hours = (now - timedelta(hours=args.hours)).date()
+        source_date_range = (start_date_for_hours.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"))
         print(f"📅 Processing: Last {args.hours} hours ({mode} mode)")
     else:
         effective_days = args.days if args.days else mode_days
@@ -2086,6 +2088,13 @@ def main():
                 return 1
         else:
             dates_to_process = [today]
+        
+        # ALWAYS track source dates for Coverage Intelligence
+        if dates_to_process:
+            source_date_range = (
+                dates_to_process[0].strftime("%Y-%m-%d"),
+                dates_to_process[-1].strftime("%Y-%m-%d")
+            )
         
         print(f"📅 Processing: {dates_to_process[0]} to {dates_to_process[-1]} ({mode} mode)")
     

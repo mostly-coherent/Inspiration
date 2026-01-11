@@ -241,11 +241,13 @@ export async function GET() {
     });
 
     // Calculate coverage score
-    const totalWeeks = memoryDensity.filter((w) => w.conversation_count > 0).length;
+    // totalWeeks = weeks with actual conversations (not empty weeks)
+    const totalWeeksWithConversations = memoryDensity.filter((w) => w.conversation_count > 0).length;
+    // coveredWeeks = weeks that have both conversations AND library items
     const coveredWeeks = memoryDensity.filter(
       (w) => w.conversation_count > 0 && (coverageMap.get(w.week_label) || 0) > 0
     ).length;
-    const coverageScore = totalWeeks > 0 ? Math.round((coveredWeeks / totalWeeks) * 100) : 100;
+    const coverageScore = totalWeeksWithConversations > 0 ? Math.round((coveredWeeks / totalWeeksWithConversations) * 100) : 100;
 
     // Count gaps by severity
     const gapCounts = {
@@ -270,7 +272,8 @@ export async function GET() {
       gaps: gaps.slice(0, 20), // Limit to 20 gaps
       suggestedRuns,
       memory: {
-        totalWeeks: memoryDensity.length,
+        totalWeeks: totalWeeksWithConversations, // Weeks with actual conversations
+        coveredWeeks, // Weeks with both conversations AND library items
         totalConversations,
         totalMessages,
         earliestDate,
@@ -285,7 +288,7 @@ export async function GET() {
       },
       library: {
         totalItems,
-        weeksWithItems: libraryCoverage.length,
+        weeksWithItems: coveredWeeks, // Use covered weeks (intersection), not all library weeks
         weeks: libraryCoverage.map((w) => ({
           weekLabel: w.week_label,
           weekStart: w.week_start,

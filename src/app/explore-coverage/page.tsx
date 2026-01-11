@@ -27,6 +27,7 @@ interface CoverageAnalysis {
   suggestedRuns: SuggestedRun[];
   memory: {
     totalWeeks: number;
+    coveredWeeks: number; // Weeks with both conversations AND library items
     totalConversations: number;
     totalMessages: number;
     earliestDate: string | null;
@@ -205,7 +206,7 @@ export default function ExploreCoveragePage() {
                     {coverageData.coverageScore}%
                   </div>
                   <div className="text-sm text-slate-500 mt-1">
-                    {coverageData.library.weeksWithItems} / {coverageData.memory.totalWeeks} weeks covered
+                    {coverageData.memory.coveredWeeks} / {coverageData.memory.totalWeeks} weeks covered
                   </div>
                 </div>
               </div>
