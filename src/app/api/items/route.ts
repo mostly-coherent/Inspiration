@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { ItemsBank } from "@/lib/types";
 
 export const maxDuration = 10; // 10 seconds (much faster than JSON parsing)
 
