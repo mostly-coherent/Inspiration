@@ -53,8 +53,8 @@ export const ItemCard = memo(function ItemCard({
 }: ItemCardProps) {
   const [isExpanded, setIsExpanded] = useState(initialExpanded);
 
-  const title = item.title || item.name || (item.content?.title as string) || "Untitled";
-  const itemType = item.itemType || item.mode || "idea";
+  const title = item.title || "Untitled";
+  const itemType = item.itemType || "idea";
   const typeEmoji = itemType === "idea" ? "💡" : itemType === "insight" ? "✨" : "🔍";
   
   const daysAgo = getDaysAgo(item.lastSeen);
@@ -101,7 +101,7 @@ export const ItemCard = memo(function ItemCard({
           {/* Occurrence Count */}
           <div className="flex items-center gap-1 text-slate-400">
             <span className="opacity-50">💬</span>
-            <span>{item.occurrence || item.sourceConversations || 1}x mentioned</span>
+            <span>{item.occurrence || 1}x mentioned</span>
           </div>
         </div>
 
@@ -119,27 +119,6 @@ export const ItemCard = memo(function ItemCard({
             )}
           </div>
         )}
-
-        {/* Legacy content fallback */}
-        {!item.description && item.content && (() => {
-          const content = item.content as Record<string, string>;
-          return (
-            <div className="text-sm text-slate-300 mb-2 space-y-1">
-              {content.problem && (
-                <p><span className="text-slate-500">Problem:</span> {content.problem}</p>
-              )}
-              {content.solution && (
-                <p><span className="text-slate-500">Solution:</span> {content.solution}</p>
-              )}
-              {content.hook && (
-                <p><span className="text-slate-500">Hook:</span> {content.hook}</p>
-              )}
-              {content.insight && (
-                <p><span className="text-slate-500">Insight:</span> {content.insight}</p>
-              )}
-            </div>
-          );
-        })()}
 
         {/* Expand/Collapse */}
         {item.description?.length > 200 && (

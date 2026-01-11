@@ -70,9 +70,7 @@ export async function GET(request: NextRequest) {
       title: item.title,
       description: item.description,
       status: item.status || "active",
-      mode: item.mode,
       theme: item.theme,
-      sourceConversations: item.source_conversations,
       occurrence: item.occurrence,
       firstSeen: item.first_seen,
       lastSeen: item.last_seen,
@@ -122,19 +120,29 @@ export async function GET(request: NextRequest) {
     // Sort categories by itemCount (descending)
     categories.sort((a, b) => b.itemCount - a.itemCount);
     
+    // Get TOTAL counts by item_type using parallel queries (not from paginated items)
+    const [ideaResult, insightResult, useCaseResult] = await Promise.all([
+      supabase.from("library_items").select("id", { count: "exact", head: true }).eq("item_type", "idea"),
+      supabase.from("library_items").select("id", { count: "exact", head: true }).eq("item_type", "insight"),
+      supabase.from("library_items").select("id", { count: "exact", head: true }).eq("item_type", "use_case"),
+    ]);
+    
+    // Build byMode with ACTUAL totals
+    const byMode: Record<string, number> = {};
+    if (ideaResult.count && ideaResult.count > 0) byMode.idea = ideaResult.count;
+    if (insightResult.count && insightResult.count > 0) byMode.insight = insightResult.count;
+    if (useCaseResult.count && useCaseResult.count > 0) byMode.use_case = useCaseResult.count;
+    
     // Calculate stats
     const stats = {
       totalItems: totalItems || 0,
       totalCategories: categories.length,
-      byMode: {} as Record<string, number>,
+      byMode,
       byTheme: {} as Record<string, number>,
     };
     
-    // Count by mode and theme
+    // Count by theme from paginated items (theme breakdown less critical)
     items.forEach((item) => {
-      if (item.mode) {
-        stats.byMode[item.mode] = (stats.byMode[item.mode] || 0) + 1;
-      }
       if (item.theme) {
         stats.byTheme[item.theme] = (stats.byTheme[item.theme] || 0) + 1;
       }

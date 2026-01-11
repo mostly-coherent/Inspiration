@@ -82,6 +82,39 @@ def get_vector_db_date_range() -> tuple[str | None, str | None]:
         return None, None
 
 
+def get_library_size() -> tuple[int, str]:
+    """Get library items table size."""
+    client = get_supabase_client()
+    if not client:
+        return 0, None
+    
+    # Try to get actual table size via RPC (if function exists)
+    try:
+        size_result = client.rpc("get_library_size").execute()
+        if size_result.data:
+            size_data = size_result.data if isinstance(size_result.data, dict) else {}
+            total_bytes = size_data.get("total_size_bytes")
+            if total_bytes:
+                return total_bytes, format_bytes(total_bytes)
+    except Exception:
+        pass  # RPC might not exist, fall through to estimation
+    
+    # Fallback: estimate based on item count
+    try:
+        result = client.table("library_items").select("id", count="exact").execute()
+        item_count = result.count if hasattr(result, "count") else 0
+        
+        if item_count > 0:
+            # Each library item is roughly 15KB (embedding 6KB + text 2KB + metadata 7KB)
+            avg_row_size = 15360  # 15 KB per item
+            estimated_bytes = int(item_count * avg_row_size)
+            return estimated_bytes, format_bytes(estimated_bytes)
+        
+        return 0, "0 B"
+    except Exception:
+        return 0, None
+
+
 def get_vector_db_size() -> tuple[int, str]:
     """Get vector database size (actual or estimated)."""
     client = get_supabase_client()
@@ -148,6 +181,7 @@ def main():
     """Get and return brain statistics."""
     local_size_bytes, local_size = get_local_chat_size()
     vector_size_bytes, vector_size = get_vector_db_size()
+    library_size_bytes, library_size = get_library_size()
     earliest_date, latest_date = get_vector_db_date_range()
     
     stats = {
@@ -155,6 +189,8 @@ def main():
         "localSize": local_size,
         "vectorSizeBytes": vector_size_bytes,
         "vectorSize": vector_size,
+        "librarySizeBytes": library_size_bytes,
+        "librarySize": library_size,
         "earliestDate": earliest_date,
         "latestDate": latest_date,
     }

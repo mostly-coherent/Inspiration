@@ -6,6 +6,7 @@ import Link from "next/link";
 interface MemoryStats {
   localSize: string | null;
   vectorSize: string | null;
+  librarySize: string | null;
   earliestDate: string | null;
   latestDate: string | null;
 }
@@ -39,6 +40,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
   const [memoryStats, setMemoryStats] = useState<MemoryStats>({
     localSize: null,
     vectorSize: null,
+    librarySize: null,
     earliestDate: null,
     latestDate: null,
   });
@@ -59,6 +61,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
         setMemoryStats({
           localSize: data.localSize,
           vectorSize: data.vectorSize,
+          librarySize: data.librarySize,
           earliestDate: data.earliestDate,
           latestDate: data.latestDate,
         });
@@ -157,36 +160,55 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
             </button>
           </div>
 
-          {/* Size Transformation: GB → MB */}
-          <div className="flex items-center gap-3">
+          {/* Size Transformation: Raw → Memory → Library */}
+          <div className="flex items-center gap-2">
             {(memoryStats.localSize || memoryStats.vectorSize) ? (
               <>
-                {/* Raw size */}
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-slate-300">
+                {/* Raw chats size */}
+                <div className="text-center min-w-[60px]">
+                  <div className="text-xl font-bold text-slate-400">
                     {memoryStats.localSize || "—"}
                   </div>
-                  <div className="text-xs text-slate-500">raw chats</div>
+                  <div className="text-[10px] text-slate-500">raw chats</div>
                 </div>
                 
-                {/* Arrow transformation */}
-                <div className="flex flex-col items-center">
-                  <span className="text-emerald-400 text-lg">→</span>
-                  <span className="text-[10px] text-slate-500">distilled</span>
+                {/* Arrow: Raw → Memory */}
+                <div className="flex flex-col items-center px-1">
+                  <span className="text-emerald-500 text-sm">→</span>
                 </div>
                 
-                {/* Indexed size */}
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-emerald-400">
+                {/* Memory (indexed) size */}
+                <div className="text-center min-w-[60px]">
+                  <div className="text-xl font-bold text-emerald-400">
                     {memoryStats.vectorSize || "—"}
                   </div>
-                  <div className="text-xs text-slate-500">indexed</div>
+                  <div className="text-[10px] text-slate-500">memory</div>
+                </div>
+                
+                {/* Arrow: Memory → Library */}
+                <div className="flex flex-col items-center px-1">
+                  <span className="text-indigo-400 text-sm">→</span>
+                </div>
+                
+                {/* Library (distilled) size */}
+                <div className="text-center min-w-[60px]">
+                  <div className="text-xl font-bold text-indigo-400">
+                    {memoryStats.librarySize || "—"}
+                  </div>
+                  <div className="text-[10px] text-slate-500">library</div>
                 </div>
               </>
             ) : (
               <div className="text-slate-500 text-sm">Loading...</div>
             )}
           </div>
+          
+          {/* Distillation ratio label */}
+          {memoryStats.localSize && memoryStats.librarySize && (
+            <div className="text-[10px] text-slate-500 text-center">
+              📊 Distillation: {memoryStats.localSize} → {memoryStats.librarySize}
+            </div>
+          )}
 
           {/* Date Coverage & Sync Status */}
           <div className="flex flex-wrap items-center gap-2 text-xs">

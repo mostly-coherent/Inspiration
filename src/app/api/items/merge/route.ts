@@ -62,7 +62,6 @@ export async function POST(request: NextRequest) {
       description: item.description,
       status: item.status || "active",
       occurrence: item.occurrence,
-      sourceConversations: item.source_conversations,
       firstSeen: item.first_seen,
       lastSeen: item.last_seen,
       categoryId: item.category_id,
@@ -80,7 +79,6 @@ export async function POST(request: NextRequest) {
     let totalOccurrence = primary.occurrence || 1;
     let earliestFirstSeen = new Date(primary.firstSeen);
     let latestLastSeen = new Date(primary.lastSeen);
-    let totalSourceConversations = primary.sourceConversations || 0;
 
     for (const item of others) {
       // Aggregate source dates (if present)
@@ -91,9 +89,6 @@ export async function POST(request: NextRequest) {
       
       // Sum occurrences
       totalOccurrence += item.occurrence || 1;
-      
-      // Sum source conversations
-      totalSourceConversations += item.sourceConversations || 0;
       
       // Expand date range
       const itemFirstSeen = new Date(item.firstSeen);
@@ -109,7 +104,6 @@ export async function POST(request: NextRequest) {
         source_dates: Array.from(allSourceDates).sort(),
         tags: Array.from(allTags),
         occurrence: totalOccurrence,
-        source_conversations: totalSourceConversations,
         first_seen: earliestFirstSeen.toISOString(),
         last_seen: latestLastSeen.toISOString(),
       })

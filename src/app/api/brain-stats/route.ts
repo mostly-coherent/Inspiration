@@ -47,6 +47,20 @@ export async function GET() {
           const { data: sizeData } = await supabase
             .rpc("get_table_size", { table_name: "cursor_messages" });
           
+          // Get library size via RPC (if function exists)
+          let librarySize = null;
+          let librarySizeBytes = null;
+          try {
+            const { data: librarySizeData } = await supabase
+              .rpc("get_library_size");
+            if (librarySizeData) {
+              librarySize = librarySizeData.total_size || null;
+              librarySizeBytes = librarySizeData.total_size_bytes || null;
+            }
+          } catch {
+            // Function might not exist yet
+          }
+          
           const earliestDate = messages?.[0]?.timestamp 
             ? new Date(messages[0].timestamp).toISOString().slice(0, 10) 
             : null;
@@ -59,6 +73,8 @@ export async function GET() {
             localSize: null,
             vectorSize: sizeData?.total_size || null,
             vectorSizeBytes: sizeData?.total_size_bytes || null,
+            librarySize,
+            librarySizeBytes,
             earliestDate,
             latestDate,
             cloudMode: true,
@@ -154,6 +170,8 @@ export async function GET() {
               vectorSize: stats.vectorSize,
               localSizeBytes: stats.localSizeBytes,
               vectorSizeBytes: stats.vectorSizeBytes,
+              librarySize: stats.librarySize || null,
+              librarySizeBytes: stats.librarySizeBytes || null,
               earliestDate: stats.earliestDate,
               latestDate: stats.latestDate,
             }));

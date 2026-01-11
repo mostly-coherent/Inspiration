@@ -38,19 +38,20 @@ class ItemsBankSupabase:
         title: str,
         description: str,
         *,
-        tags: Optional[list[str]] = None,
-        source_conversations: int = 1,
         embedding: Optional[list[float]] = None,
         first_seen_date: Optional[str] = None,
-        quality: Optional[str] = None,  # "A", "B", "C", or None
         # Coverage Intelligence: source date range tracking
         source_start_date: Optional[str] = None,  # YYYY-MM-DD format
         source_end_date: Optional[str] = None,  # YYYY-MM-DD format
-        # Legacy support
-        mode: Optional[str] = None,
+        # Theme tracking
         theme: Optional[str] = None,
-        content: Optional[dict[str, Any]] = None,
-        name: Optional[str] = None,
+        # Deprecated - kept for backward compatibility in function signature
+        tags: Optional[list[str]] = None,  # Deprecated: not written
+        quality: Optional[str] = None,  # Deprecated: not written
+        mode: Optional[str] = None,  # Deprecated: use item_type
+        source_conversations: int = 1,  # Deprecated: use occurrence
+        content: Optional[dict[str, Any]] = None,  # Deprecated
+        name: Optional[str] = None,  # Deprecated
     ) -> str:
         """
         Add a new item to Supabase.
@@ -59,17 +60,11 @@ class ItemsBankSupabase:
             item_type: Type of item ("idea", "insight", "use_case")
             title: Item title
             description: Item description
-            tags: Optional tags for filtering
-            source_conversations: Number of conversations this item came from
             embedding: Pre-computed embedding vector
             first_seen_date: Date when item content was first seen (YYYY-MM format)
-            quality: Quality tier ("A", "B", "C")
-            source_start_date: Start date of the generation run that created this item (YYYY-MM-DD)
-            source_end_date: End date of the generation run that created this item (YYYY-MM-DD)
-            mode: Legacy field
-            theme: Legacy field
-            content: Legacy field
-            name: Legacy field
+            source_start_date: Start date of the generation run (YYYY-MM-DD)
+            source_end_date: End date of the generation run (YYYY-MM-DD)
+            theme: "generation" or "seek"
         
         Returns the item ID.
         """
@@ -95,30 +90,26 @@ class ItemsBankSupabase:
             if existing:
                 return existing  # Return existing item ID instead of creating new
         
-        # Prepare item data
+        # Prepare item data (simplified schema v2)
         item_data = {
             "id": item_id,
             "item_type": item_type,
             "title": title,
             "description": description,
-            "tags": (tags or [])[:10],  # Cap at 10 tags
             "status": "active",
-            "quality": quality,
-            "source_conversations": source_conversations,
             "occurrence": 1,
             "first_seen": first_seen_date or datetime.now().strftime("%Y-%m"),
             "last_seen": datetime.now().strftime("%Y-%m"),
+            # Day-level precision dates for analytics
+            "first_seen_date": datetime.now().strftime("%Y-%m-%d"),
+            "last_seen_date": datetime.now().strftime("%Y-%m-%d"),
             "category_id": None,
-            "embedding": embedding,  # Store embedding for theme grouping
+            "embedding": embedding,
             # Coverage Intelligence: source date range tracking
             "source_start_date": source_start_date,
             "source_end_date": source_end_date,
-            # Legacy fields for backward compatibility
-            "mode": mode or item_type,
+            # Theme tracking
             "theme": theme or "generation",
-            "name": name,
-            "content": content,
-            "implemented": False,
         }
         
         # Insert into Supabase
@@ -126,6 +117,17 @@ class ItemsBankSupabase:
         
         if not result.data:
             raise Exception(f"Failed to insert item: {result}")
+        
+        # Record in occurrence history table (if it exists)
+        try:
+            self.client.table("library_occurrence_history").insert({
+                "item_id": item_id,
+                "occurred_at": datetime.now().strftime("%Y-%m-%d"),
+                "source_type": "generation",
+                "source_context": f"New item created ({item_type})",
+            }).execute()
+        except Exception:
+            pass  # Table might not exist yet
         
         return item_id
     
@@ -242,6 +244,7 @@ class ItemsBankSupabase:
         update_data = {
             "occurrence": current_occurrence + 1,
             "last_seen": datetime.now().strftime("%Y-%m"),
+            "last_seen_date": datetime.now().strftime("%Y-%m-%d"),  # Day-level precision
         }
         
         # CRITICAL: Expand source date range for Coverage Intelligence
@@ -352,7 +355,19 @@ class ItemsBankSupabase:
         update_result = self.client.table("library_items").update({
             "occurrence": current_occurrence + 1,
             "last_seen": datetime.now().strftime("%Y-%m"),
+            "last_seen_date": datetime.now().strftime("%Y-%m-%d"),  # Day-level precision
         }).eq("id", item_id).execute()
+        
+        # Record in occurrence history table (if it exists)
+        try:
+            self.client.table("library_occurrence_history").insert({
+                "item_id": item_id,
+                "occurred_at": datetime.now().strftime("%Y-%m-%d"),
+                "source_type": "deduplication",
+                "source_context": "Item expanded via occurrence increment",
+            }).execute()
+        except Exception:
+            pass  # Table might not exist yet
         
         return bool(update_result.data)
     
@@ -519,29 +534,25 @@ class ItemsBankSupabase:
                     "source_end_date": source_end_date,
                 })
             else:
-                # New item - prepare insert
+                # New item - prepare insert (simplified schema v2)
                 item_id = f"item-{uuid.uuid4().hex[:8]}"
                 items_to_insert.append({
                     "id": item_id,
                     "item_type": item_type,
                     "title": item.get("title", ""),
                     "description": item.get("description", ""),
-                    "tags": (item.get("tags") or [])[:10],
                     "status": "active",
-                    "quality": item.get("quality"),
-                    "source_conversations": item.get("source_conversations", 1),
                     "occurrence": 1,
                     "first_seen": item.get("first_seen_date") or datetime.now().strftime("%Y-%m"),
                     "last_seen": datetime.now().strftime("%Y-%m"),
+                    # Day-level precision dates for analytics
+                    "first_seen_date": datetime.now().strftime("%Y-%m-%d"),
+                    "last_seen_date": datetime.now().strftime("%Y-%m-%d"),
                     "category_id": None,
                     "embedding": item.get("embedding"),
                     "source_start_date": source_start_date,
                     "source_end_date": source_end_date,
-                    "mode": item_type,
                     "theme": "generation",
-                    "name": None,
-                    "content": None,
-                    "implemented": False,
                 })
         
         # PHASE 3: Batch insert new items

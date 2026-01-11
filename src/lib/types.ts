@@ -282,27 +282,23 @@ export type ItemStatus = "active" | "archived";
 
 export interface Item {
   id: string;
-  // v2 unified fields
-  itemType: ItemType;
+  // Core fields
+  itemType: ItemType; // "idea" | "insight" | "use_case"
   title: string;
   description: string;
-  tags?: string[]; // Optional, not displayed in UI
   status: ItemStatus;
-  sourceConversations: number; // Number of distinct conversations
-  // Core metadata
-  occurrence: number;
-  firstSeen: string; // ISO date string
-  lastSeen: string; // ISO date string
+  // Metadata
+  occurrence: number; // How many times this topic surfaced
+  firstSeen: string; // YYYY-MM format
+  lastSeen: string; // YYYY-MM format
   categoryId: string | null;
   // Source tracking
-  sourceDates?: string[]; // Dates when this item appeared
-  sourceWorkspaces?: string[]; // Workspaces where this appeared
-  // Legacy fields (for backward compatibility)
-  mode?: ModeType;
-  theme?: ThemeType;
-  name?: string; // Maps to title
-  content?: Record<string, unknown>; // Deprecated - use title + description
-  embedding?: number[]; // For category grouping
+  sourceDates?: string[];
+  sourceWorkspaces?: string[];
+  // Theme tracking
+  theme?: ThemeType; // "generation" | "seek"
+  // Internal (not displayed)
+  embedding?: number[];
 }
 
 export interface Category {

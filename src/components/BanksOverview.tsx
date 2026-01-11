@@ -22,8 +22,14 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
     byTheme: Record<string, number>;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [expanded, setExpanded] = useState(true); // v3: Default expanded for two-panel layout
   const [error, setError] = useState<string | null>(null);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [totalItems, setTotalItems] = useState(0);
 
   // Load items on mount
   useEffect(() => {
@@ -35,13 +41,19 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
     setFilteredItems(items);
   }, []);
 
-  const loadItems = async () => {
+  const loadItems = async (page: number = 1, append: boolean = false) => {
     setError(null);
-    setLoading(true);
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
+    
     try {
-      // Load all items
       const params = new URLSearchParams({
         view: "items",
+        page: page.toString(),
+        pageSize: "50",
       });
       
       const res = await fetch(`/api/items?${params}`);
@@ -49,10 +61,21 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
         const data = await res.json();
         if (data.success) {
           const loadedItems = data.items || [];
-          setItems(loadedItems);
+          
+          if (append) {
+            // Append to existing items
+            setItems(prev => [...prev, ...loadedItems]);
+            setFilteredItems(prev => [...prev, ...loadedItems]);
+          } else {
+            // Replace items (initial load)
+            setItems(loadedItems);
+            setFilteredItems(loadedItems);
+          }
+          
           setStats(data.stats);
-          // Initial filtered state is all items
-          setFilteredItems(loadedItems);
+          setCurrentPage(data.currentPage || page);
+          setHasNextPage(data.hasNextPage || false);
+          setTotalItems(data.totalItems || 0);
         } else {
           setError(data.error || "Failed to load items");
         }
@@ -63,6 +86,13 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
       setError(`Failed to load items: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+  
+  const loadMore = () => {
+    if (hasNextPage && !loadingMore) {
+      loadItems(currentPage + 1, true);
     }
   };
 
@@ -87,9 +117,8 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
       lines.push("## Items");
       lines.push("");
       items.forEach((item, idx) => {
-        // Use unified structure: title + description
-        const title = item.title || item.name || item.content?.title || "Untitled";
-        const itemType = item.itemType || item.mode || "unknown";
+        const title = item.title || "Untitled";
+        const itemType = item.itemType || "unknown";
         const typeLabel = itemType.charAt(0).toUpperCase() + itemType.slice(1);
         
         lines.push(`### ${idx + 1}. ${title}`);
@@ -97,29 +126,9 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
         lines.push(`**Type:** ${typeLabel}`);
         lines.push("");
         
-        // Description (unified field)
-        const description = item.description || "";
-        if (description) {
-          lines.push(description);
+        if (item.description) {
+          lines.push(item.description);
           lines.push("");
-        } else {
-          // Fallback to legacy content fields
-          if (item.content?.problem) {
-            lines.push(`**Problem:** ${item.content.problem}`);
-            lines.push("");
-          }
-          if (item.content?.solution) {
-            lines.push(`**Solution:** ${item.content.solution}`);
-            lines.push("");
-          }
-          if (item.content?.hook) {
-            lines.push(`**Hook:** ${item.content.hook}`);
-            lines.push("");
-          }
-          if (item.content?.insight) {
-            lines.push(`**Insight:** ${item.content.insight}`);
-            lines.push("");
-          }
         }
         
         lines.push(`*Occurrence: ${item.occurrence}x | First seen: ${item.firstSeen} | Last seen: ${item.lastSeen}*`);
@@ -172,7 +181,7 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
               key={item.id}
               className="p-2 bg-slate-800/30 rounded-lg text-sm border-l-2 border-indigo-500/50 hover:bg-slate-800/50 transition-colors"
             >
-              <div className="text-white truncate">{item.title || item.name}</div>
+              <div className="text-white truncate">{item.title || "Untitled"}</div>
               <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
                 <span className="capitalize">{item.itemType}</span>
               </div>
@@ -278,12 +287,41 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
                     <p className="text-adobe-gray-500 text-xs mt-1">Try adjusting your search or filters.</p>
                   </div>
                 ) : (
-                  filteredItems.map((item) => (
-                    <ItemCard
-                      key={item.id}
-                      item={item}
-                    />
-                  ))
+                  <>
+                    {filteredItems.map((item) => (
+                      <ItemCard
+                        key={item.id}
+                        item={item}
+                      />
+                    ))}
+                    
+                    {/* Load More / Pagination */}
+                    {hasNextPage && (
+                      <div className="pt-3 border-t border-white/10">
+                        <button
+                          onClick={loadMore}
+                          disabled={loadingMore}
+                          className="w-full py-2 px-4 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                        >
+                          {loadingMore ? (
+                            <span className="flex items-center justify-center gap-2">
+                              <LoadingSpinner />
+                              Loading...
+                            </span>
+                          ) : (
+                            <span>Load More ({items.length} of {totalItems})</span>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                    
+                    {/* All loaded indicator */}
+                    {!hasNextPage && items.length > 0 && items.length >= 50 && (
+                      <div className="pt-3 text-center text-xs text-slate-500">
+                        All {totalItems} items loaded
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
