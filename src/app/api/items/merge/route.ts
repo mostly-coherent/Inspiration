@@ -75,7 +75,6 @@ export async function POST(request: NextRequest) {
 
     // Aggregate data from other items into primary
     const allSourceDates = new Set<string>(primary.sourceDates || []);
-    const allTags = new Set<string>(primary.tags || []);
     let totalOccurrence = primary.occurrence || 1;
     let earliestFirstSeen = new Date(primary.firstSeen);
     let latestLastSeen = new Date(primary.lastSeen);
@@ -83,9 +82,6 @@ export async function POST(request: NextRequest) {
     for (const item of others) {
       // Aggregate source dates (if present)
       (item.sourceDates || []).forEach((d) => allSourceDates.add(d));
-      
-      // Aggregate tags
-      (item.tags || []).forEach((t) => allTags.add(t));
       
       // Sum occurrences
       totalOccurrence += item.occurrence || 1;
@@ -102,7 +98,6 @@ export async function POST(request: NextRequest) {
       .from("library_items")
       .update({
         source_dates: Array.from(allSourceDates).sort(),
-        tags: Array.from(allTags),
         occurrence: totalOccurrence,
         first_seen: earliestFirstSeen.toISOString(),
         last_seen: latestLastSeen.toISOString(),
