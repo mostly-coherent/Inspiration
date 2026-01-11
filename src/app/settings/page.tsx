@@ -13,6 +13,7 @@ import {
   VoiceStyleSection,
   LLMSettingsSection,
 } from "@/components/settings";
+import { ThemeSynthesisSection } from "@/components/config/ThemeSynthesisSection";
 
 interface AppConfig {
   version: number;
@@ -463,12 +464,21 @@ export default function SettingsPage() {
 
         {/* Prompt Templates Section */}
         {config.setupComplete && activeTab === "prompts" && (
-          <SettingsSection
-            title="📝 Prompt Templates"
-            description="The exact instructions the AI follows when generating content"
-          >
-            <PromptTemplateEditor />
-          </SettingsSection>
+          <>
+            <SettingsSection
+              title="📝 Generation Prompts"
+              description="The exact instructions the AI follows when generating Ideas, Insights, and Use Cases"
+            >
+              <PromptTemplateEditor />
+            </SettingsSection>
+            
+            <SettingsSection
+              title="✨ Theme Synthesis Prompts"
+              description="The instructions for AI when synthesizing patterns in Theme Explorer"
+            >
+              <ThemeSynthesisSection />
+            </SettingsSection>
+          </>
         )}
 
         {/* API Keys Notice */}

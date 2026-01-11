@@ -8,7 +8,6 @@ export const DEFAULT_THEME_EXPLORER: ThemeExplorerConfig = {
   sliderMin: 0.45,
   sliderMax: 0.92,
   maxThemesToDisplay: 20,
-  largeThemeThreshold: 5,
 };
 
 interface ThemeExplorerSectionProps {
@@ -29,8 +28,7 @@ export function ThemeExplorerSection({
       themeExplorer.defaultZoom !== DEFAULT_THEME_EXPLORER.defaultZoom ||
       themeExplorer.sliderMin !== DEFAULT_THEME_EXPLORER.sliderMin ||
       themeExplorer.sliderMax !== DEFAULT_THEME_EXPLORER.sliderMax ||
-      themeExplorer.maxThemesToDisplay !== DEFAULT_THEME_EXPLORER.maxThemesToDisplay ||
-      themeExplorer.largeThemeThreshold !== DEFAULT_THEME_EXPLORER.largeThemeThreshold
+      themeExplorer.maxThemesToDisplay !== DEFAULT_THEME_EXPLORER.maxThemesToDisplay
     );
   };
 
@@ -132,24 +130,6 @@ export function ThemeExplorerSection({
       />
       <div className="text-xs text-slate-500 -mt-2 ml-3">
         💡 <strong>Recommendation:</strong> 20 (default) is scannable. Increase to 30-50 if you have many items. Decrease to 10 if you prefer simplicity.
-      </div>
-
-      {/* Large Theme Threshold */}
-      <ThresholdSlider
-        label="Large Theme Threshold"
-        description="Themes with at least this many items get highlighted as 'important'. Helps identify significant patterns."
-        value={themeExplorer.largeThemeThreshold}
-        defaultValue={DEFAULT_THEME_EXPLORER.largeThemeThreshold}
-        min={2}
-        max={20}
-        step={1}
-        format={(v) => `${v} items`}
-        onChange={(value) =>
-          setThemeExplorer((prev) => ({ ...prev, largeThemeThreshold: value }))
-        }
-      />
-      <div className="text-xs text-slate-500 -mt-2 ml-3">
-        💡 <strong>Recommendation:</strong> 5 (default) highlights meaningful clusters. Lower if you have few items. Raise if you want only the biggest themes highlighted.
       </div>
     </CollapsibleSection>
   );

@@ -46,7 +46,7 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
     if (append) {
       setLoadingMore(true);
     } else {
-      setLoading(true);
+    setLoading(true);
     }
     
     try {
@@ -68,7 +68,7 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
             setFilteredItems(prev => [...prev, ...loadedItems]);
           } else {
             // Replace items (initial load)
-            setItems(loadedItems);
+          setItems(loadedItems);
             setFilteredItems(loadedItems);
           }
           
@@ -289,10 +289,10 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
                 ) : (
                   <>
                     {filteredItems.map((item) => (
-                      <ItemCard
-                        key={item.id}
-                        item={item}
-                      />
+                    <ItemCard
+                      key={item.id}
+                      item={item}
+                    />
                     ))}
                     
                     {/* Load More / Pagination */}

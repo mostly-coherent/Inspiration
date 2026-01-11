@@ -138,7 +138,7 @@ def get_embedding(text: str, use_cache: bool = True, allow_fallback: bool = True
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             with open(cache_path, "w") as f:
                 json.dump(cache, f)
-        except (IOError, json.JSONEncodeError):
+        except (IOError, TypeError, ValueError):
             pass  # Cache write failed, but embedding is still valid
     
     return embedding
@@ -403,7 +403,7 @@ def batch_get_embeddings(texts: list[str], use_cache: bool = True, allow_fallbac
                         cache_path.parent.mkdir(parents=True, exist_ok=True)
                         with open(cache_path, "w") as f:
                             json.dump(cache, f)
-                    except (IOError, json.JSONEncodeError):
+                    except (IOError, TypeError, ValueError):
                         pass
                 
                 # Success - break out of retry loop

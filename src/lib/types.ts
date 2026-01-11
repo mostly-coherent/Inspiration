@@ -50,7 +50,6 @@ export interface ThemeExplorerConfig {
   sliderMin: number; // Minimum slider value
   sliderMax: number; // Maximum slider value
   maxThemesToDisplay: number; // Max themes in list
-  largeThemeThreshold: number; // Items needed for "major theme"
 }
 
 // v3: Theme Synthesis configuration
