@@ -286,26 +286,43 @@ def seek_use_case(
     # Step 4: Parse items from content
     items = []
     if content:
-        # Parse use cases from content (similar to _parse_output but for use cases)
-        use_case_pattern = r'^## Use Case \d+:\s*(.+?)(?=^## |\Z)'
+        # Parse use cases from content - matches prompt output format:
+        # ## Item N: Title
+        # **Job-to-be-Done:** ...
+        # **How It Was Done:** ...
+        # **Takeaway:** ...
+        # **Tags:** ...
         import re
-        for match in re.finditer(use_case_pattern, content, re.MULTILINE | re.DOTALL):
+        
+        # Match both "## Item N:" and legacy "## Use Case N:" formats
+        item_pattern = r'^## (?:Item|Use Case) \d+:\s*(.+?)(?=^## (?:Item|Use Case) \d+:|\Z|^---\s*$)'
+        
+        for match in re.finditer(item_pattern, content, re.MULTILINE | re.DOTALL):
             item = {}
             item["title"] = match.group(1).strip().split('\n')[0]
             
-            use_case_content = match.group(0)
+            item_content = match.group(0)
+            
+            # Match prompt output fields (Job-to-be-Done, How It Was Done, Takeaway)
+            # Also support legacy fields (What, How, Context, Key Takeaways)
             patterns = {
-                "what": r'\*\*What:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "how": r'\*\*How:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                "what": r'\*\*(?:Job-to-be-Done|What):?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                "how": r'\*\*(?:How It Was Done|How):?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                "takeaways": r'\*\*(?:Takeaway|Key Takeaways?):?\*\*[:\s]*(.+?)(?=\*\*|$)',
                 "context": r'\*\*Context:?\*\*[:\s]*(.+?)(?=\*\*|$)',
                 "similarity": r'\*\*Similarity:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "takeaways": r'\*\*Key Takeaways:?\*\*[:\s]*(.+?)(?=\*\*|$)',
             }
             
             for key, pattern in patterns.items():
-                pattern_match = re.search(pattern, use_case_content, re.DOTALL | re.IGNORECASE)
+                pattern_match = re.search(pattern, item_content, re.DOTALL | re.IGNORECASE)
                 if pattern_match:
                     item[key] = pattern_match.group(1).strip()
+            
+            # Extract tags if present
+            tags_match = re.search(r'\*\*Tags:?\*\*[:\s]*(.+?)(?=\n\n|$)', item_content, re.IGNORECASE)
+            if tags_match:
+                tag_text = tags_match.group(1).strip()
+                item["tags"] = [t.strip().strip(',').strip('[').strip(']') for t in tag_text.split(',') if t.strip()]
             
             if item.get("title"):
                 items.append(item)
@@ -322,29 +339,39 @@ def seek_use_case(
         )
         print(f"📄 Saved to: {output_file}", file=sys.stderr)
     
-    # Step 6: Harmonize into ItemsBank
+    # Step 6: Harmonize into ItemsBank (using unified content structure)
+    items_added = 0
     if content and items:
         print(f"\n📦 Harmonizing use cases into ItemsBank...", file=sys.stderr)
         bank = ItemsBank()
         
         for item in items:
-            content_dict = {
-                "title": item.get("title", ""),
-                "what": item.get("what", ""),
-                "how": item.get("how", ""),
-                "context": item.get("context", ""),
-                "similarity": item.get("similarity", ""),
-                "takeaways": item.get("takeaways", ""),
-            }
+            title = item.get("title", "")
+            
+            # Build description from available fields (unified structure)
+            description_parts = []
+            if item.get("what"):
+                description_parts.append(f"**Job-to-be-Done:** {item['what']}")
+            if item.get("how"):
+                description_parts.append(f"**How:** {item['how']}")
+            if item.get("takeaways"):
+                description_parts.append(f"**Takeaway:** {item['takeaways']}")
+            if item.get("context"):
+                description_parts.append(f"**Context:** {item['context']}")
+            
+            description = "\n\n".join(description_parts) if description_parts else title
+            tags = item.get("tags", [])
             
             bank.add_item(
-                mode="use_case",
+                item_type="use_case",
+                title=title,
+                description=description,
+                tags=tags,
                 theme="seek",
-                content=content_dict,
             )
+            items_added += 1
         
-        bank.save()
-        print(f"📊 Added {len(items)} use case(s) to ItemsBank", file=sys.stderr)
+        print(f"📊 Harmonized {items_added} use case(s) into Library", file=sys.stderr)
         
         # NOTE: Category grouping removed - redundant with Theme Explorer and tags
         # Theme Explorer provides dynamic similarity-based grouping

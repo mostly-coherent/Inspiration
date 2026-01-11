@@ -21,7 +21,6 @@ export const LibrarySearch = memo(function LibrarySearch({
   const availableModes = useMemo(() => {
     const modes = new Set<string>();
     items.forEach((item) => {
-      if (item.mode) modes.add(item.mode);
       if (item.itemType) modes.add(item.itemType);
     });
     return Array.from(modes).sort();
@@ -31,28 +30,19 @@ export const LibrarySearch = memo(function LibrarySearch({
   const filterItems = useCallback(() => {
     let filtered = [...items];
 
-    // Search filter
+    // Search filter (searches title and description)
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter((item) => {
-        const title = (item.title || item.name || "").toLowerCase();
+        const title = (item.title || "").toLowerCase();
         const description = (item.description || "").toLowerCase();
-        const tags = (item.tags || []).join(" ").toLowerCase();
-        const content = JSON.stringify(item.content || {}).toLowerCase();
-        return (
-          title.includes(query) ||
-          description.includes(query) ||
-          tags.includes(query) ||
-          content.includes(query)
-        );
+        return title.includes(query) || description.includes(query);
       });
     }
 
-    // Mode filter
+    // Mode filter (filters by itemType)
     if (filterMode !== "all") {
-      filtered = filtered.filter(
-        (item) => item.mode === filterMode || item.itemType === filterMode
-      );
+      filtered = filtered.filter((item) => item.itemType === filterMode);
     }
 
     // Status filter

@@ -262,6 +262,7 @@ def _batch_expand_date_ranges(
                 "occurrence": (current.get("occurrence") or 0) + 1,
                 # ALWAYS update last_seen (topic was seen again)
                 "last_seen": datetime.now().strftime("%Y-%m"),
+                "last_seen_date": datetime.now().strftime("%Y-%m-%d"),  # Day-level precision
             }
             
             # Expand start date if new is earlier
@@ -277,6 +278,18 @@ def _batch_expand_date_ranges(
                     update_data["source_end_date"] = end_date
             
             client.table("library_items").update(update_data).eq("id", item_id).execute()
+            
+            # Record in occurrence history table (if it exists)
+            try:
+                client.table("library_occurrence_history").insert({
+                    "item_id": item_id,
+                    "occurred_at": datetime.now().strftime("%Y-%m-%d"),
+                    "source_type": "topic_filter",
+                    "source_context": f"{start_date} to {end_date} run" if start_date else None,
+                }).execute()
+            except Exception:
+                pass  # Table might not exist yet
+            
             return True
         except Exception:
             return False

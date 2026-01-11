@@ -91,6 +91,7 @@ GRANT EXECUTE ON FUNCTION get_memory_density_by_week() TO authenticated;
 
 -- ============================================================================
 -- RPC Function: Get Library coverage by week
+-- FIXED v2: Counts items for ALL weeks they span, handles first_seen YYYY-MM format
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION get_library_coverage_by_week()
@@ -105,15 +106,34 @@ SET search_path = public
 AS $$
 BEGIN
     RETURN QUERY
+    WITH item_weeks AS (
+        -- Generate all weeks each item covers (between start and end dates)
+        -- first_seen is YYYY-MM format, so append '-01' to make it a valid date
+        SELECT 
+            li.id,
+            generate_series(
+                DATE_TRUNC('week', COALESCE(
+                    li.source_start_date,
+                    (li.first_seen || '-01')::date
+                )),
+                DATE_TRUNC('week', COALESCE(
+                    li.source_end_date,
+                    li.source_start_date,
+                    (li.first_seen || '-01')::date
+                )),
+                '1 week'::interval
+            )::DATE AS covered_week
+        FROM library_items li
+        WHERE li.status != 'archived'
+          AND (li.source_start_date IS NOT NULL OR li.first_seen IS NOT NULL)
+    )
     SELECT
-        TO_CHAR(DATE_TRUNC('week', li.source_start_date), 'IYYY-"W"IW') AS week_label,
-        DATE_TRUNC('week', li.source_start_date)::DATE AS week_start,
-        COUNT(*) AS item_count
-    FROM library_items li
-    WHERE li.source_start_date IS NOT NULL
-      AND li.status != 'archived'
-    GROUP BY DATE_TRUNC('week', li.source_start_date)
-    ORDER BY week_start;
+        TO_CHAR(iw.covered_week, 'IYYY-"W"IW') AS week_label,
+        iw.covered_week AS week_start,
+        COUNT(DISTINCT iw.id) AS item_count
+    FROM item_weeks iw
+    GROUP BY iw.covered_week
+    ORDER BY iw.covered_week;
 END;
 $$;
 
