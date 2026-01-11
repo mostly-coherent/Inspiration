@@ -6,7 +6,10 @@ export { GenerationSection, DEFAULT_GENERATION } from "./GenerationSection";
 export { SeekDefaultsSection, DEFAULT_SEEK } from "./SeekDefaultsSection";
 export { SemanticSearchSection, DEFAULT_SEMANTIC } from "./SemanticSearchSection";
 export { ThemeExplorerSection, DEFAULT_THEME_EXPLORER } from "./ThemeExplorerSection";
-export { ThemeSynthesisSection, DEFAULT_THEME_SYNTHESIS } from "./ThemeSynthesisSection";
+
+// Note: ThemeSynthesisSection is NOT exported here
+// It's a standalone component used directly in Settings > Prompts tab
+// Import directly from "./ThemeSynthesisSection" if needed
 
 // Helper Components
 export {
