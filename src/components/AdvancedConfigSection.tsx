@@ -9,7 +9,6 @@ import {
   SeekDefaults,
   SemanticSearchDefaults,
   ThemeExplorerConfig,
-  ThemeSynthesisConfig,
 } from "@/lib/types";
 
 // Import section components
@@ -21,14 +20,12 @@ import {
   SeekDefaultsSection,
   SemanticSearchSection,
   ThemeExplorerSection,
-  ThemeSynthesisSection,
   DEFAULT_THRESHOLDS,
   DEFAULT_TIME_PRESETS,
   DEFAULT_GENERATION,
   DEFAULT_SEEK,
   DEFAULT_SEMANTIC,
   DEFAULT_THEME_EXPLORER,
-  DEFAULT_THEME_SYNTHESIS,
   DEFAULT_MODELS,
 } from "./config";
 
@@ -44,7 +41,7 @@ const DEFAULT_LLM_CONFIG: AdvancedLLMConfig = {
   compression: { provider: "openai", model: "gpt-4o-mini" },
 };
 
-type SectionId = "llm" | "thresholds" | "presets" | "generation" | "seek" | "semantic" | "themeExplorer" | "themeSynthesis";
+type SectionId = "llm" | "thresholds" | "presets" | "generation" | "seek" | "semantic" | "themeExplorer";
 
 export function AdvancedConfigSection({ onSave }: AdvancedConfigSectionProps) {
   // State for all config sections
@@ -55,7 +52,6 @@ export function AdvancedConfigSection({ onSave }: AdvancedConfigSectionProps) {
   const [seekDefaults, setSeekDefaults] = useState<SeekDefaults>(DEFAULT_SEEK);
   const [semanticSearch, setSemanticSearch] = useState<SemanticSearchDefaults>(DEFAULT_SEMANTIC);
   const [themeExplorer, setThemeExplorer] = useState<ThemeExplorerConfig>(DEFAULT_THEME_EXPLORER);
-  const [themeSynthesis, setThemeSynthesis] = useState<ThemeSynthesisConfig>(DEFAULT_THEME_SYNTHESIS);
   
   // UI state
   const [loading, setLoading] = useState(true);
@@ -107,7 +103,6 @@ export function AdvancedConfigSection({ onSave }: AdvancedConfigSectionProps) {
         if (data.config.seekDefaults) setSeekDefaults(data.config.seekDefaults);
         if (data.config.semanticSearch) setSemanticSearch(data.config.semanticSearch);
         if (data.config.themeExplorer) setThemeExplorer(data.config.themeExplorer);
-        if (data.config.themeSynthesis) setThemeSynthesis(data.config.themeSynthesis);
       }
     } catch (err) {
       console.error("Failed to load config:", err);
@@ -134,7 +129,6 @@ export function AdvancedConfigSection({ onSave }: AdvancedConfigSectionProps) {
           seekDefaults,
           semanticSearch,
           themeExplorer,
-          themeSynthesis,
         }),
       });
       
@@ -234,14 +228,6 @@ export function AdvancedConfigSection({ onSave }: AdvancedConfigSectionProps) {
         setThemeExplorer={setThemeExplorer}
         isExpanded={expandedSection === "themeExplorer"}
         onToggle={() => toggleSection("themeExplorer")}
-      />
-
-      {/* Theme Synthesis Section */}
-      <ThemeSynthesisSection
-        themeSynthesis={themeSynthesis}
-        setThemeSynthesis={setThemeSynthesis}
-        isExpanded={expandedSection === "themeSynthesis"}
-        onToggle={() => toggleSection("themeSynthesis")}
       />
 
       {/* Save Button */}
