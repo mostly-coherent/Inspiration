@@ -19,7 +19,6 @@ interface ThemePreviewData {
   stats: {
     avgItemsPerTheme: number;
     singleItemThemes: number;
-    largeThemes: number;
   };
 }
 
@@ -29,6 +28,16 @@ interface SynthesisData {
   themeName: string;
   itemCount: number;
 }
+
+// Item type filter options
+type ItemTypeFilter = "all" | "idea" | "insight" | "use_case";
+
+const ITEM_TYPE_TABS: { id: ItemTypeFilter; label: string; icon: string; description: string }[] = [
+  { id: "all", label: "All Items", icon: "🎨", description: "All ideas, insights, and use cases" },
+  { id: "idea", label: "Ideas", icon: "💡", description: "Tools and things to build" },
+  { id: "insight", label: "Insights", icon: "✨", description: "Observations and learnings" },
+  { id: "use_case", label: "Use Cases", icon: "🔍", description: "Real examples and evidence" },
+];
 
 // Slider labels for user understanding
 const ZOOM_LABELS = [
@@ -49,8 +58,23 @@ function getZoomLabel(threshold: number): { label: string; description: string }
 }
 
 export default function ThemesPage() {
-  // Default values (will be updated from config)
-  const [threshold, setThreshold] = useState(0.7);
+  // Item type filter
+  const [itemTypeFilter, setItemTypeFilter] = useState<ItemTypeFilter>("all");
+  
+  // Separate thresholds per item type (stored in state, persisted could be added later)
+  const [thresholds, setThresholds] = useState<Record<ItemTypeFilter, number>>({
+    all: 0.7,
+    idea: 0.7,
+    insight: 0.7,
+    use_case: 0.7,
+  });
+  
+  // Current threshold based on selected filter
+  const threshold = thresholds[itemTypeFilter];
+  const setThreshold = (value: number) => {
+    setThresholds(prev => ({ ...prev, [itemTypeFilter]: value }));
+  };
+  
   const [debouncedThreshold, setDebouncedThreshold] = useState(0.7);
   const [sliderMin, setSliderMin] = useState(0.45);
   const [sliderMax, setSliderMax] = useState(0.92);
@@ -74,7 +98,13 @@ export default function ThemesPage() {
         if (data.success && data.config?.themeExplorer) {
           const { defaultZoom, sliderMin: min, sliderMax: max } = data.config.themeExplorer;
           if (defaultZoom !== undefined) {
-            setThreshold(defaultZoom);
+            // Set default zoom for all types
+            setThresholds({
+              all: defaultZoom,
+              idea: defaultZoom,
+              insight: defaultZoom,
+              use_case: defaultZoom,
+            });
             setDebouncedThreshold(defaultZoom);
           }
           if (min !== undefined) setSliderMin(min);
@@ -97,13 +127,14 @@ export default function ThemesPage() {
     return () => clearTimeout(timer);
   }, [threshold]);
 
-  // Fetch theme preview when threshold changes
+  // Fetch theme preview when threshold or item type changes
   const fetchThemes = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      const itemTypeParam = itemTypeFilter !== "all" ? `&itemType=${itemTypeFilter}` : "";
       const response = await fetch(
-        `/api/items/themes/preview?threshold=${debouncedThreshold}`
+        `/api/items/themes/preview?threshold=${debouncedThreshold}${itemTypeParam}`
       );
       if (!response.ok) throw new Error("Failed to fetch themes");
       const json = await response.json();
@@ -115,7 +146,7 @@ export default function ThemesPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedThreshold]);
+  }, [debouncedThreshold, itemTypeFilter]);
 
   useEffect(() => {
     fetchThemes();
@@ -134,6 +165,7 @@ export default function ThemesPage() {
         body: JSON.stringify({
           themeName: theme.name,
           items: theme.items,
+          itemType: itemTypeFilter, // Pass current filter to use appropriate prompt
         }),
       });
       
@@ -149,7 +181,7 @@ export default function ThemesPage() {
     } finally {
       setSynthesisLoading(false);
     }
-  }, []);
+  }, [itemTypeFilter]);
 
   // Handle theme selection
   const handleThemeClick = (theme: ThemePreview) => {
@@ -187,29 +219,57 @@ export default function ThemesPage() {
                   <span className="text-3xl">🔭</span> Theme Explorer
                 </h1>
                 <p className="text-slate-400 text-sm">
-                  Zoom out to see patterns • Zoom in for details
+                  {itemTypeFilter === "all" 
+                    ? "Discover patterns across all your Library items"
+                    : `Explore ${ITEM_TYPE_TABS.find(t => t.id === itemTypeFilter)?.label} themes`}
                 </p>
               </div>
             </div>
             <div className="text-right">
               <div className="text-lg font-semibold text-white">{data?.themeCount || 0} Themes</div>
-              <div className="text-sm text-slate-400">{data?.totalItems || 0} items</div>
+              <div className="text-sm text-slate-400">
+                {data?.totalItems || 0} {itemTypeFilter === "all" ? "items" : ITEM_TYPE_TABS.find(t => t.id === itemTypeFilter)?.label.toLowerCase()}
+              </div>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Zoom Control - Fixed */}
+      {/* Item Type Tabs + Zoom Control - Fixed */}
       <div className="sticky top-[73px] z-10 bg-slate-900/80 backdrop-blur-md border-b border-slate-800/30">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="glass-card p-6 rounded-xl">
-            <div className="flex items-center justify-between mb-4">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          {/* Item Type Filter Tabs */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {ITEM_TYPE_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setItemTypeFilter(tab.id)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  itemTypeFilter === tab.id
+                    ? "bg-indigo-600/40 text-indigo-200 border border-indigo-500/50 shadow-lg shadow-indigo-500/10"
+                    : "bg-slate-800/40 text-slate-400 border border-slate-700/50 hover:bg-slate-800/60 hover:text-slate-300"
+                }`}
+              >
+                <span className="mr-1.5">{tab.icon}</span>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          
+          {/* Current filter description */}
+          <div className="text-xs text-slate-500 mb-4">
+            {ITEM_TYPE_TABS.find(t => t.id === itemTypeFilter)?.description}
+          </div>
+          
+          {/* Zoom Slider */}
+          <div className="glass-card p-4 rounded-xl">
+            <div className="flex items-center justify-between mb-3">
               <div>
-                <span className="text-2xl mr-2">🔍</span>
-                <span className="text-lg font-semibold text-white">{zoomInfo.label}</span>
-                <span className="text-slate-400 ml-2">— {zoomInfo.description}</span>
+                <span className="text-xl mr-2">🔍</span>
+                <span className="text-base font-semibold text-white">{zoomInfo.label}</span>
+                <span className="text-slate-400 ml-2 text-sm">— {zoomInfo.description}</span>
               </div>
-              <div className="flex items-center gap-4 text-sm text-slate-400">
+              <div className="flex items-center gap-3 text-xs text-slate-400">
                 <span>🌳 Forest</span>
                 <span>←</span>
                 <span>→</span>
@@ -230,8 +290,8 @@ export default function ThemesPage() {
                 aria-valuemax={sliderMax * 100}
                 aria-valuenow={Math.round(threshold * 100)}
                 aria-valuetext={`${zoomInfo.label}: ${zoomInfo.description}`}
-                className="w-full h-3 bg-gradient-to-r from-emerald-600 via-amber-500 to-rose-600 rounded-full appearance-none cursor-pointer
-                  [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 
+                className="w-full h-2 bg-gradient-to-r from-emerald-600 via-amber-500 to-rose-600 rounded-full appearance-none cursor-pointer
+                  [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 
                   [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-lg
                   [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-slate-300
                   [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:hover:scale-110 [&::-webkit-slider-thumb]:transition-transform"
@@ -394,21 +454,12 @@ export default function ThemesPage() {
                   </div>
                   
                   {data.stats && (
-                    <>
-                      <div className="bg-slate-800/50 rounded-lg p-4">
-                        <div className="text-3xl font-bold text-emerald-400">
-                          {data.stats.largeThemes}
-                        </div>
-                        <div className="text-sm text-slate-400">Major themes (5+ items)</div>
+                    <div className="bg-slate-800/50 rounded-lg p-4">
+                      <div className="text-3xl font-bold text-amber-400">
+                        {data.stats.singleItemThemes}
                       </div>
-                      
-                      <div className="bg-slate-800/50 rounded-lg p-4">
-                        <div className="text-3xl font-bold text-amber-400">
-                          {data.stats.singleItemThemes}
-                        </div>
-                        <div className="text-sm text-slate-400">Unique outliers</div>
-                      </div>
-                    </>
+                      <div className="text-sm text-slate-400">Unique outliers</div>
+                    </div>
                   )}
                 </div>
               </div>

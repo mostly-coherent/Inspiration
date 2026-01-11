@@ -12,25 +12,12 @@ interface ThemeItem {
 interface SynthesizeRequest {
   themeName: string;
   items: ThemeItem[];
+  itemType?: "all" | "idea" | "insight" | "use_case"; // Which type of items
 }
 
-// Load synthesis config from config.json
-async function loadSynthesisConfig() {
-  try {
-    const configPath = path.join(process.cwd(), "data", "config.json");
-    const configContent = await fs.readFile(configPath, "utf-8");
-    const config = JSON.parse(configContent);
-    return {
-      maxItemsToSynthesize: config.themeSynthesis?.maxItemsToSynthesize ?? 15,
-      maxTokens: config.themeSynthesis?.maxTokens ?? 800,
-      maxDescriptionLength: config.themeSynthesis?.maxDescriptionLength ?? 200,
-    };
-  } catch {
-    return { maxItemsToSynthesize: 15, maxTokens: 800, maxDescriptionLength: 200 };
-  }
-}
-
-const SYNTHESIS_PROMPT = `You are helping a user reflect on patterns in their ideas and insights. Given a theme and its related items, synthesize a compelling narrative that:
+// Default prompts (fallback if config doesn't have them)
+const DEFAULT_PROMPTS: Record<string, string> = {
+  all: `You are helping a user reflect on patterns in their ideas and insights. Given a theme and its related items, synthesize a compelling narrative that:
 
 1. **Identifies the Core Pattern**: What's the underlying thread connecting these items?
 2. **Reveals the "So What"**: Why does this pattern matter? What does it suggest about the user's thinking or interests?
@@ -38,12 +25,67 @@ const SYNTHESIS_PROMPT = `You are helping a user reflect on patterns in their id
 
 Keep the tone conversational and insightful - like a thoughtful friend helping you see patterns you might have missed. Be specific, not generic. Reference the actual content of the items.
 
-Format your response as a flowing narrative (2-3 paragraphs), not bullet points. Make it feel like a discovery, not a report.`;
+Format your response as a flowing narrative (2-3 paragraphs), not bullet points. Make it feel like a discovery, not a report.`,
+  idea: `You are helping a user discover patterns in their IDEAS for tools, prototypes, and things to build. Given a theme and its related idea items, synthesize insights that:
+
+1. **Identifies the Core Pattern**: What underlying problem or opportunity connects these ideas?
+2. **Reveals the "So What"**: Why does this pattern matter for the user's builder journey?
+3. **Suggests a Starting Point**: Which idea or combination might be worth prototyping first?
+
+Keep the tone energizing and action-oriented - like a co-founder brainstorming with you. Be specific about what makes these ideas interesting together.
+
+Format your response as a flowing narrative (2-3 paragraphs), not bullet points. End with a clear suggestion.`,
+  insight: `You are helping a user understand patterns in their INSIGHTS - observations, learnings, and realizations worth sharing. Given a theme and its related insight items, synthesize a narrative that:
+
+1. **Identifies the Core Pattern**: What worldview or perspective connects these insights?
+2. **Reveals the "So What"**: What does this pattern reveal about the user's evolving expertise?
+3. **Suggests Content Opportunities**: Could these insights form a blog post, talk, or thread?
+
+Keep the tone reflective and intellectual - like a thought partner helping crystallize wisdom. Be specific about the unique angle these insights offer.
+
+Format your response as a flowing narrative (2-3 paragraphs), not bullet points. Highlight what makes this perspective distinctive.`,
+  use_case: `You are helping a user understand patterns in their USE CASES - real examples of how they've solved problems or applied techniques. Given a theme and its related use case items, synthesize insights that:
+
+1. **Identifies the Core Pattern**: What skill, approach, or methodology connects these use cases?
+2. **Reveals the "So What"**: What does this pattern suggest about the user's emerging expertise?
+3. **Suggests Applications**: Where else could this approach be applied? Any teaching opportunities?
+
+Keep the tone practical and evidence-based - like a mentor reviewing your portfolio. Be specific about what these use cases demonstrate.
+
+Format your response as a flowing narrative (2-3 paragraphs), not bullet points. Ground insights in the actual evidence.`,
+};
+
+// Load synthesis config from config.json
+async function loadSynthesisConfig(itemType: string = "all") {
+  try {
+    const configPath = path.join(process.cwd(), "data", "config.json");
+    const configContent = await fs.readFile(configPath, "utf-8");
+    const config = JSON.parse(configContent);
+    
+    // Get prompt for this item type (fallback to "all", then to default)
+    const prompts = config.themeSynthesis?.prompts || {};
+    const prompt = prompts[itemType] || prompts["all"] || DEFAULT_PROMPTS[itemType] || DEFAULT_PROMPTS["all"];
+    
+    return {
+      maxItemsToSynthesize: config.themeSynthesis?.maxItemsToSynthesize ?? 15,
+      maxTokens: config.themeSynthesis?.maxTokens ?? 800,
+      maxDescriptionLength: config.themeSynthesis?.maxDescriptionLength ?? 200,
+      prompt,
+    };
+  } catch {
+    return { 
+      maxItemsToSynthesize: 15, 
+      maxTokens: 800, 
+      maxDescriptionLength: 200,
+      prompt: DEFAULT_PROMPTS[itemType] || DEFAULT_PROMPTS["all"],
+    };
+  }
+}
 
 export async function POST(request: Request) {
   try {
     const body: SynthesizeRequest = await request.json();
-    const { themeName, items } = body;
+    const { themeName, items, itemType = "all" } = body;
 
     if (!items || items.length === 0) {
       return NextResponse.json(
@@ -61,9 +103,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Load synthesis config
-    const synthesisConfig = await loadSynthesisConfig();
-    const { maxItemsToSynthesize, maxTokens, maxDescriptionLength } = synthesisConfig;
+    // Load synthesis config with prompt for this item type
+    const synthesisConfig = await loadSynthesisConfig(itemType);
+    const { maxItemsToSynthesize, maxTokens, maxDescriptionLength, prompt } = synthesisConfig;
 
     // Prepare items context - optimize by limiting description length
     const itemsContext = items
@@ -84,7 +126,7 @@ ${itemsContext}
 
 Please synthesize the pattern and insights from these items.`;
 
-    // Call Claude
+    // Call Claude with the type-specific prompt
     const client = new Anthropic({ apiKey });
     const response = await client.messages.create({
       model: "claude-sonnet-4-20250514",
@@ -92,7 +134,7 @@ Please synthesize the pattern and insights from these items.`;
       messages: [
         {
           role: "user",
-          content: `${SYNTHESIS_PROMPT}\n\n${userMessage}`,
+          content: `${prompt}\n\n${userMessage}`,
         },
       ],
     });

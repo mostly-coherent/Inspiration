@@ -140,8 +140,7 @@ function generateThemeName(items: Item[], threshold: number): string {
 // Theme explorer config (defaults - no file system access on Vercel)
 function getThemeExplorerConfig() {
   return { 
-    maxThemesToDisplay: 20, 
-    largeThemeThreshold: 5 
+    maxThemesToDisplay: 20,
   };
 }
 
@@ -284,7 +283,6 @@ export async function GET(request: Request) {
           ? Math.round((items.length / themes.length) * 10) / 10 
           : 0,
         singleItemThemes: themes.filter((t) => t.itemCount === 1).length,
-        largeThemes: themes.filter((t) => t.itemCount >= explorerConfig.largeThemeThreshold).length,
       },
     });
   } catch (error) {
