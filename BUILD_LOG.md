@@ -6,6 +6,75 @@
 
 ---
 
+## Progress - 2026-01-11 (Progress Tracking & Transparency)
+
+**Done:**
+- ✅ **Streaming Progress API for Generate (`/api/generate-stream`)**
+  - Real-time SSE streaming from Python backend to frontend
+  - Phase-by-phase updates: confirming → searching → generating → deduplicating → ranking → integrating → complete
+  - Intra-phase progress (e.g., "Generating item 5 of 22")
+  - Real-time token/cost tracking with cumulative display
+  - Slow phase warnings (configurable thresholds)
+
+- ✅ **Enhanced ProgressPanel Component**
+  - Structured progress display with phase icons and messages
+  - Live cost tracking display ($0.0042 format)
+  - Warnings banner for slow phases
+  - Performance summary on completion (total time, cost, tokens)
+  - Structured error explanations with retry/smaller run suggestions
+
+- ✅ **Progress Markers System (`engine/common/progress_markers.py`)**
+  - Marker types: PHASE, STAT, INFO, ERROR, PROGRESS, TIMING, COST, WARNING, PERF
+  - Performance logging to JSON files (`data/performance_logs/run_*.json`)
+  - Slow phase threshold detection and warnings
+  - Analysis functions: `get_recent_runs()`, `get_run_details()`, `analyze_phase_performance()`
+
+- ✅ **Error Explainer (`src/lib/errorExplainer.ts`)**
+  - Classifies 15+ error types into layman-friendly explanations
+  - Provides phase, title, explanation, recommendation
+  - Suggests retry vs. smaller run based on error type
+
+- ✅ **Performance Analytics API (`/api/performance`)**
+  - List recent runs with summaries
+  - Detail view for specific runs (full event log)
+  - Bottleneck analysis across multiple runs
+
+- ✅ **Seek Use Case Progress Tracking**
+  - New streaming API: `/api/seek-stream`
+  - Progress markers in `engine/seek.py` (all phases)
+  - Updated `SeekSection.tsx` with live progress panel
+  - Same features as Generate: phases, cost, warnings, performance
+
+**Files Created:**
+- `src/app/api/generate-stream/route.ts` — Streaming generation endpoint
+- `src/app/api/seek-stream/route.ts` — Streaming seek endpoint
+- `src/app/api/performance/route.ts` — Performance analytics API
+- `engine/common/progress_markers.py` — Progress marker utilities
+- `src/lib/errorExplainer.ts` — Error classification utility
+
+**Files Modified:**
+- `engine/generate.py` — Added progress markers throughout, try-except for end_run()
+- `engine/seek.py` — Added progress markers throughout
+- `src/app/page.tsx` — Integrated streaming API, real-time progress state
+- `src/components/ProgressPanel.tsx` — Complete rewrite with new features
+- `src/components/SeekSection.tsx` — Complete rewrite with progress panel
+- `PLAN.md` — Added PROG-1 through PROG-4 to backlog
+
+**Evidence:**
+- ✅ Build passes
+- ✅ All 26 E2E tests pass
+- ✅ Python scripts compile without errors
+
+**Backlog Items Added (PROG-1 to PROG-4):**
+| ID | Improvement | Priority |
+|----|-------------|----------|
+| PROG-1 | Settings page performance analytics section | MEDIUM |
+| PROG-2 | Automatic log rotation (30 days) | LOW |
+| PROG-3 | Actual API token counts from LLM response | MEDIUM |
+| PROG-4 | Per-item timing in harmonization | MEDIUM |
+
+---
+
 ## Progress - 2026-01-10 (Harmonization Performance Optimization)
 
 **Done:**

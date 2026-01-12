@@ -563,6 +563,14 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 | COV-14 | **Progress tracking for suggested runs** — Show which suggested run is currently processing with live status | MEDIUM | MEDIUM |
 | COV-15 | **Multi-run queue** — Let users queue multiple suggested runs and process them sequentially | MEDIUM | MEDIUM |
 
+**Progress Optimization, Transparency & Analytics:**
+| ID | Improvement | Priority | Effort |
+|----|-------------|----------|--------|
+| PROG-1 | **Settings page performance analytics section** — View bottleneck analysis, avg phase timings, cost trends | MEDIUM | MEDIUM |
+| PROG-2 | **Automatic log rotation** — Delete performance logs older than 30 days | LOW | LOW |
+| PROG-3 | **Actual API token counts** — Modify LLM wrapper to return actual token usage from API response | MEDIUM | MEDIUM |
+| PROG-4 | **Per-item timing in harmonization** — Track time spent per item to identify slowest operations | MEDIUM | LOW |
+
 **Performance:**
 | ID | Improvement | Priority | Effort |
 |----|-------------|----------|--------|

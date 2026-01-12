@@ -15,7 +15,8 @@ import {
 import { BanksOverview } from "@/components/BanksOverview";
 import { ResultsPanel } from "@/components/ResultsPanel";
 import { SeekSection } from "@/components/SeekSection";
-import { ProgressPanel } from "@/components/ProgressPanel";
+import { ProgressPanel, ProgressPhase, ProgressPhaseData, ErrorExplanation } from "@/components/ProgressPanel";
+import { explainError } from "@/lib/errorExplainer";
 import { ModeCard } from "@/components/ModeCard";
 import { AdvancedSettings } from "@/components/AdvancedSettings";
 import { ExpectedOutput } from "@/components/ExpectedOutput";
@@ -142,7 +143,10 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [estimatedSeconds, setEstimatedSeconds] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [progressPhase, setProgressPhase] = useState<string>("");
+  const [progressPhase, setProgressPhase] = useState<ProgressPhase>("confirming");
+  const [progressMessage, setProgressMessage] = useState<string>("");
+  const [progressPhaseData, setProgressPhaseData] = useState<ProgressPhaseData>({});
+  const [progressErrorExplanation, setProgressErrorExplanation] = useState<ErrorExplanation | undefined>(undefined);
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
   const abortController = useRef<AbortController | null>(null);
 
@@ -354,6 +358,22 @@ export default function Home() {
     setAnalysisCoverage(null);
     setLibraryCountBefore(null);
     setLibraryCountAfter(null);
+    setProgressErrorExplanation(undefined);
+    
+    // Initialize progress with request parameters
+    const dateRangeDisplay = body.fromDate && body.toDate 
+      ? `${body.fromDate} to ${body.toDate}`
+      : body.days 
+        ? `Last ${body.days} days`
+        : "Custom range";
+    
+    setProgressPhase("confirming");
+    setProgressMessage("Confirming request parameters...");
+    setProgressPhaseData({
+      dateRange: dateRangeDisplay,
+      requestedItems: displayInfo.itemCount,
+      temperature: body.temperature as number ?? 0.5,
+    });
     
     // Fetch library count before generation
     try {
@@ -372,84 +392,204 @@ export default function Home() {
     const totalEstimate = estimateTime(displayInfo.itemCount);
     setEstimatedSeconds(totalEstimate);
 
-    // Start progress simulation
+    // Start elapsed time tracking
     const startTime = Date.now();
     progressInterval.current = setInterval(() => {
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
       setElapsedSeconds(elapsed);
-      
-      const rawProgress = Math.min((elapsed / totalEstimate) * 100, 95);
-      setProgress(rawProgress);
-      
-      if (rawProgress < 10) {
-        setProgressPhase("Reading chat history...");
-      } else if (rawProgress < 30) {
-        setProgressPhase("Analyzing conversations...");
-      } else if (rawProgress < 60) {
-        setProgressPhase(`Generating ${displayInfo.itemCount} items...`);
-      } else if (rawProgress < 75) {
-        setProgressPhase("Deduplicating items...");
-      } else if (rawProgress < 90) {
-        setProgressPhase("Ranking items...");
-      } else {
-        setProgressPhase("Harmonizing to library...");
-      }
     }, 500);
 
+    // Phase progress weights for progress bar
+    const phaseProgress: Record<string, number> = {
+      confirming: 5,
+      searching: 20,
+      generating: 50,
+      deduplicating: 70,
+      ranking: 85,
+      integrating: 95,
+      complete: 100,
+    };
+
     try {
-      const response = await fetch("/api/generate", {
+      // Use streaming API for real-time progress
+      const response = await fetch("/api/generate-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
         signal: abortController.current.signal,
       });
 
-      let data;
-      try {
-        data = await response.json();
-      } catch {
-        throw new Error("Invalid JSON response from server");
-      }
-      
       if (!response.ok) {
-        throw new Error(data.error || `Request failed with status ${response.status}`);
+        throw new Error(`Request failed with status ${response.status}`);
       }
-      
-      setProgress(100);
-      setProgressPhase("Complete!");
-      setResult(data);
-      
-      // Update analysis coverage from result
-      if (data.success && data.stats) {
-        setAnalysisCoverage({
-          conversationsAnalyzed: data.stats.conversationsAnalyzed,
-          workspaces: 3,
-        });
-        
-        // Fetch library count after generation
-        try {
-          const libRes = await fetch("/api/items?view=items");
-          const libData = await libRes.json();
-          if (libData.success) {
-            setLibraryCountAfter(libData.stats?.totalItems || 0);
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let streamError: string | null = null;
+
+      // Process SSE stream
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          
+          try {
+            const data = JSON.parse(line.slice(6));
+            
+            // Handle different message types from stream
+            switch (data.type) {
+              case "phase":
+                setProgressPhase(data.phase);
+                setProgress(phaseProgress[data.phase] || 0);
+                break;
+                
+              case "stat":
+                // Update phase data with streaming stats
+                setProgressPhaseData(prev => ({
+                  ...prev,
+                  [data.key]: data.value,
+                }));
+                break;
+                
+              case "info":
+                setProgressMessage(data.message);
+                break;
+                
+              case "error":
+                streamError = data.message || data.error;
+                break;
+                
+              case "complete":
+                setProgress(100);
+                setProgressPhase("complete");
+                setProgressMessage("Generation complete!");
+                break;
+                
+              case "progress":
+                // Intra-phase progress (e.g., "processing item 5 of 22")
+                setProgressPhaseData(prev => ({
+                  ...prev,
+                  currentItem: data.current,
+                  totalItems: data.total,
+                  progressLabel: data.label,
+                }));
+                break;
+                
+              case "cost":
+                // Token/cost tracking
+                setProgressPhaseData(prev => ({
+                  ...prev,
+                  tokensIn: (prev.tokensIn || 0) + (data.tokensIn || 0),
+                  tokensOut: (prev.tokensOut || 0) + (data.tokensOut || 0),
+                  cumulativeCost: data.cumulative || data.cost || 0,
+                }));
+                break;
+                
+              case "warning":
+                // Slow phase warnings
+                setProgressPhaseData(prev => ({
+                  ...prev,
+                  warnings: [...(prev.warnings || []), data.message],
+                }));
+                break;
+                
+              case "perf":
+                // Performance summary at end of run
+                setProgressPhaseData(prev => ({
+                  ...prev,
+                  totalSeconds: data.totalSeconds,
+                  totalCost: data.cost,
+                  tokensIn: data.tokensIn,
+                  tokensOut: data.tokensOut,
+                }));
+                break;
+            }
+          } catch {
+            // Ignore parse errors
           }
-        } catch (e) {
-          console.error("Failed to fetch library count after:", e);
         }
-        
-        // Refresh coverage analysis after successful generation
-        fetchCoverageAnalysis();
       }
+
+      // If there was a stream error, throw it
+      if (streamError) {
+        throw new Error(streamError);
+      }
+
+      // Fetch final results from regular API to get full data
+      const finalResponse = await fetch("/api/items?view=items");
+      const libData = await finalResponse.json();
+      if (libData.success) {
+        setLibraryCountAfter(libData.stats?.totalItems || 0);
+      }
+
+      // Create result object from streamed data
+      const result: GenerateResult = {
+        success: true,
+        tool: displayInfo.tool,
+        mode: displayInfo.mode,
+        stats: {
+          daysProcessed: progressPhaseData.daysProcessed || 0,
+          daysWithActivity: progressPhaseData.daysWithActivity || 0,
+          daysWithOutput: progressPhaseData.daysWithActivity || 0,
+          itemsGenerated: progressPhaseData.itemsGenerated || 0,
+          itemsAfterDedup: progressPhaseData.itemsAfterSelfDedup || 0,
+          itemsReturned: progressPhaseData.sentToLibrary || 0,
+          conversationsAnalyzed: progressPhaseData.conversationsFound || 0,
+          harmonization: {
+            itemsProcessed: progressPhaseData.itemsCompared || 0,
+            itemsAdded: progressPhaseData.itemsAdded || 0,
+            itemsUpdated: progressPhaseData.itemsMerged || 0,
+            itemsDeduplicated: progressPhaseData.itemsMerged || 0,
+          },
+        },
+        timestamp: new Date().toISOString(),
+      };
+      
+      setResult(result);
+      
+      // Update analysis coverage
+      setAnalysisCoverage({
+        conversationsAnalyzed: progressPhaseData.conversationsFound || 0,
+        workspaces: 3,
+      });
+      
+      // Refresh coverage analysis after successful generation
+      fetchCoverageAnalysis();
       
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
-        setProgressPhase("Stopped");
+        setProgressPhase("stopped");
+        setProgressMessage("Generation stopped by user");
       } else {
+        const errorMsg = error instanceof Error ? error.message : "Unknown error";
+        setProgressPhase("error");
+        setProgressMessage("Generation failed");
+        
+        // Get structured error explanation for user-friendly display
+        const explanation = explainError(errorMsg, {
+          daysProcessed: progressPhaseData.daysProcessed,
+          conversationsAnalyzed: progressPhaseData.conversationsFound,
+          itemsGenerated: progressPhaseData.itemsGenerated,
+          itemsAfterDedup: progressPhaseData.itemsAfterSelfDedup,
+        });
+        setProgressErrorExplanation(explanation);
+        
         setResult({
           success: false,
           tool: displayInfo.tool,
           mode: displayInfo.mode,
-          error: error instanceof Error ? error.message : "Unknown error",
+          error: errorMsg,
           stats: {
             daysProcessed: 0,
             daysWithActivity: 0,
@@ -558,7 +698,8 @@ export default function Home() {
       clearInterval(progressInterval.current);
       progressInterval.current = null;
     }
-    setProgressPhase("Stopping...");
+    setProgressPhase("stopping");
+    setProgressMessage("Stopping generation...");
   };
 
   // Cleanup interval on unmount and when generation stops
@@ -834,10 +975,15 @@ export default function Home() {
                     <ProgressPanel
                       progress={progress}
                       phase={progressPhase}
+                      phaseMessage={progressMessage}
+                      phaseData={progressPhaseData}
                       elapsedSeconds={elapsedSeconds}
                       estimatedSeconds={estimatedSeconds}
-                      tool={toolConfig.label}
+                      tool={toolConfig.mode}
+                      toolLabel={toolConfig.label}
+                      errorExplanation={progressErrorExplanation}
                       onStop={handleStop}
+                      onRetry={handleGenerate}
                     />
                   ) : (
                     <div className="flex justify-center">

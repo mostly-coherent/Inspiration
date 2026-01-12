@@ -146,7 +146,8 @@ inspiration/
 │   ├── lib/                    # Shared utilities & types
 │   │   ├── types.ts            # TypeScript types & presets
 │   │   ├── utils.ts            # Utility functions
-│   │   └── logger.ts           # Conditional logging
+│   │   ├── logger.ts           # Conditional logging
+│   │   └── errorExplainer.ts   # Error classification for user-friendly messages
 │   └── hooks/                  # Custom React hooks
 │       └── useDebounce.ts      # Debounce hook
 ├── engine/                     # Python generation engine
@@ -161,7 +162,8 @@ inspiration/
 │   │   ├── items_bank_supabase.py # Supabase-backed ItemsBank
 │   │   ├── coverage.py         # Coverage Intelligence analysis (NEW)
 │   │   ├── prompt_compression.py # Per-conversation compression
-│   │   └── semantic_search.py  # Embedding generation & vector similarity
+│   │   ├── semantic_search.py  # Embedding generation & vector similarity
+│   │   └── progress_markers.py # Progress streaming & performance logging
 │   ├── scripts/                # Utility scripts
 │   │   ├── index_all_messages.py # One-time Vector DB indexer
 │   │   ├── sync_messages.py    # Incremental Vector DB sync
@@ -240,6 +242,7 @@ inspiration/
 │  │  types.ts         (TypeScript types & presets)          │  │
 │  │  utils.ts         (copyToClipboard, downloadFile)         │  │
 │  │  logger.ts        (Conditional logging)                 │  │
+│  │  errorExplainer.ts (Error → user-friendly explanation)    │  │
 │  │                                                          │  │
 │  └──────────────────────────────────────────────────────────┘  │
 │                            │                                    │
@@ -264,7 +267,7 @@ inspiration/
 
 **UI Components** (Reusable):
 - **ModeCard**: Mode selection card. Pure presentation, receives `mode` and `onClick` props.
-- **ProgressPanel**: Progress display. Pure presentation, receives progress props.
+- **ProgressPanel**: Real-time progress display with phases, cost tracking, warnings. Receives streaming progress props.
 - **AdvancedSettings**: Advanced settings form. Owns form state via props (controlled component).
 - **ExpectedOutput**: Expected output summary. Pure presentation, receives calculation props.
 - **MarkdownContent**: Markdown renderer. Pure presentation, receives `content` string.
@@ -284,7 +287,7 @@ inspiration/
 | `SeekSection` | Seek (Use Case) search UI | Search state | Yes (`/api/seek`) | None |
 | `ResultsPanel` | Results display | View mode (formatted/raw) | No | `MarkdownContent` |
 | `ModeCard` | Mode selection card | None (controlled) | No | None |
-| `ProgressPanel` | Progress display | None (controlled) | No | `LoadingSpinner`, `StopIcon` |
+| `ProgressPanel` | Real-time progress with phases, cost, warnings | Phase/stat state (from streaming) | No | `LoadingSpinner`, `StopIcon` |
 | `AdvancedSettings` | Advanced settings form | None (controlled via props) | No | None |
 | `ExpectedOutput` | Expected output summary | None (controlled) | No | None |
 | `MarkdownContent` | Markdown renderer | None | No | `react-markdown` |
@@ -685,8 +688,10 @@ import type { ToolType } from "@/lib/types";
 ```
 src/app/api/
 ├── generate/route.ts          # Content generation endpoint
-├── generate-stream/route.ts   # Streaming generation endpoint
+├── generate-stream/route.ts   # Streaming generation with progress markers
 ├── seek/route.ts              # Seek (Use Case) search endpoint
+├── seek-stream/route.ts       # Streaming seek with progress markers
+├── performance/route.ts       # Performance analytics (logs, analysis)
 ├── sync/route.ts              # Vector DB sync endpoint
 ├── config/                    # Configuration
 │   ├── route.ts               # Config CRUD
@@ -1193,7 +1198,7 @@ Generation Request
 - Easier to maintain and extend
 - Use cases become reusable assets in bank
 
-**Last Updated:** 2026-01-10 (Coverage Intelligence + Harmonization Optimizations)
+**Last Updated:** 2026-01-11 (Progress Tracking & Transparency Architecture)
 
 ---
 
@@ -1480,6 +1485,104 @@ RETURNS TABLE (week_start date, week_end date, item_type text, item_count int)
 | `engine/common/items_bank_supabase.py` | Batch operations, pgvector RPC |
 | `engine/scripts/optimize_harmonization.sql` | Vector column + RPC function |
 | `engine/scripts/backfill_library_embeddings.py` | Populate embeddings for existing items |
+
+---
+
+## Progress Tracking & Transparency Architecture (2026-01-11)
+
+### Overview
+
+Real-time progress streaming provides users visibility into generation/seek operations, building trust through transparency.
+
+### Progress Marker System
+
+**Python Backend** (`engine/common/progress_markers.py`) emits structured markers:
+
+```
+[PHASE:searching]              # Phase transition
+[STAT:conversationsFound=8]    # Statistics update
+[PROGRESS:current=5,total=22,label=generating]  # Intra-phase progress
+[COST:tokensIn=1200,tokensOut=800,cost=0.0042,cumulative=0.0156]
+[WARNING:slow_phase=search took 45s (threshold: 30s)]
+[PERF:totalSeconds=120,totalCost=0.0234]  # End-of-run summary
+[ERROR:API rate limit exceeded]
+```
+
+### Streaming Flow
+
+```
+User clicks Generate/Seek
+    ↓
+Frontend → POST /api/generate-stream (or /api/seek-stream)
+    ↓
+API spawns Python process (generate.py or seek.py)
+    ↓
+Python emits progress markers to stdout
+    ↓
+API parses markers → sends Server-Sent Events (SSE)
+    ↓
+Frontend updates ProgressPanel in real-time
+    ↓
+Performance log saved to data/performance_logs/run_*.json
+```
+
+### Phase Progression
+
+| Phase | Description | Markers Emitted |
+|-------|-------------|-----------------|
+| `confirming` | Request parameters confirmed | STAT (dateRange, itemCount, temperature) |
+| `searching` | Semantic search in progress | STAT (conversationsFound, daysWithActivity) |
+| `generating` | LLM generation in progress | PROGRESS (current/total), COST (tokens) |
+| `deduplicating` | Removing duplicate items | STAT (itemsAfterSelfDedup) |
+| `ranking` | Ranking items by quality | PROGRESS (current/total) |
+| `integrating` | Harmonizing to Library | PROGRESS, STAT (itemsAdded, itemsMerged) |
+| `complete` | Run finished successfully | PERF (totalSeconds, totalCost) |
+| `error` | Run failed | ERROR (message) |
+
+### Performance Logging
+
+All progress events are logged to JSON files for post-run analysis:
+
+```
+data/performance_logs/
+├── run_1736617200_generate_insights.json
+├── run_1736617500_seek_use_case.json
+└── ...
+```
+
+**Log Contents:**
+- `run_id`, `run_type`, `started_at`, `completed_at`
+- `phases[]` — timing and stats per phase
+- `events[]` — full event timeline
+- `totals` — total_seconds, total_tokens_in, total_tokens_out, total_cost
+
+### Performance Analytics API
+
+**`GET /api/performance?action=list`** — Recent run summaries
+**`GET /api/performance?action=detail&runId=...`** — Full event log
+**`GET /api/performance?action=analyze`** — Bottleneck analysis across runs
+
+### Error Explanation System
+
+`src/lib/errorExplainer.ts` classifies errors into user-friendly explanations:
+
+| Error Pattern | User-Friendly Title | Recommendation |
+|--------------|---------------------|----------------|
+| `rate limit` | AI rate limit reached | Wait 1-2 minutes, retry |
+| `timeout` | Request took too long | Try a smaller date range |
+| `insufficient_quota` | API quota exceeded | Check billing/add credits |
+| `context_length` | Too much data for AI | Reduce date range |
+
+### Files Involved
+
+| File | Purpose |
+|------|---------|
+| `engine/common/progress_markers.py` | Emit markers, log performance |
+| `src/app/api/generate-stream/route.ts` | Parse markers, stream SSE |
+| `src/app/api/seek-stream/route.ts` | Parse markers, stream SSE |
+| `src/app/api/performance/route.ts` | Analytics API |
+| `src/components/ProgressPanel.tsx` | Real-time progress display |
+| `src/lib/errorExplainer.ts` | Error classification |
 
 ---
 

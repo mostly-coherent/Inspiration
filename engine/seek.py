@@ -21,6 +21,19 @@ from typing import Literal
 # Add engine directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Progress markers for frontend streaming
+from common.progress_markers import (
+    start_run,
+    end_run,
+    emit_phase,
+    emit_stat,
+    emit_info,
+    emit_error,
+    emit_warning,
+    emit_progress,
+    emit_tokens,
+)
+
 from common.cursor_db import format_conversations_for_prompt
 from common.semantic_search import search_messages
 from common.config import (
@@ -182,212 +195,282 @@ def seek_use_case(
     """
     load_env_file()
     
-    # Always search all workspaces (MVP requirement)
-    workspace_paths = None
+    # Start performance tracking
+    start_run(mode="seek", item_count=top_k, days=days_back)
     
-    # Get LLM if not provided
-    if llm is None:
-        llm_config = get_llm_config()
-        llm = create_llm(llm_config)
-    
-    print(f"🤖 LLM: {llm.provider} ({llm.model})", file=sys.stderr)
-    
-    # Step 1: Semantic search to find relevant conversations
-    conversations = _get_relevant_conversations_for_query(
-        query=query,
-        days_back=days_back,
-        top_k=top_k * 2,  # Fetch more conversations for better context
-        workspace_paths=workspace_paths,
-    )
-    
-    if not conversations:
-        return {
-            "query": query,
-            "content": None,
-            "items": [],
-            "stats": {
-                "conversationsAnalyzed": 0,
-                "daysSearched": days_back,
-                "useCasesFound": 0,
-            },
-            "error": f"No relevant conversations found for '{query}' in the last {days_back} days. The app uses semantic search to find chat sessions related to your query, but none matched. Try: (1) different keywords, (2) broader phrasing, or (3) a longer date range.",
-        }
-    
-    # Step 2: Compress conversations if needed (same as generate.py)
-    # OPTIMIZATION: Skip compression for small date ranges (configurable threshold)
-    # Small date ranges typically have small prompts; compression adds cost/time without much benefit
-    compressed_conversations = []
-    compression_date_threshold = get_compression_date_threshold()
-    skip_compression = days_back < compression_date_threshold
-    
-    if skip_compression:
-        print(f"⏭️  Skipping compression (date range: {days_back} days < {compression_date_threshold} days threshold)", file=sys.stderr)
-        compressed_conversations = conversations
-    else:
-        conversations_to_compress = []
-        conversations_to_keep = []
+    try:
+        # Emit request confirmation
+        emit_phase("confirming", "Request parameters confirmed")
+        emit_stat("query", query[:50] + "..." if len(query) > 50 else query)
+        emit_stat("daysBack", days_back)
+        emit_stat("topK", top_k)
+        emit_stat("minSimilarity", min_similarity)
         
-        # First pass: estimate tokens and separate conversations
-        for conv in conversations:
-            conv_text = format_conversations_for_prompt([conv])
-            conv_tokens = estimate_tokens(conv_text)
-            if conv_tokens > 800:  # Threshold for compression
-                conversations_to_compress.append((conv, conv_tokens))
-            else:
-                conversations_to_keep.append((conv, conv_tokens))
+        # Always search all workspaces (MVP requirement)
+        workspace_paths = None
         
-        if conversations_to_compress:
-            print(f"📦 Compressing {len(conversations_to_compress)} large conversations...", file=sys.stderr)
-            with ThreadPoolExecutor(max_workers=min(len(conversations_to_compress), 5)) as executor:
-                futures = {
-                    executor.submit(compress_single_conversation, conv_data[0], llm=llm, max_tokens=500): conv_data
-                    for conv_data in conversations_to_compress
+        # Get LLM if not provided
+        if llm is None:
+            llm_config = get_llm_config()
+            llm = create_llm(llm_config)
+        
+        print(f"🤖 LLM: {llm.provider} ({llm.model})", file=sys.stderr)
+        
+        # Step 1: Semantic search to find relevant conversations
+        emit_phase("searching", f"Searching for conversations matching: {query[:30]}...")
+        
+        conversations = _get_relevant_conversations_for_query(
+            query=query,
+            days_back=days_back,
+            top_k=top_k * 2,  # Fetch more conversations for better context
+            workspace_paths=workspace_paths,
+        )
+        
+        emit_stat("conversationsFound", len(conversations))
+        emit_stat("daysSearched", days_back)
+        
+        if not conversations:
+            emit_error("no_conversations", f"No relevant conversations found for query")
+            end_run(success=False, error="No conversations found")
+            return {
+                "query": query,
+                "content": None,
+                "items": [],
+                "stats": {
+                    "conversationsAnalyzed": 0,
+                    "daysSearched": days_back,
+                    "useCasesFound": 0,
+                },
+                "error": f"No relevant conversations found for '{query}' in the last {days_back} days. The app uses semantic search to find chat sessions related to your query, but none matched. Try: (1) different keywords, (2) broader phrasing, or (3) a longer date range.",
+            }
+    
+        # Step 2: Compress conversations if needed (same as generate.py)
+        # OPTIMIZATION: Skip compression for small date ranges (configurable threshold)
+        # Small date ranges typically have small prompts; compression adds cost/time without much benefit
+        emit_phase("compressing", "Preparing conversations...")
+        
+        compressed_conversations = []
+        compression_date_threshold = get_compression_date_threshold()
+        skip_compression = days_back < compression_date_threshold
+        
+        if skip_compression:
+            print(f"⏭️  Skipping compression (date range: {days_back} days < {compression_date_threshold} days threshold)", file=sys.stderr)
+            emit_info(f"Skipping compression (date range < {compression_date_threshold} days)")
+            compressed_conversations = conversations
+        else:
+            conversations_to_compress = []
+            conversations_to_keep = []
+            
+            # First pass: estimate tokens and separate conversations
+            for conv in conversations:
+                conv_text = format_conversations_for_prompt([conv])
+                conv_tokens = estimate_tokens(conv_text)
+                if conv_tokens > 800:  # Threshold for compression
+                    conversations_to_compress.append((conv, conv_tokens))
+                else:
+                    conversations_to_keep.append((conv, conv_tokens))
+            
+            if conversations_to_compress:
+                print(f"📦 Compressing {len(conversations_to_compress)} large conversations...", file=sys.stderr)
+                emit_info(f"Compressing {len(conversations_to_compress)} large conversations")
+                emit_stat("conversationsToCompress", len(conversations_to_compress))
+                
+                compressed_count = 0
+                with ThreadPoolExecutor(max_workers=min(len(conversations_to_compress), 5)) as executor:
+                    futures = {
+                        executor.submit(compress_single_conversation, conv_data[0], llm=llm, max_tokens=500): conv_data
+                        for conv_data in conversations_to_compress
+                    }
+                    for future in as_completed(futures):
+                        compressed_conv = future.result()
+                        compressed_conversations.append(compressed_conv)
+                        compressed_count += 1
+                        emit_progress(compressed_count, len(conversations_to_compress), "compressed")
+            
+            # Add conversations that didn't need compression
+            for conv, _ in conversations_to_keep:
+                compressed_conversations.append(conv)
+    
+        conversations_text = format_conversations_for_prompt(compressed_conversations)
+        
+        if dry_run:
+            end_run(success=True)
+            return {
+                "query": query,
+                "content": None,
+                "items": [],
+                "stats": {
+                    "conversationsAnalyzed": len(conversations),
+                    "daysSearched": days_back,
+                    "useCasesFound": 0,
+                },
+            }
+        
+        # Step 3: Generate use cases using LLM synthesis
+        emit_phase("generating", f"Synthesizing use cases from {len(conversations)} conversations...")
+        print(f"🧠 Synthesizing use cases from {len(conversations)} conversations...", file=sys.stderr)
+        
+        # Generate content using unified pipeline
+        mode = "use_case"  # Special mode for use cases
+        
+        # Build user prompt with query (prepend to conversations)
+        user_query_section = f"User Query: {query}\n\n"
+        conversations_with_query = user_query_section + conversations_text
+        
+        # Estimate input tokens for cost tracking
+        from common.llm import estimate_tokens as estimate_llm_tokens
+        input_tokens = estimate_llm_tokens(conversations_with_query)
+        
+        # Generate content using unified pipeline
+        content = generate_content(
+            conversations_with_query,
+            mode,
+            llm=llm,
+            temperature=temperature,
+        )
+        
+        # Track token usage
+        if content:
+            output_tokens = estimate_llm_tokens(content)
+            emit_tokens(
+                tokens_in=input_tokens,
+                tokens_out=output_tokens,
+                model=llm.model,
+                operation="seek_synthesis"
+            )
+    
+        # Step 4: Parse items from content
+        emit_phase("parsing", "Extracting use cases from synthesis...")
+        
+        items = []
+        if content:
+            # Parse use cases from content - matches prompt output format:
+            # ## Item N: Title
+            # **Job-to-be-Done:** ...
+            # **How It Was Done:** ...
+            # **Takeaway:** ...
+            # **Tags:** ...
+            import re
+            
+            # Match both "## Item N:" and legacy "## Use Case N:" formats
+            item_pattern = r'^## (?:Item|Use Case) \d+:\s*(.+?)(?=^## (?:Item|Use Case) \d+:|\Z|^---\s*$)'
+            
+            for match in re.finditer(item_pattern, content, re.MULTILINE | re.DOTALL):
+                item = {}
+                item["title"] = match.group(1).strip().split('\n')[0]
+                
+                item_content = match.group(0)
+                
+                # Match prompt output fields (Job-to-be-Done, How It Was Done, Takeaway)
+                # Also support legacy fields (What, How, Context, Key Takeaways)
+                patterns = {
+                    "what": r'\*\*(?:Job-to-be-Done|What):?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                    "how": r'\*\*(?:How It Was Done|How):?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                    "takeaways": r'\*\*(?:Takeaway|Key Takeaways?):?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                    "context": r'\*\*Context:?\*\*[:\s]*(.+?)(?=\*\*|$)',
+                    "similarity": r'\*\*Similarity:?\*\*[:\s]*(.+?)(?=\*\*|$)',
                 }
-                for future in as_completed(futures):
-                    compressed_conv = future.result()
-                    compressed_conversations.append(compressed_conv)
+                
+                for key, pattern in patterns.items():
+                    pattern_match = re.search(pattern, item_content, re.DOTALL | re.IGNORECASE)
+                    if pattern_match:
+                        item[key] = pattern_match.group(1).strip()
+                
+                # Extract tags if present
+                tags_match = re.search(r'\*\*Tags:?\*\*[:\s]*(.+?)(?=\n\n|$)', item_content, re.IGNORECASE)
+                if tags_match:
+                    tag_text = tags_match.group(1).strip()
+                    item["tags"] = [t.strip().strip(',').strip('[').strip(']') for t in tag_text.split(',') if t.strip()]
+                
+                if item.get("title"):
+                    items.append(item)
+    
+        emit_stat("useCasesParsed", len(items))
         
-        # Add conversations that didn't need compression
-        for conv, _ in conversations_to_keep:
-            compressed_conversations.append(conv)
-    
-    conversations_text = format_conversations_for_prompt(compressed_conversations)
-    
-    if dry_run:
+        # Step 5: Save to file (using generate.py's save_output function)
+        emit_phase("saving", "Saving results...")
+        
+        output_file = None
+        if content:
+            # Create a simple date for save_output (use today)
+            today = datetime.now().date()
+            output_file = save_output(
+                content,
+                today,
+                mode,  # Will need to handle use_case in save_output
+            )
+            print(f"📄 Saved to: {output_file}", file=sys.stderr)
+        
+        # Step 6: Harmonize into ItemsBank (using unified content structure)
+        emit_phase("integrating", "Adding use cases to Library...")
+        
+        items_added = 0
+        if content and items:
+            print(f"\n📦 Harmonizing use cases into ItemsBank...", file=sys.stderr)
+            bank = ItemsBank()
+            
+            for idx, item in enumerate(items):
+                emit_progress(idx + 1, len(items), "use cases")
+                
+                title = item.get("title", "")
+                
+                # Build description from available fields (unified structure)
+                description_parts = []
+                if item.get("what"):
+                    description_parts.append(f"**Job-to-be-Done:** {item['what']}")
+                if item.get("how"):
+                    description_parts.append(f"**How:** {item['how']}")
+                if item.get("takeaways"):
+                    description_parts.append(f"**Takeaway:** {item['takeaways']}")
+                if item.get("context"):
+                    description_parts.append(f"**Context:** {item['context']}")
+                
+                description = "\n\n".join(description_parts) if description_parts else title
+                tags = item.get("tags", [])
+                
+                bank.add_item(
+                    item_type="use_case",
+                    title=title,
+                    description=description,
+                    tags=tags,
+                    theme="seek",
+                )
+                items_added += 1
+            
+            print(f"📊 Harmonized {items_added} use case(s) into Library", file=sys.stderr)
+            
+            # NOTE: Category grouping removed - redundant with Theme Explorer and tags
+            # Theme Explorer provides dynamic similarity-based grouping
+            # Tags provide user-managed organization
+        
+        # Emit completion
+        emit_phase("complete", "Seek complete!")
+        emit_stat("useCasesAdded", items_added)
+        
+        # End performance tracking
+        perf_summary = end_run(success=True)
+        if perf_summary:
+            print(f"\n⏱️  Performance: {perf_summary.get('total_elapsed_seconds', 0):.1f}s total, ${perf_summary.get('total_cost_usd', 0):.4f} cost", file=sys.stderr)
+        
         return {
             "query": query,
-            "content": None,
-            "items": [],
+            "content": content,
+            "items": items,
             "stats": {
                 "conversationsAnalyzed": len(conversations),
                 "daysSearched": days_back,
-                "useCasesFound": 0,
+                "useCasesFound": len(items),
             },
+            "outputFile": str(output_file) if output_file else None,
         }
     
-    # Step 3: Generate use cases using LLM synthesis
-    print(f"🧠 Synthesizing use cases from {len(conversations)} conversations...", file=sys.stderr)
-    
-    # Generate content using unified pipeline
-    mode = "use_case"  # Special mode for use cases
-    
-    # Build user prompt with query (prepend to conversations)
-    user_query_section = f"User Query: {query}\n\n"
-    conversations_with_query = user_query_section + conversations_text
-    
-    # Generate content using unified pipeline
-    content = generate_content(
-        conversations_with_query,
-        mode,
-        llm=llm,
-        temperature=temperature,
-    )
-    
-    # Step 4: Parse items from content
-    items = []
-    if content:
-        # Parse use cases from content - matches prompt output format:
-        # ## Item N: Title
-        # **Job-to-be-Done:** ...
-        # **How It Was Done:** ...
-        # **Takeaway:** ...
-        # **Tags:** ...
-        import re
-        
-        # Match both "## Item N:" and legacy "## Use Case N:" formats
-        item_pattern = r'^## (?:Item|Use Case) \d+:\s*(.+?)(?=^## (?:Item|Use Case) \d+:|\Z|^---\s*$)'
-        
-        for match in re.finditer(item_pattern, content, re.MULTILINE | re.DOTALL):
-            item = {}
-            item["title"] = match.group(1).strip().split('\n')[0]
-            
-            item_content = match.group(0)
-            
-            # Match prompt output fields (Job-to-be-Done, How It Was Done, Takeaway)
-            # Also support legacy fields (What, How, Context, Key Takeaways)
-            patterns = {
-                "what": r'\*\*(?:Job-to-be-Done|What):?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "how": r'\*\*(?:How It Was Done|How):?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "takeaways": r'\*\*(?:Takeaway|Key Takeaways?):?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "context": r'\*\*Context:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-                "similarity": r'\*\*Similarity:?\*\*[:\s]*(.+?)(?=\*\*|$)',
-            }
-            
-            for key, pattern in patterns.items():
-                pattern_match = re.search(pattern, item_content, re.DOTALL | re.IGNORECASE)
-                if pattern_match:
-                    item[key] = pattern_match.group(1).strip()
-            
-            # Extract tags if present
-            tags_match = re.search(r'\*\*Tags:?\*\*[:\s]*(.+?)(?=\n\n|$)', item_content, re.IGNORECASE)
-            if tags_match:
-                tag_text = tags_match.group(1).strip()
-                item["tags"] = [t.strip().strip(',').strip('[').strip(']') for t in tag_text.split(',') if t.strip()]
-            
-            if item.get("title"):
-                items.append(item)
-    
-    # Step 5: Save to file (using generate.py's save_output function)
-    output_file = None
-    if content:
-        # Create a simple date for save_output (use today)
-        today = datetime.now().date()
-        output_file = save_output(
-            content,
-            today,
-            mode,  # Will need to handle use_case in save_output
-        )
-        print(f"📄 Saved to: {output_file}", file=sys.stderr)
-    
-    # Step 6: Harmonize into ItemsBank (using unified content structure)
-    items_added = 0
-    if content and items:
-        print(f"\n📦 Harmonizing use cases into ItemsBank...", file=sys.stderr)
-        bank = ItemsBank()
-        
-        for item in items:
-            title = item.get("title", "")
-            
-            # Build description from available fields (unified structure)
-            description_parts = []
-            if item.get("what"):
-                description_parts.append(f"**Job-to-be-Done:** {item['what']}")
-            if item.get("how"):
-                description_parts.append(f"**How:** {item['how']}")
-            if item.get("takeaways"):
-                description_parts.append(f"**Takeaway:** {item['takeaways']}")
-            if item.get("context"):
-                description_parts.append(f"**Context:** {item['context']}")
-            
-            description = "\n\n".join(description_parts) if description_parts else title
-            tags = item.get("tags", [])
-            
-            bank.add_item(
-                item_type="use_case",
-                title=title,
-                description=description,
-                tags=tags,
-                theme="seek",
-            )
-            items_added += 1
-        
-        print(f"📊 Harmonized {items_added} use case(s) into Library", file=sys.stderr)
-        
-        # NOTE: Category grouping removed - redundant with Theme Explorer and tags
-        # Theme Explorer provides dynamic similarity-based grouping
-        # Tags provide user-managed organization
-    
-    return {
-        "query": query,
-        "content": content,
-        "items": items,
-        "stats": {
-            "conversationsAnalyzed": len(conversations),
-            "daysSearched": days_back,
-            "useCasesFound": len(items),
-        },
-        "outputFile": str(output_file) if output_file else None,
-    }
+    except Exception as e:
+        # End performance tracking (error path)
+        error_msg = str(e)
+        emit_error("seek_error", f"Seek failed: {error_msg}")
+        end_run(success=False, error=error_msg)
+        print(f"\n❌ Error: {error_msg}", file=sys.stderr)
+        raise  # Re-raise to let caller handle
 
 
 def main():

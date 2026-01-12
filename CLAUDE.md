@@ -67,7 +67,9 @@ inspiration/
 │   ├── settings/         # Settings wizard (v1: Mode Settings section)
 │   └── api/
 │       ├── generate/     # Calls Python engine (v1: theme/mode support)
-│       ├── generate-stream/ # Streaming generation
+│       ├── generate-stream/ # Streaming generation with progress markers
+│       ├── seek-stream/  # Streaming seek with progress markers
+│       ├── performance/  # Performance analytics API
 │       ├── config/       # Config CRUD
 │       │   └── env/      # Environment variables API (onboarding)
 │       ├── items/        # Unified Items/Categories API (v1)
@@ -86,7 +88,8 @@ inspiration/
 │   │   ├── mode_settings.py # Mode settings loader (v1)
 │   │   ├── llm.py        # Anthropic + OpenAI wrapper
 │   │   ├── config.py     # User config management
-│   │   └── semantic_search.py # Embedding generation & vector similarity
+│   │   ├── semantic_search.py # Embedding generation & vector similarity
+│   │   └── progress_markers.py # Progress streaming & performance logging
 │   ├── prompts/          # Prompt templates
 │   │   ├── base_synthesize.md # Common prompt elements
 │   │   ├── ideas_synthesize.md # Idea-specific prompts
@@ -101,7 +104,8 @@ inspiration/
     ├── config.json       # User configuration (v1: userProfile instead of customVoice)
     ├── themes.json       # Theme/Mode configuration (v1)
     ├── items_bank.json   # Unified Items/Categories bank (v1)
-    └── vector_db_sync_state.json # Sync tracking
+    ├── vector_db_sync_state.json # Sync tracking
+    └── performance_logs/ # Run performance logs (JSON)
 ```
 
 ---
@@ -175,7 +179,12 @@ python3 engine/generate.py --mode insights \
 | `src/app/settings/page.tsx` | Settings wizard (workspaces, VectorDB, voice, LLM, mode settings) |
 | `src/app/api/coverage/analyze/route.ts` | Coverage analysis API (v5) |
 | `src/app/api/generate/route.ts` | Generation API with topic filter support |
+| `src/app/api/generate-stream/route.ts` | Streaming generation with real-time progress markers |
+| `src/app/api/seek-stream/route.ts` | Streaming seek with real-time progress markers |
+| `src/app/api/performance/route.ts` | Performance analytics API (run logs, bottleneck analysis) |
 | `src/components/ScoreboardHeader.tsx` | Memory + Library stats header with coverage score (v3+v5) |
+| `src/components/ProgressPanel.tsx` | Real-time progress display with phases, cost, warnings |
+| `src/lib/errorExplainer.ts` | Classify errors into layman-friendly explanations |
 | `src/components/CoverageSuggestions.tsx` | Suggested runs display on main page (v5) |
 | `src/components/CoverageVisualization.tsx` | Bar chart of terrain vs coverage (v5) |
 | `src/components/LibraryView.tsx` | Full-width library browser with detail panel (v3.1) |
@@ -186,6 +195,7 @@ python3 engine/generate.py --mode insights \
 | `engine/common/coverage.py` | Coverage Intelligence analysis engine (v5) |
 | `engine/common/topic_filter.py` | Pre-generation topic filtering (IMP-17) |
 | `engine/common/semantic_search.py` | Embedding generation & vector similarity |
+| `engine/common/progress_markers.py` | Progress streaming markers & performance logging |
 | `engine/scripts/sync_messages.py` | Incremental sync service |
 | `engine/scripts/optimize_harmonization.sql` | pgvector optimization schema |
 | `data/themes.json` | Theme/Mode configuration (v1) |

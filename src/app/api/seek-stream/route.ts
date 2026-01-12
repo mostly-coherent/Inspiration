@@ -1,39 +1,18 @@
 import { NextRequest } from "next/server";
 import { spawn } from "child_process";
-import { readFile } from "fs/promises";
 import path from "path";
-import { existsSync } from "fs";
-import { GenerateRequest, TOOL_CONFIG, PRESET_MODES, getToolPath, ThemeType, ModeType, ToolType, GenerationDefaults } from "@/lib/types";
 import { logger } from "@/lib/logger";
-import { resolveThemeModeFromTool, validateThemeMode, getModeSettings } from "@/lib/themes";
 import { getPythonPath } from "@/lib/pythonPath";
 
-// Default generation settings (fallback if config not found)
-const DEFAULT_GENERATION: GenerationDefaults = {
-  temperature: 0.5,
-  deduplicationThreshold: 0.80,
-  maxTokens: 4000,
-  maxTokensJudge: 500,
-};
+export const maxDuration = 300; // 5 minutes for semantic search
 
-// Load generation defaults from config
-async function loadGenerationDefaults(): Promise<GenerationDefaults> {
-  try {
-    const configPath = path.join(process.cwd(), "data", "config.json");
-    if (existsSync(configPath)) {
-      const content = await readFile(configPath, "utf-8");
-      const config = JSON.parse(content);
-      if (config.generationDefaults) {
-        return { ...DEFAULT_GENERATION, ...config.generationDefaults };
-      }
-    }
-  } catch (error) {
-    logger.error("[Generate-Stream] Failed to load generation defaults:", error);
-  }
-  return DEFAULT_GENERATION;
+export interface SeekStreamRequest {
+  query: string;
+  daysBack?: number;
+  topK?: number;
+  minSimilarity?: number;
+  workspaces?: string[];
 }
-
-export const maxDuration = 300; // 5 minutes for long-running generation
 
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
@@ -47,115 +26,42 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        const body: GenerateRequest = await request.json();
-        const { tool, theme, modeId, mode, days, bestOf, temperature, fromDate, toDate, dryRun } = body;
+        const body: SeekStreamRequest = await request.json();
+        const { query, daysBack = 90, topK = 10, minSimilarity = 0.0 } = body;
         
         // Get abort signal from request
         const signal = request.signal;
 
-        // Resolve theme and mode (support both v0 tool and v1 theme/mode)
-        let resolvedTheme: ThemeType;
-        let resolvedMode: ModeType;
-        let resolvedTool: ToolType;
-
-        if (theme && modeId) {
-          // v1: Explicit theme/mode
-          if (!validateThemeMode(theme, modeId)) {
-            send({ type: "error", error: `Invalid theme/mode combination: ${theme}/${modeId}` });
-            controller.close();
-            return;
-          }
-          resolvedTheme = theme;
-          resolvedMode = modeId;
-          resolvedTool = modeId === "idea" ? "ideas" : modeId === "insight" ? "insights" : "ideas";
-        } else if (tool) {
-          // v0: Backward compatibility - resolve from tool
-          const resolved = resolveThemeModeFromTool(tool);
-          if (!resolved) {
-            send({ type: "error", error: `Unknown tool: ${tool}` });
-            controller.close();
-            return;
-          }
-          resolvedTheme = resolved.theme;
-          resolvedMode = resolved.mode;
-          resolvedTool = tool;
-        } else {
-          send({ type: "error", error: "Either 'tool' (v0) or 'theme' + 'modeId' (v1) must be provided" });
+        if (!query || !query.trim()) {
+          send({ type: "error", error: "Query is required" });
           controller.close();
           return;
         }
 
-        // Get tool config (for script path)
-        const toolConfig = TOOL_CONFIG[resolvedTool];
-        if (!toolConfig) {
-          send({ type: "error", error: `Unknown tool: ${resolvedTool}` });
-          controller.close();
-          return;
-        }
-
-        // Get mode config (for defaults)
-        const modeConfig = PRESET_MODES.find((m) => m.id === mode);
-        
-        // Get mode settings from themes.json (v1)
-        const modeSettings = getModeSettings(resolvedTheme, resolvedMode);
-        
         // Build command arguments
-        const args: string[] = [];
-        
-        // Add --mode parameter (required for unified generate.py)
-        args.push("--mode", resolvedMode === "idea" ? "ideas" : resolvedMode === "insight" ? "insights" : resolvedMode);
-        
-        if (mode !== "custom" && modeConfig) {
-          args.push(`--${mode}`);
-        } else {
-          // Custom mode - use explicit args
-          // Note: generate.py only supports --days (last N days from today) or --date (single date)
-          // For date ranges, we calculate the number of days and use --days
-          if (fromDate && toDate) {
-            // Calculate days between dates (inclusive)
-            const from = new Date(fromDate);
-            const to = new Date(toDate);
-            const diffTime = Math.abs(to.getTime() - from.getTime());
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 for inclusive
-            args.push("--days", diffDays.toString());
-          } else if (days) {
-            args.push("--days", days.toString());
-          }
-        }
+        const args: string[] = [
+          "--query", query.trim(),
+          "--days", daysBack.toString(),
+          "--top-k", topK.toString(),
+          "--min-similarity", minSimilarity.toString(),
+          "--json", // Always JSON for API
+        ];
 
-        // Load global generation defaults from config
-        const generationDefaults = await loadGenerationDefaults();
-        
-        // Override with custom values if provided, or use mode defaults, or use global defaults
-        // Priority: per-request > per-mode > global config > hardcoded fallback
-        const effectiveBestOf = bestOf ?? modeConfig?.bestOf ?? 5;
-        const effectiveTemperature = temperature ?? modeSettings?.temperature ?? modeConfig?.temperature ?? generationDefaults.temperature;
-        
-        args.push("--best-of", effectiveBestOf.toString());
-        args.push("--temperature", effectiveTemperature.toString());
-
-        if (dryRun) {
-          args.push("--dry-run");
-        }
-
-        const toolPath = getToolPath(resolvedTool);
+        const scriptPath = path.join(process.cwd(), "engine", "seek.py");
         const pythonPath = getPythonPath();
         
-        send({ type: "start", message: `Starting ${resolvedTool} generation...` });
-        send({ type: "log", message: `Running: ${pythonPath} ${toolConfig.script} ${args.join(" ")}` });
+        send({ type: "start", message: `Starting use case search...` });
+        send({ type: "log", message: `Running: ${pythonPath} seek.py ${args.join(" ")}` });
 
         // Execute Python script with streaming output
-        await runPythonScriptStream(toolPath, toolConfig.script, args, signal, send);
+        await runPythonScriptStream(scriptPath, args, signal, send);
 
-        // Parse output file
-        // This would need to be passed from the Python script or parsed from logs
-        send({ type: "complete", message: "Generation complete" });
+        // Send complete marker
+        send({ type: "complete" });
         controller.close();
       } catch (error) {
-        send({ 
-          type: "error", 
-          error: error instanceof Error ? error.message : "Unknown error" 
-        });
+        logger.error("[Seek-Stream] Error:", error);
+        send({ type: "error", error: error instanceof Error ? error.message : "Unknown error" });
         controller.close();
       }
     },
@@ -170,24 +76,24 @@ export async function POST(request: NextRequest) {
   });
 }
 
+/**
+ * Run Python script with streaming output, parsing progress markers
+ */
 async function runPythonScriptStream(
-  cwd: string,
-  script: string,
+  scriptPath: string,
   args: string[],
-  signal: AbortSignal | undefined,
+  signal: AbortSignal | null,
   send: (data: object) => void
 ): Promise<void> {
-  const pythonPath = getPythonPath();
   return new Promise((resolve, reject) => {
-    const proc = spawn(pythonPath, [script, ...args], {
-      cwd,
-      env: {
-        ...process.env,
-        PYTHONUNBUFFERED: "1",
-      },
+    const pythonPath = getPythonPath();
+    const proc = spawn(pythonPath, [scriptPath, ...args], {
+      cwd: path.join(process.cwd(), "engine"),
+      env: { ...process.env },
     });
 
     let isAborted = false;
+    let jsonOutput = "";
 
     // Handle abort signal
     if (signal) {
@@ -202,7 +108,7 @@ async function runPythonScriptStream(
             }
           }, 2000);
         } catch (err) {
-          logger.error("[Inspiration] Error killing process:", err);
+          logger.error("[Seek-Stream] Error killing process:", err);
         }
         resolve();
       });
@@ -212,11 +118,27 @@ async function runPythonScriptStream(
       if (!isAborted) {
         const text = data.toString();
         
+        // Check if this is JSON output (final result)
+        if (text.trim().startsWith("{") && text.trim().endsWith("}")) {
+          jsonOutput = text.trim();
+          // Send the result
+          try {
+            const result = JSON.parse(jsonOutput);
+            send({ type: "result", result });
+          } catch {
+            // Might be incomplete JSON, accumulate
+            jsonOutput += text;
+          }
+        }
+        
         // Parse progress markers from Python output
         const lines = text.split('\n');
         for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed) continue;
+          
+          // Skip JSON output lines (they start with { or end with })
+          if (trimmed.startsWith("{") || trimmed.endsWith("}")) continue;
           
           // Parse [PHASE:xyz] markers
           const phaseMatch = trimmed.match(/^\[PHASE:(\w+)\]$/);
@@ -261,7 +183,7 @@ async function runPythonScriptStream(
               type: "progress", 
               current: parseInt(progressMatch[1]),
               total: parseInt(progressMatch[2]),
-              label: progressMatch[3] || "items"  // Default to "items" if empty
+              label: progressMatch[3] || "items"
             });
             continue;
           }
@@ -301,8 +223,10 @@ async function runPythonScriptStream(
             continue;
           }
           
-          // Regular log message (not a marker)
-          send({ type: "log", message: trimmed });
+          // Regular log message (not a marker and not JSON)
+          if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+            send({ type: "log", message: trimmed });
+          }
         }
         logger.log(`[stdout] ${text.trim()}`);
       }
@@ -311,7 +235,72 @@ async function runPythonScriptStream(
     proc.stderr.on("data", (data) => {
       if (!isAborted) {
         const text = data.toString();
-        send({ type: "log", message: text.trim(), isError: true });
+        // stderr often contains progress info, so also try to parse markers
+        const lines = text.split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          
+          // Parse markers from stderr too (Python prints to stderr by default)
+          const phaseMatch = trimmed.match(/^\[PHASE:(\w+)\]$/);
+          if (phaseMatch) {
+            send({ type: "phase", phase: phaseMatch[1] });
+            continue;
+          }
+          
+          const statMatch = trimmed.match(/^\[STAT:(\w+)=(.+)\]$/);
+          if (statMatch) {
+            const key = statMatch[1];
+            const value = statMatch[2];
+            const numValue = Number(value);
+            send({ type: "stat", key, value: isNaN(numValue) ? value : numValue });
+            continue;
+          }
+          
+          const infoMatch = trimmed.match(/^\[INFO:message=(.+)\]$/);
+          if (infoMatch) {
+            send({ type: "info", message: infoMatch[1].replace(/≡/g, '=') });
+            continue;
+          }
+          
+          const progressMatch = trimmed.match(/^\[PROGRESS:current=(\d+),total=(\d+),label=(.*)\]$/);
+          if (progressMatch) {
+            send({ 
+              type: "progress", 
+              current: parseInt(progressMatch[1]),
+              total: parseInt(progressMatch[2]),
+              label: progressMatch[3] || "items"
+            });
+            continue;
+          }
+          
+          const costMatch = trimmed.match(/^\[COST:(.+)\]$/);
+          if (costMatch) {
+            const pairs = costMatch[1].split(',');
+            const costData: Record<string, number> = {};
+            for (const pair of pairs) {
+              const [key, value] = pair.split('=');
+              costData[key] = parseFloat(value);
+            }
+            send({ type: "cost", ...costData });
+            continue;
+          }
+          
+          const perfMatch = trimmed.match(/^\[PERF:(.+)\]$/);
+          if (perfMatch) {
+            const pairs = perfMatch[1].split(',');
+            const perfData: Record<string, number> = {};
+            for (const pair of pairs) {
+              const [key, value] = pair.split('=');
+              perfData[key] = parseFloat(value);
+            }
+            send({ type: "perf", ...perfData });
+            continue;
+          }
+          
+          // Regular stderr message
+          send({ type: "log", message: trimmed, isError: true });
+        }
         logger.error(`[stderr] ${text.trim()}`);
       }
     });
@@ -336,4 +325,3 @@ async function runPythonScriptStream(
     });
   });
 }
-

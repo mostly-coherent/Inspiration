@@ -31,6 +31,34 @@ from common import (
     LLMProvider,
     DEFAULT_ANTHROPIC_MODEL,
 )
+from common.progress_markers import (
+    emit_phase,
+    emit_stat,
+    emit_info,
+    emit_error,
+    emit_warning,
+    emit_progress,
+    emit_tokens,
+    emit_embedding_tokens,
+    emit_request_confirmed,
+    emit_search_started,
+    emit_search_complete,
+    emit_generation_started,
+    emit_generation_progress,
+    emit_generation_complete,
+    emit_dedup_started,
+    emit_dedup_progress,
+    emit_dedup_complete,
+    emit_ranking_started,
+    emit_ranking_progress,
+    emit_ranking_complete,
+    emit_integration_started,
+    emit_integration_progress,
+    emit_integration_complete,
+    emit_complete,
+    start_run,
+    end_run,
+)
 from common.config import (
     get_judge_temperature,
     get_compression_token_threshold,
@@ -428,14 +456,28 @@ def generate_items(
     max_tokens = min(4000, 500 + overshoot_count * 300)
     
     print(f"🧠 Generating {overshoot_count} {mode} items (temp={temperature})...", file=sys.stderr)
+    emit_generation_started(overshoot_count)
     
     # Single LLM call to generate all items
     try:
+        # Estimate input tokens for cost tracking
+        from common.llm import estimate_tokens
+        input_tokens = estimate_tokens(system_prompt + user_content)
+        
         raw_output = llm.generate(
             user_content,
             system_prompt=system_prompt,
             max_tokens=max_tokens,
             temperature=temperature,
+        )
+        
+        # Track token usage and cost
+        output_tokens = estimate_tokens(raw_output)
+        emit_tokens(
+            tokens_in=input_tokens,
+            tokens_out=output_tokens,
+            model=llm.model,
+            operation="generation"
         )
     except Exception as e:
         import traceback
@@ -462,6 +504,7 @@ def generate_items(
         }
     
     print(f"✅ Parsed {len(items)} items from LLM output", file=sys.stderr)
+    emit_generation_complete(len(items))
     
     # Generate embeddings for deduplication/ranking (batch call - much faster)
     # Note: If OpenAI is not configured, this returns zero vectors and dedup is effectively skipped
@@ -469,6 +512,7 @@ def generate_items(
         from common.semantic_search import is_openai_configured
         if not is_openai_configured():
             print("⚠️  OpenAI not configured - skipping deduplication (add OPENAI_API_KEY to enable)", file=sys.stderr)
+            emit_dedup_complete(len(items), 0)  # No dedup, all items pass through
             deduplicate = False  # Skip dedup since all embeddings would be zeros
             rank = False
         else:
@@ -483,11 +527,15 @@ def generate_items(
     if deduplicate and len(items) > 1:
         items = _deduplicate_items(items, threshold=deduplication_threshold)
         print(f"🔍 Deduplicated: {items_before_dedup} → {len(items)} items (threshold={deduplication_threshold})", file=sys.stderr)
+        emit_dedup_started()
+        emit_dedup_complete(len(items), items_before_dedup - len(items))
     
     # Rank items
     if rank and len(items) > 1:
         items = _rank_items(items, mode, llm)
         print(f"⚖️  Ranked {len(items)} items by quality", file=sys.stderr)
+        emit_ranking_started()
+        emit_ranking_complete(len(items))
     
     # Return top item_count items
     final_items = items[:item_count]
@@ -1050,6 +1098,7 @@ def harmonize_all_outputs(
     
     total_files = len(output_files)
     print(f"\n📦 Harmonizing {total_files} output file(s) into {config['aggregated_title']} Bank...")
+    emit_integration_started()
     
     processed = 0
     total_items_processed = 0
@@ -1205,7 +1254,11 @@ def harmonize_all_outputs(
                     total_items_updated += batch_items_updated
                 else:
                     # Fallback: Sequential add_item calls (for local ItemsBank)
+                    total_to_process = len(prepared_items)
                     for i, prep in enumerate(prepared_items):
+                        # Emit intra-phase progress
+                        emit_integration_progress(i + 1, total_to_process)
+                        
                         returned_id = bank.add_item(
                             item_type=mode_id,
                             title=prep["title"],
@@ -1237,6 +1290,15 @@ def harmonize_all_outputs(
                 print(f"   ✅ Added {batch_items_added} new item(s) to unified Items Bank")
             if batch_items_updated > 0:
                 print(f"   🔄 Updated {batch_items_updated} existing item(s) (duplicates)")
+            
+            # Emit integration complete marker
+            emit_integration_complete(
+                items_compared=batch_items_processed,
+                items_added=batch_items_added,
+                items_merged=batch_items_updated,
+                items_filtered=0,  # Will be calculated from difference with sent items
+            )
+            emit_complete(batch_items_added, batch_items_updated)
         
         for f in batch:
             f.unlink()
@@ -1619,6 +1681,9 @@ def process_aggregated_range(
         print(f"📥 Collecting relevant conversations from {len(dates)} days ({start_date} to {end_date})...")
     print(f"🔍 Searching entire date range at once (optimized)...", file=sys.stderr)
     
+    # Emit search phase marker
+    emit_search_started()
+    
     try:
         from common.vector_db import get_supabase_client, get_conversations_by_chat_ids
         from common.semantic_search import search_messages
@@ -1710,6 +1775,13 @@ def process_aggregated_range(
                 days_with_activity = len(set(conv.get("source_date", "") for conv in all_conversations))
                 print(f"✅ Found {len(all_conversations)} conversations across {days_with_activity} active days")
                 print(f"📊 Processing all {len(all_conversations)} conversations (compression will handle size)")
+                
+                # Emit search complete marker
+                emit_search_complete(
+                    conversations_found=len(all_conversations),
+                    days_with_activity=days_with_activity,
+                    days_processed=len(dates)
+                )
             else:
                 all_conversations = []
                 days_with_activity = 0
@@ -1722,6 +1794,14 @@ def process_aggregated_range(
                 print(f"   • Search queries didn't match your chat content", file=sys.stderr)
                 print(f"   Try: Different dates, shorter range, or sync your brain first.", file=sys.stderr)
                 print(f"", file=sys.stderr)
+                
+                # Emit search complete with zero results
+                emit_search_complete(
+                    conversations_found=0,
+                    days_with_activity=0,
+                    days_processed=len(dates)
+                )
+                emit_error("no_messages", f"No relevant conversations for {start_date} to {end_date}")
         else:
             raise RuntimeError("Vector DB not configured")
             
@@ -2103,83 +2183,116 @@ def main():
     
     print(f"🤖 LLM: {llm.provider} ({llm.model})")
     
-    if use_aggregated and mode_name:
-        result = process_aggregated_range(
-            dates_to_process,
-            mode,
-            mode_name,
-            llm=llm,
-            dry_run=args.dry_run,
-            verbose=args.verbose,
+    # Start performance tracking
+    start_run(mode=mode, item_count=args.item_count, days=len(dates_to_process))
+    
+    try:
+        # Emit progress markers for frontend streaming
+        if dates_to_process:
+            date_range_str = f"{dates_to_process[0]} to {dates_to_process[-1]}"
+        elif timestamp_range:
+            from_dt = datetime.fromtimestamp(timestamp_range[0] / 1000)
+            to_dt = datetime.fromtimestamp(timestamp_range[1] / 1000)
+            date_range_str = f"{from_dt.strftime('%m-%d %H:%M')} to {to_dt.strftime('%m-%d %H:%M')}"
+        else:
+            date_range_str = "today"
+        emit_request_confirmed(
+            date_range=date_range_str,
+            requested_items=args.item_count,
             temperature=args.temperature,
-            item_count=args.item_count,
-            dedup_threshold=args.dedup_threshold,
-            timestamp_range=timestamp_range,  # For hours-based processing
-            source_date_range=source_date_range,  # For coverage tracking
-            topic_filter=not args.no_topic_filter,  # IMP-17: Pre-filter covered topics
+            days_processed=len(dates_to_process)
         )
         
-        has_output_key = "has_posts" if mode == "insights" else "has_ideas"
-        output_label = "Posts ✅" if mode == "insights" else "Ideas ✅"
-        
-        # v2 stats: items_generated, items_after_dedup, items_returned
-        items_generated = result.get('items_generated', 0)
-        items_after_dedup = result.get('items_after_dedup', 0)
-        items_returned = result.get('items_returned', 0)
-        
-        print(f"\n📊 SUMMARY:")
-        print(f"   Conversations analyzed: {result['total_conversations']}")
-        print(f"   Days processed: {len(dates_to_process)}")
-        print(f"   Days with activity: {result['days_with_activity']}")
-        print(f"   Days with {'posts' if mode == 'insights' else 'ideas'}: {1 if result[has_output_key] else 0}")
-        print(f"   Items generated: {items_generated}")
-        print(f"   Items after dedup: {items_after_dedup}")
-        print(f"   Items returned: {items_returned}")
-        print(f"   Output: {output_label if result[has_output_key] else 'No output ❌'}")
-        
-        if result["output_file"] and not args.dry_run:
-            print(f"📄 Output: {result['output_file']}")
-            harmonize_all_outputs(mode, llm, source_date_range=source_date_range)
-            # Sync operations are non-critical - don't crash if they fail
-            # The main work (generation + harmonization) is already saved
-            try:
-                if mode == "insights":
-                    sync_posted_status(llm)
-                else:
-                    sync_solved_status(llm)
-            except Exception as e:
-                print(f"⚠️  Sync operation failed (non-critical, items are saved): {e}", file=sys.stderr)
-                print(f"   You can retry sync later via the UI or by running again", file=sys.stderr)
-    else:
-        for date in dates_to_process:
-            result = process_single_date(
-                date,
+        if use_aggregated and mode_name:
+            result = process_aggregated_range(
+                dates_to_process,
                 mode,
+                mode_name,
                 llm=llm,
                 dry_run=args.dry_run,
                 verbose=args.verbose,
                 temperature=args.temperature,
                 item_count=args.item_count,
                 dedup_threshold=args.dedup_threshold,
+                timestamp_range=timestamp_range,  # For hours-based processing
+                source_date_range=source_date_range,  # For coverage tracking
+                topic_filter=not args.no_topic_filter,  # IMP-17: Pre-filter covered topics
             )
+            
             has_output_key = "has_posts" if mode == "insights" else "has_ideas"
-            output_icon = "✅" if result[has_output_key] else "❌"
-            print(f"{output_icon} {date}: {result['conversations']} conversations")
+            output_label = "Posts ✅" if mode == "insights" else "Ideas ✅"
+            
+            # v2 stats: items_generated, items_after_dedup, items_returned
+            items_generated = result.get('items_generated', 0)
+            items_after_dedup = result.get('items_after_dedup', 0)
+            items_returned = result.get('items_returned', 0)
+            
+            print(f"\n📊 SUMMARY:")
+            print(f"   Conversations analyzed: {result['total_conversations']}")
+            print(f"   Days processed: {len(dates_to_process)}")
+            print(f"   Days with activity: {result['days_with_activity']}")
+            print(f"   Days with {'posts' if mode == 'insights' else 'ideas'}: {1 if result[has_output_key] else 0}")
+            print(f"   Items generated: {items_generated}")
+            print(f"   Items after dedup: {items_after_dedup}")
+            print(f"   Items returned: {items_returned}")
+            print(f"   Output: {output_label if result[has_output_key] else 'No output ❌'}")
+            
+            if result["output_file"] and not args.dry_run:
+                print(f"📄 Output: {result['output_file']}")
+                harmonize_all_outputs(mode, llm, source_date_range=source_date_range)
+                # Sync operations are non-critical - don't crash if they fail
+                # The main work (generation + harmonization) is already saved
+                try:
+                    if mode == "insights":
+                        sync_posted_status(llm)
+                    else:
+                        sync_solved_status(llm)
+                except Exception as e:
+                    print(f"⚠️  Sync operation failed (non-critical, items are saved): {e}", file=sys.stderr)
+                    print(f"   You can retry sync later via the UI or by running again", file=sys.stderr)
+        else:
+            for date in dates_to_process:
+                result = process_single_date(
+                    date,
+                    mode,
+                    llm=llm,
+                    dry_run=args.dry_run,
+                    verbose=args.verbose,
+                    temperature=args.temperature,
+                    item_count=args.item_count,
+                    dedup_threshold=args.dedup_threshold,
+                )
+                has_output_key = "has_posts" if mode == "insights" else "has_ideas"
+                output_icon = "✅" if result[has_output_key] else "❌"
+                print(f"{output_icon} {date}: {result['conversations']} conversations")
+            
+            if not args.dry_run:
+                harmonize_all_outputs(mode, llm)
+                # Sync operations are non-critical - don't crash if they fail
+                # The main work (generation + harmonization) is already saved
+                try:
+                    if mode == "insights":
+                        sync_posted_status(llm)
+                    else:
+                        sync_solved_status(llm)
+                except Exception as e:
+                    print(f"⚠️  Sync operation failed (non-critical, items are saved): {e}", file=sys.stderr)
+                    print(f"   You can retry sync later via the UI or by running again", file=sys.stderr)
         
-        if not args.dry_run:
-            harmonize_all_outputs(mode, llm)
-            # Sync operations are non-critical - don't crash if they fail
-            # The main work (generation + harmonization) is already saved
-            try:
-                if mode == "insights":
-                    sync_posted_status(llm)
-                else:
-                    sync_solved_status(llm)
-            except Exception as e:
-                print(f"⚠️  Sync operation failed (non-critical, items are saved): {e}", file=sys.stderr)
-                print(f"   You can retry sync later via the UI or by running again", file=sys.stderr)
+        # End performance tracking (success path)
+        perf_summary = end_run(success=True)
+        if perf_summary:
+            print(f"\n⏱️  Performance: {perf_summary.get('total_elapsed_seconds', 0):.1f}s total, ${perf_summary.get('total_cost_usd', 0):.4f} cost")
+        
+        return 0
     
-    return 0
+    except Exception as e:
+        # End performance tracking (error path)
+        error_msg = str(e)
+        emit_error("script_error", f"Generation failed: {error_msg}")
+        end_run(success=False, error=error_msg)
+        print(f"\n❌ Error: {error_msg}", file=sys.stderr)
+        raise  # Re-raise to let caller handle
 
 
 if __name__ == "__main__":
