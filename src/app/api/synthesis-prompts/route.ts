@@ -84,23 +84,26 @@ export async function GET() {
     const defaultPrompts = await loadDefaultPrompts();
     const configPath = path.join(process.cwd(), "data", "config.json");
     
-    let customPrompts = {};
+    let customPrompts: Partial<SynthesisPrompts> = {};
     try {
       const configContent = await fs.readFile(configPath, "utf-8");
       const config = JSON.parse(configContent);
-      customPrompts = config.themeSynthesis?.prompts || {};
+      customPrompts = (config.themeSynthesis?.prompts || {}) as Partial<SynthesisPrompts>;
     } catch {
       // Config doesn't exist yet, use defaults
     }
 
     // Return prompts with metadata
-    const promptsWithMeta = Object.entries(PROMPT_METADATA).map(([key, meta]) => ({
-      id: key,
-      label: meta.label,
-      description: meta.description,
-      content: customPrompts[key] || defaultPrompts[key as keyof SynthesisPrompts],
-      isDefault: !customPrompts[key],
-    }));
+    const promptsWithMeta = Object.entries(PROMPT_METADATA).map(([key, meta]) => {
+      const promptKey = key as keyof SynthesisPrompts;
+      return {
+        id: key,
+        label: meta.label,
+        description: meta.description,
+        content: customPrompts[promptKey] || defaultPrompts[promptKey],
+        isDefault: !customPrompts[promptKey],
+      };
+    });
 
     return NextResponse.json({
       success: true,
