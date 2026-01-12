@@ -172,6 +172,16 @@ class ItemsBankSupabase:
             if existing:
                 return existing  # Return existing item ID instead of creating new
         
+        # DATE FORMAT STANDARD:
+        # - first_seen / last_seen: YYYY-MM format (month-year, backward compatibility)
+        # - first_seen_date / last_seen_date: YYYY-MM-DD format (full date, preferred)
+        # - source_start_date / source_end_date: YYYY-MM-DD format (full date, Coverage Intelligence)
+        # Convert first_seen_date from YYYY-MM to YYYY-MM-DD if needed
+        if first_seen_date and len(first_seen_date) == 7:  # YYYY-MM format
+            first_seen_date_full = f"{first_seen_date}-01"  # Use first day of month
+        else:
+            first_seen_date_full = first_seen_date or datetime.now().strftime("%Y-%m-%d")
+        
         # Prepare item data (simplified schema v2)
         item_data = {
             "id": item_id,
@@ -180,16 +190,6 @@ class ItemsBankSupabase:
             "description": description,
             "status": "active",
             "occurrence": 1,
-            # DATE FORMAT STANDARD:
-            # - first_seen / last_seen: YYYY-MM format (month-year, backward compatibility)
-            # - first_seen_date / last_seen_date: YYYY-MM-DD format (full date, preferred)
-            # - source_start_date / source_end_date: YYYY-MM-DD format (full date, Coverage Intelligence)
-            # Convert first_seen_date from YYYY-MM to YYYY-MM-DD if needed
-            if first_seen_date and len(first_seen_date) == 7:  # YYYY-MM format
-                first_seen_date_full = f"{first_seen_date}-01"  # Use first day of month
-            else:
-                first_seen_date_full = first_seen_date or datetime.now().strftime("%Y-%m-%d")
-            
             "first_seen": first_seen_date[:7] if first_seen_date and len(first_seen_date) >= 7 else datetime.now().strftime("%Y-%m"),
             "last_seen": datetime.now().strftime("%Y-%m"),
             # Day-level precision dates for analytics
