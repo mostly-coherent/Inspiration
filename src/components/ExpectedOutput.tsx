@@ -4,7 +4,6 @@ interface ExpectedOutputProps {
   tool: ToolType;
   days: number;
   hours?: number; // For time-based windows (e.g., last 24 hours)
-  itemCount: number;
   temperature: number;
   estimatedCost: number;
 }
@@ -13,7 +12,6 @@ export function ExpectedOutput({
   tool,
   days,
   hours,
-  itemCount,
   temperature,
   estimatedCost,
 }: ExpectedOutputProps) {
@@ -26,11 +24,11 @@ export function ExpectedOutput({
   return (
     <div className="mt-4 p-4 bg-gradient-to-r from-white/5 to-white/10 rounded-xl border border-white/10">
       <div className="grid grid-cols-3 gap-4 text-center">
-        {/* Items Generated */}
+        {/* Mode */}
         <div className="space-y-1">
-          <div className="text-2xl font-bold text-inspiration-ideas">{itemCount}</div>
+          <div className="text-2xl font-bold text-inspiration-ideas">All</div>
           <div className="text-xs text-adobe-gray-400">
-            {itemCount === 1 ? "item" : "items"}
+            quality {toolLabel}
           </div>
         </div>
         
@@ -49,10 +47,10 @@ export function ExpectedOutput({
         </div>
       </div>
       
-      {/* v2: Simplified Explanation - Item-centric flow */}
+      {/* Simplified Explanation */}
       <div className="mt-3 pt-3 border-t border-white/10 text-xs text-adobe-gray-500">
         <span className="text-adobe-gray-400">
-          Generates {itemCount} {toolLabel} at temp {temperature.toFixed(1)}, then deduplicates similar ones.
+          Extracts all quality {toolLabel} at temp {temperature.toFixed(1)}, deduplicates, and adds to Library.
         </span>
       </div>
     </div>

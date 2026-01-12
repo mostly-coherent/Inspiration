@@ -24,7 +24,6 @@ interface SeekProgressData {
   // Request confirmation
   query?: string;
   daysBack?: number;
-  topK?: number;
   minSimilarity?: number;
   
   // Search phase
@@ -66,8 +65,6 @@ interface SeekSectionProps {
   setQuery: (q: string) => void;
   daysBack: number;
   setDaysBack: (d: number) => void;
-  topK: number;
-  setTopK: (k: number) => void;
   minSimilarity: number;
   setMinSimilarity: (s: number) => void;
   isSeeking: boolean;
@@ -82,8 +79,6 @@ export function SeekSection({
   setQuery,
   daysBack,
   setDaysBack,
-  topK,
-  setTopK,
   minSimilarity,
   setMinSimilarity,
   isSeeking,
@@ -102,6 +97,15 @@ export function SeekSection({
   const [progressData, setProgressData] = useState<SeekProgressData>({});
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
+  
+  // S8 Fix: Use ref to track latest progress data (avoid stale closure)
+  const progressDataRef = useRef<SeekProgressData>({});
+  
+  // S3/S10 Fix: Track if complete marker was received
+  const receivedCompleteMarker = useRef<boolean>(false);
+  
+  // S4 Fix: Streaming timeout (60 seconds)
+  const STREAM_TIMEOUT_MS = 60000;
 
   // Clean up interval on unmount
   useEffect(() => {
@@ -168,12 +172,14 @@ export function SeekSection({
     setResult(null);
     setProgressPhase("confirming");
     setProgressMessage("Starting search...");
-    setProgressData({
+    const initialData = {
       query: query.trim(),
       daysBack,
-      topK,
       minSimilarity,
-    });
+    };
+    setProgressData(initialData);
+    progressDataRef.current = initialData; // S8 Fix: Reset ref
+    receivedCompleteMarker.current = false; // S3/S10 Fix: Reset marker
     setElapsedSeconds(0);
 
     // Issue #26: Fetch library count before search (for verification)
@@ -206,7 +212,6 @@ export function SeekSection({
         body: JSON.stringify({
           query: query.trim(),
           daysBack,
-          topK,
           minSimilarity,
         }),
         signal: abortController.current.signal,
@@ -224,11 +229,33 @@ export function SeekSection({
       const decoder = new TextDecoder();
       let buffer = "";
       let streamResult: SeekResult | null = null;
+      
+      // S4 Fix: Timeout watchdog
+      let lastActivityTime = Date.now();
+      
+      const readWithTimeout = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
+        return Promise.race([
+          reader.read(),
+          new Promise<never>((_, reject) => {
+            const checkTimeout = () => {
+              if (Date.now() - lastActivityTime > STREAM_TIMEOUT_MS) {
+                reject(new Error("Stream timeout - no response for 60 seconds. Check your Library for results."));
+              } else {
+                setTimeout(checkTimeout, 5000);
+              }
+            };
+            setTimeout(checkTimeout, STREAM_TIMEOUT_MS);
+          }),
+        ]);
+      };
 
       // Process SSE stream
       while (true) {
-        const { done, value } = await reader.read();
+        const { done, value } = await readWithTimeout();
         if (done) break;
+        
+        // Reset timeout on activity
+        lastActivityTime = Date.now();
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
@@ -248,6 +275,8 @@ export function SeekSection({
                 break;
                 
               case "stat":
+                // S8 Fix: Update both state and ref
+                progressDataRef.current = { ...progressDataRef.current, [data.key]: data.value };
                 setProgressData(prev => ({
                   ...prev,
                   [data.key]: data.value,
@@ -264,6 +293,13 @@ export function SeekSection({
                 break;
                 
               case "progress":
+                // S8 Fix: Update both state and ref
+                progressDataRef.current = { 
+                  ...progressDataRef.current, 
+                  currentItem: data.current,
+                  totalItems: data.total,
+                  progressLabel: data.label,
+                };
                 setProgressData(prev => ({
                   ...prev,
                   currentItem: data.current,
@@ -273,6 +309,13 @@ export function SeekSection({
                 break;
                 
               case "cost":
+                // S8 Fix: Update both state and ref
+                progressDataRef.current = { 
+                  ...progressDataRef.current, 
+                  tokensIn: (progressDataRef.current.tokensIn || 0) + (data.tokensIn || 0),
+                  tokensOut: (progressDataRef.current.tokensOut || 0) + (data.tokensOut || 0),
+                  cumulativeCost: data.cumulative || data.cost || 0,
+                };
                 setProgressData(prev => ({
                   ...prev,
                   tokensIn: (prev.tokensIn || 0) + (data.tokensIn || 0),
@@ -282,6 +325,11 @@ export function SeekSection({
                 break;
                 
               case "warning":
+                // S8 Fix: Update both state and ref
+                progressDataRef.current = { 
+                  ...progressDataRef.current, 
+                  warnings: [...(progressDataRef.current.warnings || []), data.message],
+                };
                 setProgressData(prev => ({
                   ...prev,
                   warnings: [...(prev.warnings || []), data.message],
@@ -289,6 +337,12 @@ export function SeekSection({
                 break;
                 
               case "perf":
+                // S8 Fix: Update both state and ref
+                progressDataRef.current = { 
+                  ...progressDataRef.current, 
+                  totalSeconds: data.totalSeconds,
+                  totalCost: data.cost,
+                };
                 setProgressData(prev => ({
                   ...prev,
                   totalSeconds: data.totalSeconds,
@@ -301,6 +355,7 @@ export function SeekSection({
                 break;
                 
               case "complete":
+                receivedCompleteMarker.current = true; // S3/S10 Fix
                 setProgressPhase("complete");
                 setProgressMessage("Search complete!");
                 break;
@@ -311,7 +366,13 @@ export function SeekSection({
         }
       }
 
+      // S3/S10 Fix: Check if complete marker was received before verifying
+      if (!receivedCompleteMarker.current) {
+        console.warn("[Seek] Stream ended without complete marker - checking Library for partial results");
+      }
+      
       // Issue #26: Verify Library count increased (with retry for eventual consistency)
+      // S8 Fix: Use ref instead of state to avoid stale closure
       const fetchLibraryCountWithRetry = async (retries = 3, delayMs = 500): Promise<number | null> => {
         for (let i = 0; i < retries; i++) {
           try {
@@ -325,8 +386,9 @@ export function SeekSection({
             
             if (data.success) {
               const newCount = data.stats?.totalItems || 0;
-              const useCasesAdded = progressData.useCasesAdded || 0;
-              const useCasesMerged = progressData.useCasesMerged || 0;
+              // S8 Fix: Use ref instead of state
+              const useCasesAdded = progressDataRef.current.useCasesAdded || 0;
+              const useCasesMerged = progressDataRef.current.useCasesMerged || 0;
               
               // If we added items but count didn't increase, retry
               // If all items were duplicates (useCasesAdded=0, useCasesMerged>0), count won't increase but that's expected
@@ -349,25 +411,35 @@ export function SeekSection({
       if (finalCount !== null && libraryCountBefore !== null) {
         const actualAdded = finalCount - libraryCountBefore;
         console.log(`[Seek] Library count: ${libraryCountBefore} → ${finalCount} (${actualAdded > 0 ? '+' : ''}${actualAdded})`);
+        
+        // S3 Fix: If no complete marker but Library count increased, items were saved
+        if (!receivedCompleteMarker.current && actualAdded > 0) {
+          console.log(`[Seek] ${actualAdded} items were saved despite stream ending early`);
+        }
       }
 
       // Set the final result
+      // S8 Fix: Use ref to get current values
+      const finalData = progressDataRef.current;
       if (streamResult) {
         setResult(streamResult);
       } else {
-        // Build result from progress data
+        // Build result from progress data (use ref to avoid stale closure)
         setResult({
-          success: progressPhase !== "error",
+          success: receivedCompleteMarker.current,
           query: query.trim(),
           stats: {
-            conversationsAnalyzed: progressData.conversationsFound || 0,
+            conversationsAnalyzed: finalData.conversationsFound || 0,
             daysSearched: daysBack,
-            useCasesFound: progressData.useCasesAdded || progressData.useCasesParsed || 0,
+            useCasesFound: finalData.useCasesAdded || finalData.useCasesParsed || 0,
           },
-          error: progressPhase === "error" ? progressMessage : undefined,
+          error: !receivedCompleteMarker.current ? "Search may have ended unexpectedly. Check your Library for results." : undefined,
         });
       }
     } catch (error) {
+      // S8 Fix: Use ref to get current values
+      const errorData = progressDataRef.current;
+      
       // Check if this was an abort
       if (error instanceof Error && error.name === "AbortError") {
         setProgressPhase("stopped");
@@ -375,7 +447,7 @@ export function SeekSection({
           success: false,
           query: query.trim(),
           stats: {
-            conversationsAnalyzed: progressData.conversationsFound || 0,
+            conversationsAnalyzed: errorData.conversationsFound || 0,
             daysSearched: daysBack,
             useCasesFound: 0,
           },
@@ -383,16 +455,17 @@ export function SeekSection({
         });
       } else {
         setProgressPhase("error");
-        setProgressMessage(error instanceof Error ? error.message : "Unknown error");
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        setProgressMessage(errorMessage);
         setResult({
           success: false,
           query: query.trim(),
           stats: {
-            conversationsAnalyzed: 0,
+            conversationsAnalyzed: errorData.conversationsFound || 0,
             daysSearched: daysBack,
             useCasesFound: 0,
           },
-          error: error instanceof Error ? error.message : "Unknown error",
+          error: errorMessage,
         });
       }
     } finally {
@@ -403,7 +476,7 @@ export function SeekSection({
       abortController.current = null;
       setIsSeeking(false);
     }
-  }, [query, daysBack, topK, minSimilarity, lastSearchTime, abortController, setIsSeeking, setResult, progressPhase, progressData, progressMessage, phaseInfo]);
+  }, [query, daysBack, minSimilarity, lastSearchTime, abortController, setIsSeeking, setResult, progressPhase, progressData, progressMessage, phaseInfo]);
 
   const handleStop = () => {
     setProgressPhase("stopping");
@@ -429,23 +502,23 @@ export function SeekSection({
 
       {/* Query Input */}
       <div className="space-y-4">
-        <div>
-          <label htmlFor="seek-query" className="block text-sm font-medium text-adobe-gray-300 mb-2">
-            Your Insight or Idea
-          </label>
-          <textarea
-            id="seek-query"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="e.g., 'I should build a tool that helps with X' or 'Key insight about Y'"
-            className="input-field w-full min-h-[120px] resize-y"
-            disabled={isSeeking}
-            aria-describedby="seek-query-help"
-          />
-          <p id="seek-query-help" className="text-xs text-adobe-gray-500 mt-1">
-            Describe your insight or idea. The system will search your chat history for related conversations.
-          </p>
-        </div>
+          <div>
+            <label htmlFor="seek-query" className="block text-sm font-medium text-adobe-gray-300 mb-2">
+              Your Insight or Idea
+            </label>
+            <textarea
+              id="seek-query"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="e.g., 'I should build a tool that helps with X' or 'Key insight about Y'"
+              className="input-field w-full min-h-[120px] resize-y"
+              disabled={isSeeking}
+              aria-describedby="seek-query-help"
+            />
+            <p id="seek-query-help" className="text-xs text-adobe-gray-500 mt-1">
+              Describe your insight or idea. The system will search your chat history for related conversations.
+            </p>
+          </div>
 
         {/* Settings */}
         <div className="grid grid-cols-3 gap-4">
@@ -460,21 +533,6 @@ export function SeekSection({
               max={365}
               value={daysBack}
               onChange={(e) => setDaysBack(parseInt(e.target.value))}
-              className="slider-track w-full"
-              disabled={isSeeking}
-            />
-          </div>
-          <div>
-            <label htmlFor="seek-top-k" className="block text-sm text-adobe-gray-400 mb-1">
-              Top Results: {topK}
-            </label>
-            <input
-              id="seek-top-k"
-              type="range"
-              min={5}
-              max={50}
-              value={topK}
-              onChange={(e) => setTopK(parseInt(e.target.value))}
               className="slider-track w-full"
               disabled={isSeeking}
             />
@@ -503,7 +561,7 @@ export function SeekSection({
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-medium text-white flex items-center gap-3">
                 {progressPhase !== "complete" && progressPhase !== "stopped" && progressPhase !== "error" && (
-                  <LoadingSpinner />
+              <LoadingSpinner />
                 )}
                 <span>{phaseInfo[progressPhase]?.icon} {phaseInfo[progressPhase]?.label}</span>
               </h3>
@@ -516,15 +574,15 @@ export function SeekSection({
                 )}
                 <span className="text-sm text-adobe-gray-400">
                   {formatTime(elapsedSeconds)} elapsed
-                </span>
+              </span>
                 {progressPhase !== "complete" && progressPhase !== "stopped" && progressPhase !== "error" && (
-                  <button
-                    onClick={handleStop}
+            <button
+              onClick={handleStop}
                     className="px-3 py-1.5 text-sm font-medium text-red-400 bg-red-400/10 hover:bg-red-400/20 border border-red-400/30 rounded-lg transition-colors flex items-center gap-2"
-                  >
-                    <StopIcon />
+            >
+              <StopIcon />
                     Stop
-                  </button>
+            </button>
                 )}
               </div>
             </div>

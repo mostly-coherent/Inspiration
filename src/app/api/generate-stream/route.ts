@@ -14,6 +14,7 @@ const DEFAULT_GENERATION: GenerationDefaults = {
   deduplicationThreshold: 0.80,
   maxTokens: 4000,
   maxTokensJudge: 500,
+  softCap: 50,
 };
 
 // Load generation defaults from config
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
 
       try {
         const body: GenerateRequest = await request.json();
-        const { tool, theme, modeId, mode, days, itemCount, temperature, fromDate, toDate, dryRun } = body;
+        const { tool, theme, modeId, mode, days, temperature, fromDate, toDate, dryRun } = body;
         
         // Get abort signal from request
         const signal = request.signal;
@@ -128,11 +129,12 @@ export async function POST(request: NextRequest) {
         
         // Override with custom values if provided, or use mode defaults, or use global defaults
         // Priority: per-request > per-mode > global config > hardcoded fallback
-        const effectiveItemCount = itemCount ?? modeConfig?.itemCount ?? 10;
+        // UX-1: itemCount is now softCap from config - Python extracts all quality items up to this limit
         const effectiveTemperature = temperature ?? modeSettings?.temperature ?? modeConfig?.temperature ?? generationDefaults.temperature;
+        const effectiveSoftCap = generationDefaults.softCap ?? 50;
         
-        args.push("--item-count", effectiveItemCount.toString());
         args.push("--temperature", effectiveTemperature.toString());
+        args.push("--item-count", effectiveSoftCap.toString());
 
         if (dryRun) {
           args.push("--dry-run");
@@ -204,7 +206,7 @@ async function runPythonScriptStream(
 
     // Handle abort signal
     if (signal) {
-      signal.addEventListener("abort", () => {
+      signal.addEventListener("abort", async () => {
         isAborted = true;
         send({ type: "log", message: "Request cancelled, stopping..." });
         try {
@@ -214,8 +216,30 @@ async function runPythonScriptStream(
               proc.kill("SIGKILL");
             }
           }, 2000);
+          
+          // H7 FIX: Clean up partially written output files on abort
+          // Files with .tmp suffix are incomplete writes
+          const fs = await import("fs/promises");
+          const path = await import("path");
+          const outputDirs = [
+            path.join(cwd, "data/output/ideas"),
+            path.join(cwd, "data/output/insights"),
+          ];
+          for (const dir of outputDirs) {
+            try {
+              const files = await fs.readdir(dir);
+              for (const file of files) {
+                if (file.endsWith(".tmp")) {
+                  await fs.unlink(path.join(dir, file));
+                  logger.log(`[Abort Cleanup] Deleted incomplete file: ${file}`);
+                }
+              }
+            } catch {
+              // Directory may not exist - that's fine
+            }
+          }
         } catch (err) {
-          logger.error("[Inspiration] Error killing process:", err);
+          logger.error("[Inspiration] Error during abort cleanup:", err);
         }
         resolve();
       });

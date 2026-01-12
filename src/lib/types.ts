@@ -29,6 +29,7 @@ export interface GenerationDefaults {
   deduplicationThreshold: number; // 0.0-1.0, similarity to count as duplicate
   maxTokens: number; // Maximum tokens for generation
   maxTokensJudge: number; // Maximum tokens for judging
+  softCap: number; // Maximum items to extract per run (UX-1: soft cap, extracts all quality items up to this limit)
 }
 
 // v3: Seek Mode Defaults - Control how Seek searches
@@ -76,8 +77,6 @@ export interface ModeConfig {
   description: string;
   days: number;
   hours?: number; // For time-based windows (e.g., last 24 hours)
-  itemCount: number; // v2: Number of items to generate (replaces bestOf)
-  bestOf?: number; // Deprecated: kept for backward compatibility
   temperature: number;
   icon: string;
 }
@@ -92,8 +91,6 @@ export interface GenerateRequest {
   // Custom overrides
   days?: number;
   hours?: number; // For time-based windows (e.g., last 24 hours)
-  itemCount?: number; // v2: Number of items to generate
-  bestOf?: number; // Deprecated: use itemCount instead
   temperature?: number;
   deduplicationThreshold?: number; // v2: Similarity threshold for deduplication (0.0-1.0)
   fromDate?: string;
@@ -155,7 +152,6 @@ export const PRESET_MODES: ModeConfig[] = [
     description: "Last 24 hours of activity",
     days: 0, // Not used when hours is set
     hours: 24,
-    itemCount: 5,
     temperature: 0.3,
     icon: "⚡",
   },
@@ -164,7 +160,6 @@ export const PRESET_MODES: ModeConfig[] = [
     label: "Last 14 days",
     description: "2-week patterns",
     days: 14,
-    itemCount: 10,
     temperature: 0.4,
     icon: "🏃",
   },
@@ -173,7 +168,6 @@ export const PRESET_MODES: ModeConfig[] = [
     label: "Last 30 days",
     description: "Monthly patterns",
     days: 30,
-    itemCount: 15,
     temperature: 0.5,
     icon: "📅",
   },
@@ -182,7 +176,6 @@ export const PRESET_MODES: ModeConfig[] = [
     label: "Last 90 days",
     description: "Full history",
     days: 90,
-    itemCount: 20,
     temperature: 0.5,
     icon: "🎯",
   },

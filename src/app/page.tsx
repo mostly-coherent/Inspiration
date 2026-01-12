@@ -91,7 +91,6 @@ export default function Home() {
   const [isSeeking, setIsSeeking] = useState(false);
   const [seekResult, setSeekResult] = useState<SeekResult | null>(null);
   const [reverseDaysBack, setReverseDaysBack] = useState(90);
-  const [reverseTopK, setReverseTopK] = useState(10);
   const [reverseMinSimilarity, setReverseMinSimilarity] = useState(0.0);
   const seekAbortController = useRef<AbortController | null>(null);
   
@@ -102,9 +101,8 @@ export default function Home() {
         const res = await fetch("/api/config");
         const data = await res.json();
         if (data.success && data.config?.seekDefaults) {
-          const { daysBack, topK, minSimilarity } = data.config.seekDefaults;
+          const { daysBack, minSimilarity } = data.config.seekDefaults;
           if (daysBack !== undefined) setReverseDaysBack(daysBack);
-          if (topK !== undefined) setReverseTopK(topK);
           if (minSimilarity !== undefined) setReverseMinSimilarity(minSimilarity);
         }
       } catch (err) {
@@ -149,10 +147,11 @@ export default function Home() {
   const [progressErrorExplanation, setProgressErrorExplanation] = useState<ErrorExplanation | undefined>(undefined);
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
   const abortController = useRef<AbortController | null>(null);
+  // Ref to track accumulated progress data (avoids stale closure in async functions)
+  const progressPhaseDataRef = useRef<ProgressPhaseData>({});
 
   // Advanced settings
   const [customDays, setCustomDays] = useState<number>(14);
-  const [customItemCount, setCustomItemCount] = useState<number>(10);
   const [customTemperature, setCustomTemperature] = useState<number>(0.4);
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
@@ -220,12 +219,6 @@ export default function Home() {
     
     return inputCost + outputCost + embeddingCost;
   }, []);
-
-  // v2: Get current itemCount value (memoized)
-  const getCurrentItemCount = useCallback((): number => {
-    if (showAdvanced) return customItemCount;
-    return currentModeConfig?.itemCount ?? 10;
-  }, [showAdvanced, customItemCount, currentModeConfig]);
 
   // Helper to calculate days from date range (memoized)
   // Note: 90-day limit removed in v1 - Vector DB enables unlimited date ranges
@@ -349,7 +342,7 @@ export default function Home() {
    */
   const executeGeneration = async (
     body: Record<string, unknown>,
-    displayInfo: { tool: ToolType; mode: PresetMode; itemCount: number }
+    displayInfo: { tool: ToolType; mode: PresetMode }
   ) => {
     setIsGenerating(true);
     setResult(null);
@@ -369,11 +362,12 @@ export default function Home() {
     
     setProgressPhase("confirming");
     setProgressMessage("Confirming request parameters...");
-    setProgressPhaseData({
+    const initialPhaseData = {
       dateRange: dateRangeDisplay,
-      requestedItems: displayInfo.itemCount,
       temperature: body.temperature as number ?? 0.5,
-    });
+    };
+    setProgressPhaseData(initialPhaseData);
+    progressPhaseDataRef.current = initialPhaseData; // Also reset ref
     
     // Fetch library count before generation
     try {
@@ -389,7 +383,9 @@ export default function Home() {
     // Create new AbortController for this request
     abortController.current = new AbortController();
     
-    const totalEstimate = estimateTime(displayInfo.itemCount);
+    // Estimate time based on date range (items unknown until generation)
+    const days = body.days as number ?? 14;
+    const totalEstimate = estimateTime(days * 2); // Rough estimate: ~2 items per day
     setEstimatedSeconds(totalEstimate);
 
     // Start elapsed time tracking
@@ -432,10 +428,47 @@ export default function Home() {
       let buffer = "";
       let streamError: string | null = null;
       let receivedCompleteMarker = false;
+      
+      // C3/C5 FIX: Add timeout for stalled streams (60 seconds between updates)
+      const STREAM_TIMEOUT_MS = 60000;
+      let lastActivityTime = Date.now();
+      
+      const readWithTimeout = async (): Promise<ReadableStreamReadResult<Uint8Array> | null> => {
+        const timeoutPromise = new Promise<null>((resolve) => {
+          const checkTimeout = () => {
+            if (Date.now() - lastActivityTime > STREAM_TIMEOUT_MS) {
+              resolve(null);
+            } else {
+              setTimeout(checkTimeout, 5000); // Check every 5 seconds
+            }
+          };
+          setTimeout(checkTimeout, STREAM_TIMEOUT_MS);
+        });
+        
+        try {
+          const result = await Promise.race([
+            reader.read(),
+            timeoutPromise
+          ]);
+          if (result) {
+            lastActivityTime = Date.now(); // Reset timeout on activity
+          }
+          return result;
+        } catch {
+          return null;
+        }
+      };
 
       // Process SSE stream
       while (true) {
-        const { done, value } = await reader.read();
+        const result = await readWithTimeout();
+        
+        // C3/C5 FIX: Handle timeout
+        if (result === null) {
+          throw new Error("Stream timeout - no response for 60 seconds. The generation may still be running. Check the Library for results.");
+        }
+        
+        const { done, value } = result;
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
@@ -460,11 +493,9 @@ export default function Home() {
                 break;
                 
               case "stat":
-                // Update phase data with streaming stats
-                setProgressPhaseData(prev => ({
-                  ...prev,
-                  [data.key]: data.value,
-                }));
+                // Update phase data with streaming stats (both state and ref)
+                progressPhaseDataRef.current = { ...progressPhaseDataRef.current, [data.key]: data.value };
+                setProgressPhaseData(prev => ({ ...prev, [data.key]: data.value }));
                 break;
                 
               case "info":
@@ -477,48 +508,60 @@ export default function Home() {
                 
               case "complete":
                 receivedCompleteMarker = true;
-                setProgress(100);
+      setProgress(100);
                 setProgressPhase("complete");
                 setProgressMessage("Generation complete!");
                 break;
                 
               case "progress":
                 // Intra-phase progress (e.g., "processing item 5 of 22")
-                setProgressPhaseData(prev => ({
-                  ...prev,
-                  currentItem: data.current,
-                  totalItems: data.total,
-                  progressLabel: data.label,
-                }));
+                {
+                  const update = { currentItem: data.current, totalItems: data.total, progressLabel: data.label };
+                  progressPhaseDataRef.current = { ...progressPhaseDataRef.current, ...update };
+                  setProgressPhaseData(prev => ({ ...prev, ...update }));
+                }
                 break;
                 
               case "cost":
                 // Token/cost tracking
-                setProgressPhaseData(prev => ({
-                  ...prev,
-                  tokensIn: (prev.tokensIn || 0) + (data.tokensIn || 0),
-                  tokensOut: (prev.tokensOut || 0) + (data.tokensOut || 0),
-                  cumulativeCost: data.cumulative || data.cost || 0,
-                }));
+                {
+                  const ref = progressPhaseDataRef.current;
+                  const update = {
+                    tokensIn: (ref.tokensIn || 0) + (data.tokensIn || 0),
+                    tokensOut: (ref.tokensOut || 0) + (data.tokensOut || 0),
+                    cumulativeCost: data.cumulative || data.cost || 0,
+                  };
+                  progressPhaseDataRef.current = { ...ref, ...update };
+                  setProgressPhaseData(prev => ({
+                    ...prev,
+                    tokensIn: (prev.tokensIn || 0) + (data.tokensIn || 0),
+                    tokensOut: (prev.tokensOut || 0) + (data.tokensOut || 0),
+                    cumulativeCost: data.cumulative || data.cost || 0,
+                  }));
+                }
                 break;
                 
               case "warning":
                 // Slow phase warnings
-                setProgressPhaseData(prev => ({
-                  ...prev,
-                  warnings: [...(prev.warnings || []), data.message],
-                }));
+                {
+                  const ref = progressPhaseDataRef.current;
+                  progressPhaseDataRef.current = { ...ref, warnings: [...(ref.warnings || []), data.message] };
+                  setProgressPhaseData(prev => ({ ...prev, warnings: [...(prev.warnings || []), data.message] }));
+                }
                 break;
                 
               case "perf":
                 // Performance summary at end of run
-                setProgressPhaseData(prev => ({
-                  ...prev,
-                  totalSeconds: data.totalSeconds,
-                  totalCost: data.cost,
-                  tokensIn: data.tokensIn,
-                  tokensOut: data.tokensOut,
-                }));
+                {
+                  const update = {
+                    totalSeconds: data.totalSeconds,
+                    totalCost: data.cost,
+                    tokensIn: data.tokensIn,
+                    tokensOut: data.tokensOut,
+                  };
+                  progressPhaseDataRef.current = { ...progressPhaseDataRef.current, ...update };
+                  setProgressPhaseData(prev => ({ ...prev, ...update }));
+                }
                 break;
             }
           } catch {
@@ -532,9 +575,26 @@ export default function Home() {
         throw new Error(streamError);
       }
 
-      // Check if stream closed without complete marker (e.g., Python crash)
+      // C3 FIX: Check if stream closed without complete marker (e.g., Python crash)
+      // Try to verify if items were actually saved before giving up
       if (!receivedCompleteMarker) {
-        throw new Error("Generation stream closed unexpectedly - items may not have been saved. Please check the Library or try again.");
+        // Check if Library count increased - items may have been saved before crash
+        try {
+          const checkRes = await fetch("/api/items?view=items");
+          const checkData = await checkRes.json();
+          const currentCount = checkData.stats?.totalItems || 0;
+          const itemsAdded = progressPhaseDataRef.current.itemsAdded || 0;
+          
+          if (itemsAdded > 0 && currentCount > (libraryCountBefore || 0)) {
+            // Items were saved! Continue with partial success
+            console.warn("[Generation] Stream ended without complete marker, but items were saved");
+            setProgressMessage("Generation completed (stream ended early but items were saved)");
+          } else {
+            throw new Error("Generation stream closed unexpectedly - items may not have been saved. Please check the Library or try again.");
+          }
+        } catch (checkErr) {
+          throw new Error("Generation stream closed unexpectedly - items may not have been saved. Please check the Library or try again.");
+        }
       }
 
       // Fetch final Library count with retry logic
@@ -554,8 +614,10 @@ export default function Home() {
             if (data.success) {
               const newCount = data.stats?.totalItems || 0;
               // Verify count increased (if we added items) OR harmonization completed (even if all duplicates)
-              const itemsAdded = progressPhaseData.itemsAdded || 0;
-              const itemsMerged = progressPhaseData.itemsMerged || 0;
+              // Use ref to get current values (avoids stale closure)
+              const refData = progressPhaseDataRef.current;
+              const itemsAdded = refData.itemsAdded || 0;
+              const itemsMerged = refData.itemsMerged || 0;
               const hasChanges = itemsAdded > 0 || itemsMerged > 0;
               
               // If we added items but count didn't increase, retry (DB might not be updated yet)
@@ -570,8 +632,8 @@ export default function Home() {
               // If all duplicates (itemsAdded=0, itemsMerged>0), count won't increase but that's expected
               // Return the count anyway - harmonization succeeded even if no new items
               return newCount;
-            }
-          } catch (e) {
+          }
+        } catch (e) {
             console.error(`[Library] Fetch attempt ${i + 1} failed:`, e);
           }
           delayMs = Math.min(delayMs * 2, 2000); // Exponential backoff
@@ -584,24 +646,25 @@ export default function Home() {
         setLibraryCountAfter(finalCount);
       }
 
-      // Create result object from streamed data
+      // Create result object from streamed data (use ref to avoid stale closure)
+      const finalData = progressPhaseDataRef.current;
       const result: GenerateResult = {
         success: true,
         tool: displayInfo.tool,
         mode: displayInfo.mode,
         stats: {
-          daysProcessed: progressPhaseData.daysProcessed || 0,
-          daysWithActivity: progressPhaseData.daysWithActivity || 0,
-          daysWithOutput: progressPhaseData.daysWithActivity || 0,
-          itemsGenerated: progressPhaseData.itemsGenerated || 0,
-          itemsAfterDedup: progressPhaseData.itemsAfterSelfDedup || 0,
-          itemsReturned: progressPhaseData.sentToLibrary || 0,
-          conversationsAnalyzed: progressPhaseData.conversationsFound || 0,
+          daysProcessed: finalData.daysProcessed || 0,
+          daysWithActivity: finalData.daysWithActivity || 0,
+          daysWithOutput: finalData.daysWithActivity || 0,
+          itemsGenerated: finalData.itemsGenerated || 0,
+          itemsAfterDedup: finalData.itemsAfterSelfDedup || 0,
+          itemsReturned: finalData.itemsAfterSelfDedup || 0, // UX-1: no truncation, all go to harmonization
+          conversationsAnalyzed: finalData.conversationsFound || 0,
           harmonization: {
-            itemsProcessed: progressPhaseData.itemsCompared || 0,
-            itemsAdded: progressPhaseData.itemsAdded || 0,
-            itemsUpdated: progressPhaseData.itemsMerged || 0,
-            itemsDeduplicated: progressPhaseData.itemsMerged || 0,
+            itemsProcessed: finalData.itemsCompared || 0,
+            itemsAdded: finalData.itemsAdded || 0,
+            itemsUpdated: finalData.itemsMerged || 0,
+            itemsDeduplicated: finalData.itemsMerged || 0,
           },
         },
         timestamp: new Date().toISOString(),
@@ -611,12 +674,12 @@ export default function Home() {
       
       // Update analysis coverage
       setAnalysisCoverage({
-        conversationsAnalyzed: progressPhaseData.conversationsFound || 0,
+        conversationsAnalyzed: finalData.conversationsFound || 0,
         workspaces: 3,
       });
-      
-      // Refresh coverage analysis after successful generation
-      fetchCoverageAnalysis();
+        
+        // Refresh coverage analysis after successful generation
+        fetchCoverageAnalysis();
       
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
@@ -627,12 +690,13 @@ export default function Home() {
         setProgressPhase("error");
         setProgressMessage("Generation failed");
         
-        // Get structured error explanation for user-friendly display
+        // Get structured error explanation for user-friendly display (use ref to avoid stale closure)
+        const errorRefData = progressPhaseDataRef.current;
         const explanation = explainError(errorMsg, {
-          daysProcessed: progressPhaseData.daysProcessed,
-          conversationsAnalyzed: progressPhaseData.conversationsFound,
-          itemsGenerated: progressPhaseData.itemsGenerated,
-          itemsAfterDedup: progressPhaseData.itemsAfterSelfDedup,
+          daysProcessed: errorRefData.daysProcessed,
+          conversationsAnalyzed: errorRefData.conversationsFound,
+          itemsGenerated: errorRefData.itemsGenerated,
+          itemsAfterDedup: errorRefData.itemsAfterSelfDedup,
         });
         setProgressErrorExplanation(explanation);
         
@@ -670,13 +734,11 @@ export default function Home() {
       mode: "custom",
       fromDate: run.startDate,
       toDate: run.endDate,
-      itemCount: run.expectedItems,
     };
     
     const displayInfo = {
       tool: (run.itemType === "idea" ? "ideas" : "insights") as ToolType,
       mode: "custom" as PresetMode,
-      itemCount: run.expectedItems,
     };
     
     executeGeneration(body, displayInfo);
@@ -684,8 +746,6 @@ export default function Home() {
 
   // Handle manual generation (Generate button click)
   const handleGenerate = () => {
-    const itemCount = getCurrentItemCount();
-    
     // Build request body based on current UI state
     const body: Record<string, unknown> = {
       theme: selectedTheme,
@@ -700,14 +760,12 @@ export default function Home() {
       } else {
         body.days = customDays;
       }
-      body.itemCount = customItemCount;
       body.temperature = customTemperature;
     }
     
     const displayInfo = {
       tool: displayTool,
       mode: selectedMode,
-      itemCount,
     };
     
     executeGeneration(body, displayInfo);
@@ -720,21 +778,17 @@ export default function Home() {
     setUseCustomDates(false);
     setCustomDays(days);
     
-    const itemCount = getCurrentItemCount();
-    
     const body: Record<string, unknown> = {
       theme: selectedTheme,
       modeId: selectedModeId,
       mode: "custom",
       days: days,
-      itemCount: itemCount,
       temperature: customTemperature,
     };
     
     const displayInfo = {
       tool: displayTool,
       mode: "custom" as PresetMode,
-      itemCount,
     };
 
     executeGeneration(body, displayInfo);
@@ -927,8 +981,6 @@ export default function Home() {
                 setQuery={setReverseQuery}
                 daysBack={reverseDaysBack}
                 setDaysBack={setReverseDaysBack}
-                topK={reverseTopK}
-                setTopK={setReverseTopK}
                 minSimilarity={reverseMinSimilarity}
                 setMinSimilarity={setReverseMinSimilarity}
                 isSeeking={isSeeking}
@@ -968,8 +1020,6 @@ export default function Home() {
                     <AdvancedSettings
                       customDays={customDays}
                       setCustomDays={setCustomDays}
-                      customItemCount={customItemCount}
-                      setCustomItemCount={setCustomItemCount}
                       customTemperature={customTemperature}
                       setCustomTemperature={setCustomTemperature}
                       fromDate={fromDate}
@@ -982,29 +1032,28 @@ export default function Home() {
                   )}
 
                   {/* Expected output summary - integrated */}
+                  {(() => {
+                    const days = showAdvanced 
+                      ? (useCustomDates ? calculateDateRangeDays(fromDate, toDate) : customDays) 
+                      : (currentModeConfig?.days ?? 14);
+                    return (
                   <ExpectedOutput
                     tool={displayTool}
-                    days={showAdvanced ? (useCustomDates ? calculateDateRangeDays(fromDate, toDate) : customDays) : (currentModeConfig?.days ?? 14)}
+                        days={days}
                     hours={!showAdvanced ? currentModeConfig?.hours : undefined}
-                    itemCount={getCurrentItemCount()}
                     temperature={showAdvanced ? customTemperature : (currentModeConfig?.temperature ?? 0.4)}
-                    estimatedCost={estimateCost(
-                      getCurrentItemCount(),
-                      showAdvanced 
-                        ? (useCustomDates ? calculateDateRangeDays(fromDate, toDate) : customDays) 
-                        : (currentModeConfig?.days ?? 14)
-                    )}
-                  />
+                        estimatedCost={estimateCost(days * 2, days)} // Rough estimate: ~2 items per day
+                      />
+                    );
+                  })()}
                 </section>
 
                 {/* Cost Warning */}
                 {(() => {
-                  const currentCost = estimateCost(
-                    getCurrentItemCount(),
-                    showAdvanced 
+                  const days = showAdvanced 
                       ? (useCustomDates ? calculateDateRangeDays(fromDate, toDate) : customDays) 
-                      : (currentModeConfig?.days ?? 14)
-                  );
+                    : (currentModeConfig?.days ?? 14);
+                  const currentCost = estimateCost(days * 2, days); // Rough estimate: ~2 items per day
                   const COST_WARNING_THRESHOLD = 0.50;
                   if (currentCost > COST_WARNING_THRESHOLD) {
                     return (
@@ -1012,7 +1061,7 @@ export default function Home() {
                         <span className="text-xl">⚠️</span>
                         <div className="text-sm text-amber-300">
                           <strong>High cost operation:</strong> This will cost approximately <strong>${currentCost.toFixed(2)}</strong>.
-                          Consider reducing the time range or item count.
+                          Consider reducing the time range.
                         </div>
                       </div>
                     );

@@ -322,12 +322,39 @@ def seek_use_case(
         input_tokens = estimate_llm_tokens(conversations_with_query)
         
         # Generate content using unified pipeline
-        content = generate_content(
-            conversations_with_query,
-            mode,
-            llm=llm,
-            temperature=temperature,
-        )
+        # S5 Fix: Classify LLM API errors
+        try:
+            content = generate_content(
+                conversations_with_query,
+                mode,
+                llm=llm,
+                temperature=temperature,
+            )
+        except Exception as llm_err:
+            error_msg = str(llm_err).lower()
+            
+            # Classify the error
+            if "rate limit" in error_msg or "429" in error_msg or "too many requests" in error_msg:
+                error_type = "rate_limit"
+                emit_error(error_type, "Rate limit exceeded. Wait 1-2 minutes and retry.")
+            elif "auth" in error_msg or "api key" in error_msg or "401" in error_msg or "403" in error_msg:
+                error_type = "auth_failure"
+                emit_error(error_type, "API authentication failed. Check your API key in Settings.")
+            elif "timeout" in error_msg or "timed out" in error_msg:
+                error_type = "timeout"
+                emit_error(error_type, "Request timed out. Try a smaller date range.")
+            elif "connection" in error_msg or "network" in error_msg or "econnrefused" in error_msg:
+                error_type = "network_error"
+                emit_error(error_type, "Network connection failed. Check your internet connection.")
+            elif "context" in error_msg and ("length" in error_msg or "token" in error_msg):
+                error_type = "context_too_long"
+                emit_error(error_type, "Too much data to process. Try a smaller date range.")
+            else:
+                error_type = "generation_error"
+                emit_error(error_type, f"LLM generation failed: {str(llm_err)[:200]}")
+            
+            print(f"⚠️  LLM error ({error_type}): {llm_err}", file=sys.stderr)
+            raise  # Re-raise to be caught by outer handler
         
         # Track token usage
         if content:
@@ -387,6 +414,23 @@ def seek_use_case(
     
         emit_stat("useCasesParsed", len(items))
         
+        # S1 Fix: Emit warning if parsing failed but content exists
+        if content and not items:
+            emit_warning("parsing", f"LLM returned content but no use cases could be parsed. First 200 chars: {content[:200]}")
+            print(f"⚠️  Parsing failed: LLM returned content but no items matched expected format", file=sys.stderr)
+            print(f"   First 500 chars of content:\n{content[:500]}", file=sys.stderr)
+            
+            # Save failed parse for debugging
+            failed_parse_dir = Path(__file__).parent.parent / "data" / "output" / "failed_parses"
+            failed_parse_dir.mkdir(parents=True, exist_ok=True)
+            failed_file = failed_parse_dir / f"seek_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+            try:
+                failed_file.write_text(content)
+                print(f"   Saved raw output to: {failed_file}", file=sys.stderr)
+                emit_info(f"Raw output saved to {failed_file.name} for debugging")
+            except Exception as save_err:
+                print(f"   Could not save failed parse: {save_err}", file=sys.stderr)
+        
         # Step 5: Save to file (using generate.py's save_output function)
         emit_phase("saving", "Saving results...")
         
@@ -394,12 +438,20 @@ def seek_use_case(
         if content:
             # Create a simple date for save_output (use today)
             today = datetime.now().date()
-            output_file = save_output(
-                content,
-                today,
-                mode,  # Will need to handle use_case in save_output
-            )
-            print(f"📄 Saved to: {output_file}", file=sys.stderr)
+            
+            # S6 Fix: Wrap file save in try/except
+            try:
+                output_file = save_output(
+                    content,
+                    today,
+                    mode,  # Will need to handle use_case in save_output
+                )
+                print(f"📄 Saved to: {output_file}", file=sys.stderr)
+            except Exception as save_err:
+                emit_error("file_write", f"Failed to save output file: {str(save_err)[:200]}")
+                print(f"⚠️  Failed to save output file: {save_err}", file=sys.stderr)
+                output_file = None
+                # Continue - harmonization can still work from in-memory items
         
         # Step 6: Harmonize into ItemsBank (using batch operations for performance)
         emit_phase("integrating", "Adding use cases to Library...")
@@ -501,6 +553,19 @@ def seek_use_case(
             emit_error("harmonization_failed", f"Failed to add use cases: {str(e)[:200]}")
             items_added = 0
             items_merged = 0
+            
+            # S2 Fix: Move orphaned file to failed_harmonization folder
+            if output_file and Path(output_file).exists():
+                failed_dir = Path(__file__).parent.parent / "data" / "output" / "failed_harmonization"
+                failed_dir.mkdir(parents=True, exist_ok=True)
+                try:
+                    import shutil
+                    failed_path = failed_dir / Path(output_file).name
+                    shutil.move(str(output_file), str(failed_path))
+                    print(f"   Moved output to: {failed_path}", file=sys.stderr)
+                    emit_info(f"Output saved to failed_harmonization/{failed_path.name} for retry")
+                except Exception as move_err:
+                    print(f"   Could not move failed file: {move_err}", file=sys.stderr)
         finally:
             # Issue #27: Always emit completion marker (critical for frontend)
             emit_phase("complete", "Seek complete!")
@@ -554,11 +619,12 @@ def main():
         default=90,
         help="How many days of history to search (default: 90)",
     )
+    # UX-1: top-k is now a soft cap, not user-specified
     parser.add_argument(
         "--top-k",
         type=int,
-        default=10,
-        help="Maximum number of use cases to return (default: 10)",
+        default=50,
+        help="Soft cap on use cases to return (default: 50, returns all matching up to cap)",
     )
     parser.add_argument(
         "--min-similarity",

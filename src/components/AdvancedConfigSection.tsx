@@ -96,10 +96,13 @@ export function AdvancedConfigSection({ onSave }: AdvancedConfigSectionProps) {
           });
         }
         
-        // Load other configs
+        // Load other configs (merge with defaults to ensure new fields are included)
         if (data.config.thresholds) setThresholds(data.config.thresholds);
         if (data.config.timePresets) setTimePresets(data.config.timePresets);
-        if (data.config.generationDefaults) setGenerationDefaults(data.config.generationDefaults);
+        if (data.config.generationDefaults) {
+          // Merge with defaults to ensure new fields (e.g., softCap) are included
+          setGenerationDefaults({ ...DEFAULT_GENERATION, ...data.config.generationDefaults });
+        }
         if (data.config.seekDefaults) setSeekDefaults(data.config.seekDefaults);
         if (data.config.semanticSearch) setSemanticSearch(data.config.semanticSearch);
         if (data.config.themeExplorer) setThemeExplorer(data.config.themeExplorer);

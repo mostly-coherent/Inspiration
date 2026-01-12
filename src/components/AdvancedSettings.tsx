@@ -3,8 +3,6 @@ import { PRESET_MODES } from "@/lib/types";
 interface AdvancedSettingsProps {
   customDays: number;
   setCustomDays: (v: number) => void;
-  customItemCount: number;
-  setCustomItemCount: (v: number) => void;
   customTemperature: number;
   setCustomTemperature: (v: number) => void;
   fromDate: string;
@@ -18,8 +16,6 @@ interface AdvancedSettingsProps {
 export function AdvancedSettings({
   customDays,
   setCustomDays,
-  customItemCount,
-  setCustomItemCount,
   customTemperature,
   setCustomTemperature,
   fromDate,
@@ -124,37 +120,6 @@ export function AdvancedSettings({
         )}
       </fieldset>
 
-      {/* v2: Item Count Selection (replaces Best-of) */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <label className="text-adobe-gray-300">
-            Items to generate
-            <span className="text-adobe-gray-500 text-sm ml-2">
-              (deduplicated & ranked)
-            </span>
-          </label>
-          <span className="font-mono text-lg">{customItemCount}</span>
-        </div>
-        <input
-          type="range"
-          min={3}
-          max={25}
-          value={customItemCount}
-          onChange={(e) => setCustomItemCount(parseInt(e.target.value))}
-          className="slider-track w-full"
-          aria-label={`Number of items to generate: ${customItemCount}`}
-          aria-valuemin={3}
-          aria-valuemax={25}
-          aria-valuenow={customItemCount}
-        />
-        <div className="flex justify-between text-xs text-adobe-gray-500">
-          <span>3 (quick)</span>
-          <span>10 (balanced)</span>
-          <span>15 (thorough)</span>
-          <span>25 (comprehensive)</span>
-        </div>
-      </div>
-
       {/* Temperature Selection */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -194,12 +159,11 @@ export function AdvancedSettings({
             key={preset.id}
             onClick={() => {
               setCustomDays(preset.days);
-              setCustomItemCount(preset.itemCount);
               setCustomTemperature(preset.temperature);
               setUseCustomDates(false);
             }}
             className="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-            aria-label={`Apply ${preset.label} preset: ${preset.days} days, ${preset.itemCount} items, temperature ${preset.temperature.toFixed(1)}`}
+            aria-label={`Apply ${preset.label} preset: ${preset.days} days, temperature ${preset.temperature.toFixed(1)}`}
           >
             <span aria-hidden="true">{preset.icon}</span> {preset.label}
           </button>

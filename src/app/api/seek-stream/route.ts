@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { spawn } from "child_process";
 import path from "path";
+import fs from "fs";
 import { logger } from "@/lib/logger";
 import { getPythonPath } from "@/lib/pythonPath";
 
@@ -9,7 +10,6 @@ export const maxDuration = 300; // 5 minutes for semantic search
 export interface SeekStreamRequest {
   query: string;
   daysBack?: number;
-  topK?: number;
   minSimilarity?: number;
   workspaces?: string[];
 }
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
 
       try {
         const body: SeekStreamRequest = await request.json();
-        const { query, daysBack = 90, topK = 10, minSimilarity = 0.0 } = body;
+        const { query, daysBack = 90, minSimilarity = 0.0 } = body;
         
         // Get abort signal from request
         const signal = request.signal;
@@ -39,10 +39,10 @@ export async function POST(request: NextRequest) {
         }
 
         // Build command arguments
+        // UX-1: top-k removed - seek.py returns all matching results with soft cap
         const args: string[] = [
           "--query", query.trim(),
           "--days", daysBack.toString(),
-          "--top-k", topK.toString(),
           "--min-similarity", minSimilarity.toString(),
           "--json", // Always JSON for API
         ];
@@ -110,6 +110,30 @@ async function runPythonScriptStream(
         } catch (err) {
           logger.error("[Seek-Stream] Error killing process:", err);
         }
+        
+        // S7 Fix: Clean up temporary output files on abort
+        try {
+          const useCasesDir = path.join(process.cwd(), "data", "output", "use_cases_output");
+          if (fs.existsSync(useCasesDir)) {
+            const files = fs.readdirSync(useCasesDir);
+            for (const file of files) {
+              // Delete .tmp files (incomplete writes from atomic save)
+              if (file.endsWith(".tmp")) {
+                const filePath = path.join(useCasesDir, file);
+                try {
+                  fs.unlinkSync(filePath);
+                  logger.log(`[Seek-Stream] Cleaned up temp file: ${file}`);
+                } catch (e) {
+                  logger.error(`[Seek-Stream] Failed to clean up ${file}:`, e);
+                }
+              }
+            }
+          }
+          send({ type: "info", message: "Cleaned up temporary files" });
+        } catch (cleanupErr) {
+          logger.error("[Seek-Stream] Cleanup error:", cleanupErr);
+        }
+        
         resolve();
       });
     }
@@ -125,7 +149,10 @@ async function runPythonScriptStream(
           try {
             const result = JSON.parse(jsonOutput);
             send({ type: "result", result });
-          } catch {
+          } catch (parseErr) {
+            // S9 Fix: Log JSON parsing errors instead of silently ignoring
+            logger.error(`[Seek-Stream] JSON parse error: ${parseErr}`);
+            logger.error(`[Seek-Stream] Problematic JSON (first 500 chars): ${jsonOutput.slice(0, 500)}`);
             // Might be incomplete JSON, accumulate
             jsonOutput += text;
           }

@@ -16,11 +16,8 @@ export interface ProgressPhaseData {
   // Generation phase
   itemsGenerated?: number;
   itemsAfterSelfDedup?: number;
-  sentToLibrary?: number;
   
-  // Library integration
-  itemsFiltered?: number;
-  filterReason?: string;
+  // Library integration (UX-1: simplified - no filtered/sentToLibrary)
   itemsCompared?: number;
   itemsAdded?: number;
   itemsMerged?: number;
@@ -183,12 +180,12 @@ export function ProgressPanel({
               isError 
                 ? "bg-red-400/50"
                 : isStopping 
-                  ? "bg-red-400/50" 
+                ? "bg-red-400/50" 
                   : isComplete
                     ? "bg-green-500"
                     : hasWarnings
                       ? "bg-gradient-to-r from-yellow-400 to-inspiration-insights"
-                      : "bg-gradient-to-r from-inspiration-ideas to-inspiration-insights"
+                : "bg-gradient-to-r from-inspiration-ideas to-inspiration-insights"
             }`}
             style={{ width: `${progress}%` }}
           />
@@ -292,11 +289,7 @@ export function ProgressPanel({
               <span className="text-adobe-gray-600 ml-2">← Dedup among NEW items only</span>
             </ProgressLine>
           )}
-          {phaseData.sentToLibrary !== undefined && (
-            <ProgressLine done={getPhaseStatus("ranking") === "done"} active={getPhaseStatus("ranking") === "active"} isLast>
-              Sent to Library: {phaseData.sentToLibrary}
-            </ProgressLine>
-          )}
+          {/* UX-1: "Sent to Library" removed - all items after dedup go to harmonization */}
         </PhaseBlock>
 
         {/* Phase 4: Library Integration */}
@@ -305,14 +298,7 @@ export function ProgressPanel({
           icon="📚"
           title="Library Integration"
         >
-          {phaseData.itemsFiltered !== undefined && phaseData.itemsFiltered > 0 && (
-            <ProgressLine done={getPhaseStatus("integrating") === "done"} isFyi>
-              <span className="text-yellow-400/80">{phaseData.itemsFiltered} items filtered</span>
-              {phaseData.filterReason && (
-                <span className="text-adobe-gray-500 ml-1">({phaseData.filterReason})</span>
-              )}
-            </ProgressLine>
-          )}
+          {/* UX-1: "items filtered" removed - no truncation, all quality items go to harmonization */}
           {phaseData.itemsCompared !== undefined && (
             <ProgressLine done={getPhaseStatus("integrating") === "done"} active={getPhaseStatus("integrating") === "active"}>
               Compared to Library: {phaseData.itemsCompared}

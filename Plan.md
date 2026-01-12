@@ -570,6 +570,12 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 | PROG-2 | **Automatic log rotation** — Delete performance logs older than 30 days | LOW | LOW |
 | PROG-3 | **Actual API token counts** — Modify LLM wrapper to return actual token usage from API response | MEDIUM | MEDIUM |
 | PROG-4 | **Per-item timing in harmonization** — Track time spent per item to identify slowest operations | MEDIUM | LOW |
+| PROG-5 | **Precise filter reason tracking** — Track why items are filtered (truncated to requested count vs parsing failed vs topic already covered) and display breakdown in UI | LOW | MEDIUM |
+
+**UX Simplification:**
+| ID | Improvement | Priority | Effort | Status |
+|----|-------------|----------|--------|--------|
+| UX-1 | **Remove item count parameter** — Let AI determine optimal item count based on available content. User specifies date range and mode only; system extracts ALL quality items. Removes confusing "N items filtered" messaging and maximizes Library value per run. Soft cap = 50. | HIGH | LOW | ✅ Done (2026-01-12) |
 
 **Performance:**
 | ID | Improvement | Priority | Effort |

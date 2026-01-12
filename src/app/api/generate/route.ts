@@ -15,6 +15,7 @@ const DEFAULT_GENERATION: GenerationDefaults = {
   deduplicationThreshold: 0.80,
   maxTokens: 4000,
   maxTokensJudge: 500,
+  softCap: 50,
 };
 
 // Load generation defaults from config
@@ -35,16 +36,16 @@ async function loadGenerationDefaults(): Promise<GenerationDefaults> {
 }
 
 // Performance note (v2 Item-Centric Architecture):
-// - itemCount: Single LLM call generates N items (no more parallel candidate calls)
+// - UX-1: itemCount removed - system extracts all quality items with soft cap
 // - deduplication: Quick cosine similarity check (batch embeddings)
 // - ranking: Single LLM call to rank items
-// Typical times: itemCount=10 (~30-60s), itemCount=20 (~60-90s)
+// Typical times: ~30-90s depending on date range
 export const maxDuration = 300; // 5 minutes (reduced from 10 - v2 is faster)
 
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateRequest = await request.json();
-    const { tool, theme, modeId, mode, days, itemCount, bestOf, temperature, deduplicationThreshold, fromDate, toDate, dryRun } = body;
+    const { tool, theme, modeId, mode, days, temperature, deduplicationThreshold, fromDate, toDate, dryRun } = body;
     
     // Get abort signal from request
     const signal = request.signal;
@@ -169,14 +170,14 @@ export async function POST(request: NextRequest) {
     
     // Override with custom values if provided, or use mode defaults, or use global defaults
     // Priority: per-request > per-mode > global config > hardcoded fallback
-    // v2: itemCount replaces bestOf (backward compatible - bestOf still accepted)
-    const effectiveItemCount = itemCount ?? bestOf ?? themeMode?.defaultItemCount ?? modeConfig?.itemCount ?? 10;
+    // UX-1: itemCount is now softCap from config - Python extracts all quality items up to this limit
     const effectiveTemperature = temperature ?? modeSettings?.temperature ?? modeConfig?.temperature ?? generationDefaults.temperature;
     const effectiveDeduplicationThreshold = deduplicationThreshold ?? modeSettings?.deduplicationThreshold ?? generationDefaults.deduplicationThreshold;
+    const effectiveSoftCap = generationDefaults.softCap ?? 50;
     
-    args.push("--item-count", effectiveItemCount.toString());
     args.push("--temperature", effectiveTemperature.toString());
     args.push("--dedup-threshold", effectiveDeduplicationThreshold.toString());
+    args.push("--item-count", effectiveSoftCap.toString());
 
     if (dryRun) {
       args.push("--dry-run");

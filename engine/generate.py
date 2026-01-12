@@ -482,25 +482,62 @@ def generate_items(
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
+        error_str = str(e).lower()
+        
+        # H2 FIX: Classify error type for better frontend messaging
+        if "rate" in error_str or "429" in error_str or "too many requests" in error_str:
+            error_type = "rate_limit"
+            emit_error("rate_limit", "Rate limit reached. Wait 1-2 minutes and try again, or reduce date range.")
+        elif "auth" in error_str or "401" in error_str or "api key" in error_str or "invalid_api_key" in error_str:
+            error_type = "auth_failure"
+            emit_error("auth_failure", "API key is invalid or expired. Check your API key in Settings.")
+        elif "timeout" in error_str or "timed out" in error_str:
+            error_type = "timeout"
+            emit_error("timeout", "Request timed out. Try a smaller date range or fewer items.")
+        elif "connection" in error_str or "network" in error_str or "ssl" in error_str:
+            error_type = "network_error"
+            emit_error("network_error", "Network error. Check your internet connection and try again.")
+        elif "context" in error_str and "length" in error_str or "token" in error_str:
+            error_type = "context_too_long"
+            emit_error("context_too_long", "Too much chat history for one request. Try a smaller date range.")
+        else:
+            error_type = "unknown"
+            emit_error("generation_failed", f"Generation failed: {str(e)[:200]}")
+        
         raise RuntimeError(
-            f"Failed to generate items: {e}\n\n"
+            f"Failed to generate items ({error_type}): {e}\n\n"
             f"Traceback:\n{error_details}\n\n"
             "Common causes:\n"
             "  - Rate limits (prompt too large)\n"
             "  - API key issues\n"
             "  - Network issues\n"
-            "Try reducing the date range or item count."
+            "Try reducing the date range."
         ) from e
     
     # Parse items from raw output
     items = _parse_items_from_output(raw_output, mode)
     
     if not items:
+        # C1 FIX: Emit warning when parsing fails despite having output
+        if raw_output and len(raw_output.strip()) > 50:
+            emit_warning("parsing", f"LLM returned {len(raw_output)} chars but 0 items parsed")
+            print(f"⚠️  Parsing failed - raw output preview: {raw_output[:300].replace(chr(10), ' ')}...", file=sys.stderr)
+            # Save failed output for debugging
+            try:
+                from pathlib import Path
+                failed_dir = Path("data/output/failed_parses")
+                failed_dir.mkdir(parents=True, exist_ok=True)
+                failed_file = failed_dir / f"failed_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{mode}.md"
+                failed_file.write_text(f"# Failed Parse\nMode: {mode}\n\n{raw_output}")
+                print(f"   Saved to: {failed_file}", file=sys.stderr)
+            except Exception:
+                pass  # Best effort
         return [], {
             "raw_output": raw_output,
             "items_generated": 0,
             "items_after_dedup": 0,
             "items_returned": 0,
+            "parsing_failed": bool(raw_output and len(raw_output.strip()) > 50),
         }
     
     print(f"✅ Parsed {len(items)} items from LLM output", file=sys.stderr)
@@ -1089,6 +1126,26 @@ def harmonize_all_outputs(
     output_dir = config["output_dir"]
     bank_type = config["bank_type"]
     
+    # H9 FIX: Use lock file to prevent concurrent harmonization
+    lock_file = output_dir / ".harmonize.lock"
+    try:
+        # Try to acquire lock (create lock file atomically)
+        if lock_file.exists():
+            lock_age = datetime.now().timestamp() - lock_file.stat().st_mtime
+            if lock_age < 300:  # Lock is less than 5 minutes old - another process is running
+                print(f"⚠️  Harmonization already in progress (lock age: {int(lock_age)}s). Skipping.", file=sys.stderr)
+                emit_warning("harmonization", "Another harmonization is in progress. Skipping.")
+                return empty_result
+            else:
+                # Lock is stale - remove it
+                print(f"   Removing stale lock file (age: {int(lock_age)}s)", file=sys.stderr)
+                lock_file.unlink()
+        
+        lock_file.write_text(f"PID:{os.getpid()}\nTime:{datetime.now().isoformat()}")
+    except Exception as lock_err:
+        print(f"⚠️  Could not acquire lock: {lock_err}", file=sys.stderr)
+        # Continue anyway - lock is best-effort
+    
     # Map mode to theme/mode IDs
     mode_mapping = {
         "insights": ("generation", "insight"),
@@ -1116,6 +1173,9 @@ def harmonize_all_outputs(
         batch = output_files[i:i + batch_size]
         batch_num = (i // batch_size) + 1
         total_batches = (total_files + batch_size - 1) // batch_size
+        
+        # C2 FIX: Track batch success for safe file deletion
+        batch_success = False
         
         if total_batches > 1:
             print(f"   Batch {batch_num}/{total_batches}: {len(batch)} files...")
@@ -1160,6 +1220,7 @@ def harmonize_all_outputs(
                     print(f"      Preview: {content_preview}...", file=sys.stderr)
         
         if items:
+          try:  # C2 FIX: Wrap harmonization to protect files on failure
             # Use v2 ItemsBank system with unified content structure
             bank = ItemsBank()
             
@@ -1316,15 +1377,50 @@ def harmonize_all_outputs(
                 items_filtered=0,  # Will be calculated from difference with sent items
             )
             # NOTE: emit_complete() is called by the main() function after ALL harmonization
+            
+            # C2 FIX: Mark batch as successfully harmonized
+            batch_success = True
+          except Exception as harm_err:
+            # C2 FIX: Harmonization failed - preserve files for retry
+            print(f"   ❌ Harmonization failed: {harm_err}", file=sys.stderr)
+            emit_warning("harmonization", f"Batch harmonization failed: {str(harm_err)[:100]}")
+            batch_success = False
+        else:
+            # No items to harmonize - can safely delete (file had no valid content)
+            batch_success = True
         
-        for f in batch:
-            f.unlink()
-            print(f"   🗑️  Deleted: {f.name}")
-        processed += len(batch)
+        # C2 FIX: Only delete files after successful harmonization
+        if batch_success:
+            for f in batch:
+                try:
+                    f.unlink()
+                    print(f"   🗑️  Deleted: {f.name}")
+                except Exception as del_err:
+                    print(f"   ⚠️  Could not delete {f.name}: {del_err}", file=sys.stderr)
+            processed += len(batch)
+        else:
+            # Move failed files instead of deleting
+            from pathlib import Path
+            failed_dir = Path("data/output/failed_harmonization")
+            failed_dir.mkdir(parents=True, exist_ok=True)
+            for f in batch:
+                try:
+                    new_path = failed_dir / f.name
+                    f.rename(new_path)
+                    print(f"   ⚠️  Moved to failed_harmonization: {f.name}", file=sys.stderr)
+                except Exception as move_err:
+                    print(f"   ⚠️  Could not move {f.name}: {move_err}", file=sys.stderr)
     
     # NOTE: Category grouping removed - redundant with Theme Explorer and tags
     # Theme Explorer provides dynamic similarity-based grouping
     # Tags provide user-managed organization
+    
+    # H9 FIX: Release lock file
+    try:
+        if lock_file.exists():
+            lock_file.unlink()
+    except Exception:
+        pass  # Best effort
     
     # Return stats for caller to emit completion marker
     return {
@@ -2001,15 +2097,32 @@ def process_aggregated_range(
     content = items_to_markdown(items, mode)
     has_output = len(items) > 0
     
-    # Save output (v2: no candidates)
-    output_file = save_aggregated_output(
-        content,
-        dates[0],
-        dates[-1],
-        mode,
-        mode_name,
-        total_conversations=len(all_conversations),
-    )
+    # H4 FIX: Wrap file save in try/except to handle disk/permission errors
+    try:
+        output_file = save_aggregated_output(
+            content,
+            dates[0],
+            dates[-1],
+            mode,
+            mode_name,
+            total_conversations=len(all_conversations),
+        )
+    except Exception as write_err:
+        emit_error("file_write", f"Failed to save output file: {str(write_err)[:100]}")
+        print(f"❌ File write failed: {write_err}", file=sys.stderr)
+        # Return with no output file - harmonization will be skipped
+        return {
+            "start_date": dates[0],
+            "end_date": dates[-1],
+            "total_conversations": len(all_conversations),
+            "days_with_activity": days_with_activity,
+            "has_posts" if mode == "insights" else "has_ideas": False,
+            "output_file": None,
+            "items_generated": stats.get("items_generated", 0),
+            "items_after_dedup": stats.get("items_after_dedup", 0),
+            "items_returned": 0,
+            "write_error": str(write_err),
+        }
     
     result = {
         "start_date": dates[0],

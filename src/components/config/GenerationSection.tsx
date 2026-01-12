@@ -8,6 +8,7 @@ export const DEFAULT_GENERATION: GenerationDefaults = {
   deduplicationThreshold: 0.80,
   maxTokens: 4000,
   maxTokensJudge: 500,
+  softCap: 50,
 };
 
 interface GenerationSectionProps {
@@ -28,7 +29,8 @@ export function GenerationSection({
       generationDefaults.temperature !== DEFAULT_GENERATION.temperature ||
       generationDefaults.deduplicationThreshold !== DEFAULT_GENERATION.deduplicationThreshold ||
       generationDefaults.maxTokens !== DEFAULT_GENERATION.maxTokens ||
-      generationDefaults.maxTokensJudge !== DEFAULT_GENERATION.maxTokensJudge
+      generationDefaults.maxTokensJudge !== DEFAULT_GENERATION.maxTokensJudge ||
+      generationDefaults.softCap !== DEFAULT_GENERATION.softCap
     );
   };
 
@@ -125,6 +127,24 @@ export function GenerationSection({
           setGenerationDefaults((prev) => ({ ...prev, maxTokensJudge: value }))
         }
       />
+
+      {/* Soft Cap */}
+      <ThresholdSlider
+        label="Maximum Items Per Run"
+        description="Soft cap on how many items to extract per generation run. System extracts ALL quality items up to this limit. Prevents runaway costs on large date ranges."
+        value={generationDefaults.softCap}
+        defaultValue={DEFAULT_GENERATION.softCap}
+        min={10}
+        max={200}
+        step={10}
+        format={(v) => `${v} items`}
+        onChange={(value) =>
+          setGenerationDefaults((prev) => ({ ...prev, softCap: value }))
+        }
+      />
+      <div className="text-xs text-slate-500 -mt-2 ml-3">
+        💡 <strong>Recommendation:</strong> 50 (default) works well for most runs. Increase to 100+ if analyzing 90+ day ranges. Decrease to 20-30 for faster runs on short ranges.
+      </div>
     </CollapsibleSection>
   );
 }

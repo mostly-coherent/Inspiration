@@ -6,6 +6,29 @@
 
 ---
 
+## Progress - 2026-01-12 (UX-1: Remove Item Count Parameter)
+
+**Done:**
+- ✅ **UX-1: Remove item count parameter from Generate and Seek**
+  - **Generate Insights/Ideas:**
+    - Removed `itemCount` slider from Advanced Settings
+    - Removed `itemCount` from PRESET_MODES (daily, sprint, month, quarter)
+    - Updated `/api/generate-stream` and `/api/generate` to not pass `--item-count`
+    - Updated `generate.py` to use soft cap of 50 (extracts ALL quality items up to cap)
+    - Removed "Sent to Library" vs "Compared" confusion in ProgressPanel
+    - Updated ExpectedOutput to show "All quality items" instead of a number
+  - **Seek Use Cases:**
+    - Removed `topK` slider from SeekSection
+    - Updated `/api/seek-stream` to not pass `--top-k`
+    - Updated `seek.py` to use soft cap of 50
+  - **Benefits:**
+    - Simpler UI: User only specifies date range and temperature
+    - No wasted LLM output: All quality items go to Library
+    - No confusing "N items filtered" messaging
+  - **Evidence:** All 26 E2E tests passing
+
+---
+
 ## Progress - 2026-01-12 (Code Quality & Performance Improvements)
 
 **Done:**
