@@ -23,6 +23,7 @@ export function PromptTemplateEditor() {
   const [loading, setLoading] = useState(true);
   const [loadingContent, setLoadingContent] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
@@ -108,6 +109,44 @@ export function PromptTemplateEditor() {
     }
   };
 
+  const resetToDefault = async () => {
+    if (!selectedPrompt) return;
+
+    const confirmed = window.confirm(
+      `Reset "${selectedPrompt.label}" to original default? Your customizations will be lost.`
+    );
+    if (!confirmed) return;
+
+    setResetting(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/prompts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: selectedPrompt.id,
+          action: "reset",
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEditedContent(data.defaultContent);
+        setSelectedPrompt({ ...selectedPrompt, content: data.defaultContent });
+        setHasChanges(false);
+        setSuccessMessage("Prompt reset to original default");
+        loadPrompts();
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } else {
+        setError(data.error || "Failed to reset prompt");
+      }
+    } catch (err) {
+      setError(`Failed to reset prompt: ${err}`);
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const handleContentChange = (content: string) => {
     setEditedContent(content);
     setHasChanges(content !== selectedPrompt?.content);
@@ -175,12 +214,19 @@ export function PromptTemplateEditor() {
               <p className="text-xs text-slate-500">{selectedPrompt.file}</p>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={resetToDefault}
+                disabled={resetting}
+                className="px-3 py-1 text-sm text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                {resetting ? "Resetting..." : "Reset to Default"}
+              </button>
               {hasChanges && (
                 <button
                   onClick={resetPrompt}
                   className="px-3 py-1 text-sm text-slate-400 hover:text-slate-200 transition-colors"
                 >
-                  Reset
+                  Discard Changes
                 </button>
               )}
               <button
@@ -246,8 +292,8 @@ export function PromptTemplateEditor() {
             <div className="text-xs text-slate-500">How Seek synthesizes evidence. Adjust to change synthesis depth or structure.</div>
           </div>
           <div className="p-2 bg-slate-700/20 rounded">
-            <div className="text-xs font-medium text-emerald-400">⭐ Judge</div>
-            <div className="text-xs text-slate-500">How items are scored. Adjust criteria if your grades feel off.</div>
+            <div className="text-xs font-medium text-emerald-400">⭐ Item Ranker</div>
+            <div className="text-xs text-slate-500">How items are ranked. Adjust criteria if rankings feel off.</div>
           </div>
         </div>
 

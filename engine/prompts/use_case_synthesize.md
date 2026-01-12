@@ -33,6 +33,21 @@ Generate use cases ranked by:
 2. **Recency:** More recent examples are more valuable
 3. **Uniqueness:** Avoid repeating similar examples — each should be distinct
 
+## Pattern Recognition (If Multiple Use Cases Found)
+
+If you find 2+ relevant examples:
+- **Show evolution:** How did the approach change over time?
+- **Identify meta-pattern:** What's the common thread or improving skill?
+- **Note progression:** Earlier attempts vs. refined solutions
+
+Add a section at the end if patterns emerge across use cases:
+
+### Pattern Across Use Cases
+
+**Evolution of Approach:** [How the user's methodology improved over time]
+**Emerging Skill:** [What capability is developing here]
+**Transfer Potential:** [Where else could this approach apply]
+
 ## Guidelines
 
 - **Ground in reality:** Only include examples that actually appear in the chat history

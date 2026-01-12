@@ -10,8 +10,7 @@ const PROMPT_FILES = [
   { id: "ideas", file: "ideas_synthesize.md", label: "Ideas", description: "Idea generation prompt" },
   { id: "insights", file: "insights_synthesize.md", label: "Insights", description: "Insight generation prompt" },
   { id: "use_case", file: "use_case_synthesize.md", label: "Use Cases", description: "Use case synthesis prompt" },
-  { id: "judge", file: "judge.md", label: "Judge", description: "Item ranking/judging prompt" },
-  { id: "item_ranker", file: "item_ranker.md", label: "Item Ranker", description: "Alternative ranking prompt" },
+  { id: "item_ranker", file: "item_ranker.md", label: "Item Ranker", description: "Item ranking/judging prompt" },
 ];
 
 export async function GET(request: NextRequest) {
@@ -67,8 +66,73 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, content } = body;
+    const { id, content, action } = body;
 
+    // Handle reset action
+    if (action === "reset") {
+      if (!id) {
+        return NextResponse.json(
+          { success: false, error: "Missing id" },
+          { status: 400 }
+        );
+      }
+
+      const promptConfig = PROMPT_FILES.find((p) => p.id === id);
+      if (!promptConfig) {
+        return NextResponse.json(
+          { success: false, error: "Prompt not found" },
+          { status: 404 }
+        );
+      }
+
+      const filePath = path.join(PROMPTS_DIR, promptConfig.file);
+      
+      // Find the most recent backup
+      const backupDir = path.dirname(filePath);
+      const backupName = path.basename(filePath, ".md");
+      
+      let backups: string[] = [];
+      try {
+        const files = fs.readdirSync(backupDir);
+        backups = files
+          .filter((f) => f.startsWith(`${backupName}.backup.`) && f.endsWith(".md"))
+          .sort()
+          .reverse();
+      } catch (error) {
+        // Directory doesn't exist or can't read - no backups
+        return NextResponse.json(
+          { success: false, error: "No backup found to restore" },
+          { status: 404 }
+        );
+      }
+
+      if (backups.length === 0) {
+        return NextResponse.json(
+          { success: false, error: "No backup found to restore" },
+          { status: 404 }
+        );
+      }
+
+      // Restore from most recent backup
+      const mostRecentBackup = path.join(backupDir, backups[0]);
+      let defaultContent: string;
+      try {
+        defaultContent = fs.readFileSync(mostRecentBackup, "utf-8");
+      } catch (error) {
+        return NextResponse.json(
+          { success: false, error: "Failed to read backup file" },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: "Prompt reset to original default",
+        defaultContent,
+      });
+    }
+
+    // Handle save action
     if (!id || content === undefined) {
       return NextResponse.json(
         { success: false, error: "Missing id or content" },
@@ -86,10 +150,18 @@ export async function POST(request: NextRequest) {
 
     const filePath = path.join(PROMPTS_DIR, promptConfig.file);
 
-    // Create backup before overwriting
+    // Create backup before overwriting (only if this is the first edit)
     if (fs.existsSync(filePath)) {
-      const backupPath = filePath.replace(".md", `.backup.${Date.now()}.md`);
-      fs.copyFileSync(filePath, backupPath);
+      const backupDir = path.dirname(filePath);
+      const backupName = path.basename(filePath, ".md");
+      const files = fs.readdirSync(backupDir);
+      const backups = files.filter((f) => f.startsWith(`${backupName}.backup.`));
+      
+      // Only create backup if no backups exist (preserve original)
+      if (backups.length === 0) {
+        const backupPath = filePath.replace(".md", `.backup.${Date.now()}.md`);
+        fs.copyFileSync(filePath, backupPath);
+      }
     }
 
     // Write new content

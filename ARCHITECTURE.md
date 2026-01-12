@@ -402,11 +402,12 @@ page.tsx (Orchestrator)
 - **State**: `items`, `filters`, `selectedIds`, `expandedItem`, `staleCount`
 - **API**: `/api/items`, `/api/items/bulk`, `/api/items/merge`, `/api/items/cleanup`
 
-**4. Theme Explorer Context** (`themes/page.tsx`)
-- **Purpose**: Interactive theme grouping with LLM synthesis
-- **Boundaries**: Adjust zoom → View themes → Click theme → See synthesis
-- **State**: `themes`, `zoomLevel`, `selectedTheme`, `synthesis`, `isLoading`
-- **API**: `/api/items/themes`, `/api/items/themes/preview`, `/api/items/themes/synthesize`
+**4. Theme Explorer Context** (`themes/page.tsx`) — LIB-8: Theme Synthesis
+- **Purpose**: Pattern discovery via dynamic similarity grouping (forest → trees zoom)
+- **Boundaries**: Adjust zoom → Filter by type → View themes → Click theme → See AI synthesis
+- **State**: `themes`, `zoomLevel`, `itemTypeFilter`, `selectedTheme`, `synthesis`, `isLoading`
+- **API**: `/api/items/themes/preview`, `/api/items/themes/synthesize`
+- **Status**: ✅ Complete (1/3 of Longitudinal Intelligence — LIB-9, LIB-10 pending)
 
 **5. Settings Context** (`settings/page.tsx`, `AdvancedConfigSection`)
 - **Purpose**: Configure all app settings

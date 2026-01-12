@@ -466,13 +466,33 @@ inspiration/
 | LIB-6 | ~~**Workspace Context**~~ | ~~Highlight items matching current workspace~~ | ❌ Removed |
 | LIB-7 | ~~**Build/Share Next**~~ | ~~Recommendations based on type priority~~ | ❌ Removed |
 
-### Phase 3: Synthesize (High Effort, High Novelty)
+### Phase 3: Synthesize (High Effort, High Novelty) — "Longitudinal Intelligence"
+
+**Status: 1/3 Complete** — Theme Explorer operational; temporal analysis features pending.
 
 | ID | Feature | Description | Status |
 |----|---------|-------------|--------|
-| LIB-8 | **Theme Synthesis** | Category overview with item breakdown per theme | ✅ Complete |
-| LIB-9 | **Learning Trajectory** | "Your interests shifted from X → Y → Z over 6 months" | Pending |
-| LIB-10 | **Gap Detection** | "You've explored A and C extensively, but B is absent" | Pending |
+| LIB-8 | **Theme Synthesis** | Pattern discovery via dynamic similarity grouping (Theme Explorer) | ✅ Complete |
+| LIB-9 | **Learning Trajectory** | "Your interests shifted from X → Y → Z over 6 months" — Temporal evolution tracking | ⏳ Pending |
+| LIB-10 | **Unexplored Territory** | "You've explored A and C extensively, but B is absent" — Surface domains missing from Library but relevant to existing work | 📋 Planned |
+
+**What Theme Explorer Does (LIB-8):**
+- Groups Library items by semantic similarity (zoom slider: forest → trees)
+- AI synthesis reveals common threads within each theme
+- Filters by item type (Ideas/Insights/Use Cases)
+- Answers: "What patterns exist in my current Library?"
+
+**What's Still Missing (LIB-9, LIB-10):**
+- **LIB-9 (Learning Trajectory):** Tracks HOW interests change over time (temporal dimension) — requires 6-12 months of data
+- **LIB-10 (Unexplored Territory):** Identifies WHAT topics are absent from exploration — "You discuss testing in 18 conversations but have 0 Library items about it"
+- LIB-9 requires analyzing Library state ACROSS time periods; LIB-10 compares current Memory (conversations) vs. Library coverage
+
+**Why LIB-10 First:**
+- ✅ Immediate value (works with existing data)
+- ✅ Actionable ("Explore X next" vs. retrospective reflection)
+- ✅ Higher impact upfront (shapes future exploration)
+
+**Build Plan:** See `UNEXPLORED_TERRITORY_BUILD_PLAN.md` for 3-layer detection system (Memory vs. Library, Adjacency Analysis, Strategic Synthesis)
 
 ### Features Also Removed (2026-01-10)
 

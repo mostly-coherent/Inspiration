@@ -15,56 +15,52 @@ interface SynthesizeRequest {
   itemType?: "all" | "idea" | "insight" | "use_case"; // Which type of items
 }
 
-// Default prompts (fallback if config doesn't have them)
-const DEFAULT_PROMPTS: Record<string, string> = {
-  all: `You are helping a user reflect on patterns in their ideas and insights. Given a theme and its related items, synthesize a compelling narrative that:
+const PROMPTS_DIR = path.join(process.cwd(), "engine", "prompts");
 
-1. **Identifies the Core Pattern**: What's the underlying thread connecting these items?
-2. **Reveals the "So What"**: Why does this pattern matter? What does it suggest about the user's thinking or interests?
-3. **Offers Actionable Insight**: What could the user do with this awareness? Any next steps or experiments to try?
+// Load default prompt from file
+async function loadDefaultPrompt(itemType: string): Promise<string> {
+  const fileMap: Record<string, string> = {
+    all: "theme_synthesis_all.md",
+    idea: "theme_synthesis_idea.md",
+    insight: "theme_synthesis_insight.md",
+    use_case: "theme_synthesis_use_case.md",
+  };
 
-Keep the tone conversational and insightful - like a thoughtful friend helping you see patterns you might have missed. Be specific, not generic. Reference the actual content of the items.
+  const fileName = fileMap[itemType] || fileMap["all"];
+  const filePath = path.join(PROMPTS_DIR, fileName);
 
-Format your response as a flowing narrative (2-3 paragraphs), not bullet points. Make it feel like a discovery, not a report.`,
-  idea: `You are helping a user discover patterns in their IDEAS for tools, prototypes, and things to build. Given a theme and its related idea items, synthesize insights that:
+  try {
+    return await fs.readFile(filePath, "utf-8");
+  } catch {
+    // Fallback to minimal prompt if file doesn't exist
+    return `Synthesize patterns in ${itemType === "all" ? "these items" : itemType + "s"}.`;
+  }
+}
 
-1. **Identifies the Core Pattern**: What underlying problem or opportunity connects these ideas?
-2. **Reveals the "So What"**: Why does this pattern matter for the user's builder journey?
-3. **Suggests a Starting Point**: Which idea or combination might be worth prototyping first?
-
-Keep the tone energizing and action-oriented - like a co-founder brainstorming with you. Be specific about what makes these ideas interesting together.
-
-Format your response as a flowing narrative (2-3 paragraphs), not bullet points. End with a clear suggestion.`,
-  insight: `You are helping a user understand patterns in their INSIGHTS - observations, learnings, and realizations worth sharing. Given a theme and its related insight items, synthesize a narrative that:
-
-1. **Identifies the Core Pattern**: What worldview or perspective connects these insights?
-2. **Reveals the "So What"**: What does this pattern reveal about the user's evolving expertise?
-3. **Suggests Content Opportunities**: Could these insights form a blog post, talk, or thread?
-
-Keep the tone reflective and intellectual - like a thought partner helping crystallize wisdom. Be specific about the unique angle these insights offer.
-
-Format your response as a flowing narrative (2-3 paragraphs), not bullet points. Highlight what makes this perspective distinctive.`,
-  use_case: `You are helping a user understand patterns in their USE CASES - real examples of how they've solved problems or applied techniques. Given a theme and its related use case items, synthesize insights that:
-
-1. **Identifies the Core Pattern**: What skill, approach, or methodology connects these use cases?
-2. **Reveals the "So What"**: What does this pattern suggest about the user's emerging expertise?
-3. **Suggests Applications**: Where else could this approach be applied? Any teaching opportunities?
-
-Keep the tone practical and evidence-based - like a mentor reviewing your portfolio. Be specific about what these use cases demonstrate.
-
-Format your response as a flowing narrative (2-3 paragraphs), not bullet points. Ground insights in the actual evidence.`,
-};
-
-// Load synthesis config from config.json
+// Load synthesis config from config.json and .md files
 async function loadSynthesisConfig(itemType: string = "all") {
   try {
     const configPath = path.join(process.cwd(), "data", "config.json");
-    const configContent = await fs.readFile(configPath, "utf-8");
-    const config = JSON.parse(configContent);
+    let config: any = {};
+    try {
+      const configContent = await fs.readFile(configPath, "utf-8");
+      config = JSON.parse(configContent);
+    } catch {
+      // Config doesn't exist, use defaults
+    }
     
-    // Get prompt for this item type (fallback to "all", then to default)
-    const prompts = config.themeSynthesis?.prompts || {};
-    const prompt = prompts[itemType] || prompts["all"] || DEFAULT_PROMPTS[itemType] || DEFAULT_PROMPTS["all"];
+    // Get prompt: custom from config > default from file
+    const customPrompts = config.themeSynthesis?.prompts || {};
+    let prompt: string;
+    
+    if (customPrompts[itemType]) {
+      prompt = customPrompts[itemType];
+    } else if (customPrompts["all"]) {
+      prompt = customPrompts["all"];
+    } else {
+      // Load from .md file
+      prompt = await loadDefaultPrompt(itemType);
+    }
     
     return {
       maxItemsToSynthesize: config.themeSynthesis?.maxItemsToSynthesize ?? 15,
@@ -72,12 +68,13 @@ async function loadSynthesisConfig(itemType: string = "all") {
       maxDescriptionLength: config.themeSynthesis?.maxDescriptionLength ?? 200,
       prompt,
     };
-  } catch {
+  } catch (error) {
+    // Fallback to defaults
     return { 
       maxItemsToSynthesize: 15, 
       maxTokens: 800, 
       maxDescriptionLength: 200,
-      prompt: DEFAULT_PROMPTS[itemType] || DEFAULT_PROMPTS["all"],
+      prompt: await loadDefaultPrompt(itemType),
     };
   }
 }

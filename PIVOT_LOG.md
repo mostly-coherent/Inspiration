@@ -219,8 +219,14 @@ existing_item.source_end_date = MAX(existing.end, new.end)
 **Post-Cleanup App Focus:**
 1. **Memory Status:** How big is my chat history? Is it synced?
 2. **Library Overview:** How many items? What themes emerged?
-3. **Theme Explorer:** Visual exploration of patterns (the main feature)
+3. **Theme Explorer (LIB-8):** Pattern discovery in current Library (1/3 of Longitudinal Intelligence complete)
 4. **Generate/Seek:** Occasional targeted extraction when something feels missing
+5. **Coverage Intelligence (v5):** Automated gap detection and suggested runs
+
+**Longitudinal Intelligence Roadmap:**
+- ✅ **LIB-8 (Theme Synthesis):** Theme Explorer operational
+- ⏳ **LIB-9 (Learning Trajectory):** Track interest shifts over time — Pending
+- ⏳ **LIB-10 (Gap Detection):** Identify unexplored topics — Pending
 
 ---
 

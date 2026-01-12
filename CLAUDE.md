@@ -25,9 +25,11 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 - **Seek (Use Case Mode)** — Find chat history evidence for use cases
 - **Library** — Items and Categories with automatic grouping via cosine similarity
 - **Memory** — Indexed chat history with sync status and date coverage
-- **Theme Explorer** — Interactive theme grouping with LLM-powered synthesis
+- **Theme Explorer (LIB-8)** — Pattern discovery via dynamic similarity grouping (forest → trees zoom), AI synthesis per theme
 - **Coverage Intelligence (v5)** — Automated gap detection and suggested generation runs
 - **Explore Coverage** — Visual chart of Memory terrain vs Library coverage
+
+**Longitudinal Intelligence Status (v4 Phase 3):** 1/3 complete — Theme Explorer operational; Learning Trajectory (LIB-9) and Gap Detection (LIB-10) pending.
 
 ### New User Onboarding
 
@@ -36,7 +38,7 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 | **1. Welcome** | Detect chat DB size, explain value prop | — |
 | **2. API Keys** | Anthropic key required; Supabase optional for < 500MB | ✅ Anthropic |
 | **3. Sync** | Index chat history to Vector DB (if Supabase configured) | Auto |
-| **4. Theme Explorer** | First "aha moment" — see patterns in thinking | — |
+| **4. Theme Explorer** | First "aha moment" — see patterns in current Library (LIB-8) | — |
 
 **Testing Onboarding:** Visit `/onboarding?preview=true` to test without resetting data.
 
@@ -174,7 +176,7 @@ python3 engine/generate.py --mode insights \
 |------|---------|
 | `src/app/page.tsx` | Main UI — redirects to onboarding if new user, integrated Coverage suggestions |
 | `src/app/onboarding/page.tsx` | 3-step onboarding wizard (Welcome → API Keys → Sync) |
-| `src/app/themes/page.tsx` | Theme Explorer — interactive theme grouping with LLM synthesis |
+| `src/app/themes/page.tsx` | Theme Explorer (LIB-8) — pattern discovery via similarity grouping + AI synthesis |
 | `src/app/explore-coverage/page.tsx` | Coverage visualization — chart + suggested runs (v5) |
 | `src/app/settings/page.tsx` | Settings wizard (workspaces, VectorDB, voice, LLM, mode settings) |
 | `src/app/api/coverage/analyze/route.ts` | Coverage analysis API (v5) |

@@ -6,6 +6,41 @@
 
 ---
 
+## Progress - 2026-01-12 (LIB-10: Unexplored Territory Build Plan)
+
+**Done:**
+- ✅ **Created comprehensive build plan for LIB-10 (Unexplored Territory)**
+  - **Terminology Decision:** Chose "Unexplored Territory" over "Gap Detection" for nurturing, discovery-focused framing
+  - **3-Layer Detection System:**
+    - Layer 1: Memory vs. Library Mismatch (MVP — topics in conversations but not in Library)
+    - Layer 2: Adjacency Analysis (topics mentioned but never primary focus)
+    - Layer 3: LLM Strategic Synthesis (AI-identified "expected neighbors" missing)
+  - **Implementation Phases:**
+    - Phase 1 (Week 1): MVP with zero LLM cost, immediate value
+    - Phase 2 (Week 2-3): Adjacency detection with cached results
+    - Phase 3 (Week 3-4): Strategic AI recommendations
+  - **UI/UX Design:** Dedicated `/unexplored` page + main page preview card
+  - **One-Click Actions:** Pre-fill Generate/Seek with unexplored topics
+  - **Settings Configuration:** Detection sensitivity, clustering threshold
+  
+**Rationale — Why LIB-10 Before LIB-9:**
+- ✅ Works with existing data (no waiting for 6-12 months of history)
+- ✅ Actionable ("Explore X next") vs. retrospective ("Here's where you've been")
+- ✅ Higher impact: Shapes future exploration direction
+
+**Evidence:**
+- File created: `UNEXPLORED_TERRITORY_BUILD_PLAN.md` (comprehensive 400+ line spec)
+- PLAN.md updated: LIB-10 status changed from "Pending" to "Planned" with build plan reference
+- Terminology consistent throughout: "Unexplored Territory" (nurturing) not "Gap Detection" (deficit-focused)
+
+**Next Steps:**
+- [ ] Review build plan with user
+- [ ] Implement Phase 1 MVP (Layer 1: Memory vs. Library Mismatch)
+- [ ] Test clustering algorithm on 2.1GB Memory dataset
+- [ ] Design UI components (UnexploredCard, UnexploredDashboard)
+
+---
+
 ## Progress - 2026-01-12 (UX-1: Remove Item Count Parameter)
 
 **Done:**
@@ -26,6 +61,33 @@
     - No wasted LLM output: All quality items go to Library
     - No confusing "N items filtered" messaging
   - **Evidence:** All 26 E2E tests passing
+
+---
+
+## Progress - 2026-01-12 (Longitudinal Intelligence Status Clarification)
+
+**Clarification:**
+- **v4 Library Enhancement Phase 3: Longitudinal Intelligence** — Only 1/3 complete
+  
+  **What's Done (LIB-8):**
+  - ✅ **Theme Synthesis (Theme Explorer)** — Pattern discovery through dynamic similarity grouping
+    - Zoom slider to see broad themes (forest view) vs. specific themes (tree view)
+    - AI-powered synthesis when clicking a theme (insights, common threads, provenance)
+    - Item type filtering (All, Ideas, Insights, Use Cases)
+    - Separate threshold memory per item type
+    - Configurable in Settings → Advanced → Theme Explorer
+    - Page: `/themes` | API: `/api/items/themes/preview`, `/api/items/themes/synthesize`
+  
+  **What's Pending (LIB-9, LIB-10):**
+  - ⏳ **Learning Trajectory** — "Your interests shifted from X → Y → Z over 6 months" (temporal evolution tracking)
+  - ⏳ **Gap Detection** — "You've explored A and C extensively, but B is absent" (identifying unexplored territory)
+  
+  **Key Distinction:** Theme Explorer discovers patterns in CURRENT Library state. True longitudinal intelligence (LIB-9, LIB-10) tracks how thinking EVOLVES OVER TIME and identifies MISSING exploration areas.
+
+**Evidence:**
+- Theme Explorer fully functional: `/themes` page operational
+- PLAN.md Phase 3 status accurately reflects: LIB-8 ✅ Complete | LIB-9 ⏳ Pending | LIB-10 ⏳ Pending
+- Coverage Intelligence (v5) addresses WHEN items were generated, but not HOW interests shifted or WHAT topics are absent
 
 ---
 

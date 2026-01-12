@@ -1,10 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CoverageVisualization } from "@/components/CoverageVisualization";
-import { ToolType, PresetMode } from "@/lib/types";
 
 interface SuggestedRun {
   weekLabel: string;
@@ -59,7 +56,6 @@ interface CoverageAnalysis {
 }
 
 export default function ExploreCoveragePage() {
-  const router = useRouter();
   const [coverageData, setCoverageData] = useState<CoverageAnalysis | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -239,16 +235,37 @@ export default function ExploreCoveragePage() {
               </div>
             </div>
 
-            {/* Visualization */}
+            {/* Summary Stats */}
             <section>
               <h2 className="text-lg font-medium text-slate-300 mb-4">
-                📈 Coverage Visualization
+                📊 Coverage Statistics
               </h2>
-              <CoverageVisualization
-                memoryWeeks={coverageData.memory.weeks}
-                libraryWeeksByType={coverageData.library.weeksByType || []}
-                libraryWeeks={coverageData.library.weeks}
-              />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="glass-card p-4 text-center">
+                  <div className="text-2xl font-bold text-slate-200">
+                    {coverageData.memory.totalWeeks}
+                  </div>
+                  <div className="text-xs text-slate-500">Weeks Tracked</div>
+                </div>
+                <div className="glass-card p-4 text-center">
+                  <div className="text-2xl font-bold text-cyan-400">
+                    {coverageData.memory.totalConversations.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-slate-500">Total Conversations</div>
+                </div>
+                <div className="glass-card p-4 text-center">
+                  <div className="text-2xl font-bold text-emerald-400">
+                    {coverageData.memory.coveredWeeks}
+                  </div>
+                  <div className="text-xs text-slate-500">Weeks with Items</div>
+                </div>
+                <div className="glass-card p-4 text-center">
+                  <div className="text-2xl font-bold text-emerald-400">
+                    {coverageData.coverageScore}%
+                  </div>
+                  <div className="text-xs text-slate-500">Coverage Score</div>
+                </div>
+              </div>
             </section>
 
             {/* Suggested Runs */}

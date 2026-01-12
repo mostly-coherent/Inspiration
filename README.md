@@ -111,7 +111,7 @@ That's it. The **onboarding wizard** handles everything else:
 
 - **Self-Discovery Through Data** — Run Theme Explorer and discover: *"I didn't realize I've been circling this problem for 6 months"*
 - **Meta-Analysis** — It's like running analytics on your own brain. What patterns emerge when you have 500+ conversations indexed?
-- **Longitudinal Intelligence** — See your interests shift over time. What were you curious about 3 months ago vs. now?
+- **Pattern Recognition** — Theme Explorer shows what themes keep surfacing in your Library right now (learning trajectory and gap detection coming soon)
 - **Compound Knowledge** — Your Library grows with every conversation. Watch your intellectual progress quantified.
 
 **The "Aha Moment" User Story:**
@@ -166,7 +166,7 @@ The innovation is **what** you're searching (your own Cursor conversations for m
 
 **Coverage Intelligence is now live!** The app analyzes your Memory terrain and suggests runs to fill coverage gaps—you just click to execute. Combined with performance optimizations (50-80% cost reduction via topic filtering, 20-60x faster harmonization), the Library grows efficiently with minimal manual intervention.
 
-Active development continues on longitudinal intelligence—understanding your intellectual trajectory over months of conversations.
+**Longitudinal Intelligence (1/3 complete):** Theme Explorer (pattern discovery) is operational. Still pending: Learning Trajectory (tracking how interests shift over time) and Gap Detection (identifying unexplored territory). Active development continues on these temporal analysis features.
 
 ---
 
