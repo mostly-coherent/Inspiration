@@ -20,6 +20,7 @@ from common.cursor_db import get_conversations_for_range, _get_conversations_for
 from common.vector_db import (
     get_supabase_client,
     get_last_sync_timestamp,
+    get_sync_state_path,
     save_sync_state,
     index_message,
     index_messages_batch,
@@ -103,7 +104,14 @@ def sync_new_messages(
     last_sync_ts = get_last_sync_timestamp()
     
     if last_sync_ts == 0:
-        print("⚠️  No previous sync found. Run index_all_messages.py first for initial indexing.")
+        # Check if sync state file exists but is corrupted (vs. never synced)
+        state_path = get_sync_state_path()
+        if state_path.exists():
+            print("⚠️  Sync state file exists but is corrupted or invalid.")
+            print("   The sync script attempted to recover by checking Vector DB.")
+            print("   If recovery failed, you may need to run index_all_messages.py for initial indexing.")
+        else:
+            print("⚠️  No previous sync found. Run index_all_messages.py first for initial indexing.")
         return
     
     last_sync_date = datetime.fromtimestamp(last_sync_ts / 1000).date()

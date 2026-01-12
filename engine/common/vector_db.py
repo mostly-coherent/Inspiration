@@ -42,16 +42,69 @@ def get_sync_state_path() -> Path:
 
 
 def get_last_sync_timestamp() -> int:
-    """Get last sync timestamp from state file."""
+    """Get last sync timestamp from state file.
+    
+    Returns:
+        Last sync timestamp in milliseconds, or 0 if not found/corrupted.
+        
+    Side effects:
+        - Logs warnings if sync state is corrupted or invalid
+        - Attempts auto-recovery by checking Vector DB for latest timestamp
+        - Auto-fixes corrupted sync state file if recovery succeeds
+    """
+    import sys
+    
     state_path = get_sync_state_path()
     if not state_path.exists():
         return 0
     
     try:
         with open(state_path) as f:
-            state = json.load(f)
-            return state.get("last_sync_timestamp", 0)
-    except (json.JSONDecodeError, IOError):
+            content = f.read()
+            state = json.loads(content)
+            timestamp = state.get("last_sync_timestamp", 0)
+            
+            # Validate timestamp is reasonable (not 0, not future, not too old)
+            if timestamp > 0:
+                sync_date = datetime.fromtimestamp(timestamp / 1000)
+                now = datetime.now()
+                
+                # Warn if sync state is corrupted (timestamp exists but seems invalid)
+                if sync_date > now:
+                    print(f"⚠️  Warning: Sync state timestamp is in the future: {sync_date}", file=sys.stderr)
+                elif (now - sync_date).days > 365:
+                    print(f"⚠️  Warning: Sync state is very old ({sync_date.date()}), consider re-indexing", file=sys.stderr)
+            
+            return timestamp
+    except json.JSONDecodeError as e:
+        # Log the error so users can see what went wrong
+        print(f"❌ ERROR: Sync state file is corrupted (invalid JSON): {state_path}", file=sys.stderr)
+        print(f"   Error: {e}", file=sys.stderr)
+        print(f"   Attempting to recover by checking Vector DB for latest timestamp...", file=sys.stderr)
+        
+        # Try to recover by checking Vector DB for latest timestamp
+        try:
+            client = get_supabase_client()
+            if client:
+                result = client.table("cursor_messages").select("timestamp").order("timestamp", desc=True).limit(1).execute()
+                if result.data and len(result.data) > 0:
+                    recovered_ts = result.data[0]["timestamp"]
+                    recovered_date = datetime.fromtimestamp(recovered_ts / 1000).date()
+                    print(f"   ✓ Recovered: Using latest Vector DB timestamp ({recovered_date})", file=sys.stderr)
+                    # Optionally auto-fix the file
+                    try:
+                        save_sync_state(recovered_ts, 0)  # Reset with recovered timestamp
+                        print(f"   ✓ Auto-fixed sync state file", file=sys.stderr)
+                    except Exception:
+                        pass  # Don't fail if we can't write
+                    return recovered_ts
+        except Exception:
+            pass  # If recovery fails, fall through to return 0
+        
+        print(f"   ⚠️  Could not recover. Sync will treat this as first-time sync.", file=sys.stderr)
+        return 0
+    except IOError as e:
+        print(f"⚠️  Warning: Could not read sync state file: {e}", file=sys.stderr)
         return 0
 
 
