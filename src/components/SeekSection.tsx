@@ -39,6 +39,7 @@ interface SeekProgressData {
   
   // Integration phase
   useCasesAdded?: number;
+  useCasesMerged?: number;  // Duplicates found during harmonization
   
   // Intra-phase progress
   currentItem?: number;
@@ -175,6 +176,18 @@ export function SeekSection({
     });
     setElapsedSeconds(0);
 
+    // Issue #26: Fetch library count before search (for verification)
+    let libraryCountBefore: number | null = null;
+    try {
+      const libRes = await fetch("/api/items?view=items");
+      const libData = await libRes.json();
+      if (libData.success) {
+        libraryCountBefore = libData.stats?.totalItems || 0;
+      }
+    } catch (e) {
+      console.error("[Seek] Failed to fetch library count before:", e);
+    }
+
     // Create new AbortController for this request
     abortController.current = new AbortController();
 
@@ -296,6 +309,46 @@ export function SeekSection({
             // Ignore parse errors
           }
         }
+      }
+
+      // Issue #26: Verify Library count increased (with retry for eventual consistency)
+      const fetchLibraryCountWithRetry = async (retries = 3, delayMs = 500): Promise<number | null> => {
+        for (let i = 0; i < retries; i++) {
+          try {
+            // Small delay before each attempt
+            if (i > 0 || delayMs > 0) {
+              await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+            
+            const response = await fetch("/api/items?view=items");
+            const data = await response.json();
+            
+            if (data.success) {
+              const newCount = data.stats?.totalItems || 0;
+              const useCasesAdded = progressData.useCasesAdded || 0;
+              const useCasesMerged = progressData.useCasesMerged || 0;
+              
+              // If we added items but count didn't increase, retry
+              // If all items were duplicates (useCasesAdded=0, useCasesMerged>0), count won't increase but that's expected
+              if (useCasesAdded > 0 && libraryCountBefore !== null && newCount <= libraryCountBefore) {
+                console.log(`[Seek] Count ${newCount} <= before ${libraryCountBefore}, retrying...`);
+                delayMs = Math.min(delayMs * 2, 2000); // Exponential backoff, max 2s
+                continue;
+              }
+              return newCount;
+            }
+          } catch (e) {
+            console.error(`[Seek] Fetch attempt ${i + 1} failed:`, e);
+          }
+          delayMs = Math.min(delayMs * 2, 2000);
+        }
+        return null;
+      };
+      
+      const finalCount = await fetchLibraryCountWithRetry();
+      if (finalCount !== null && libraryCountBefore !== null) {
+        const actualAdded = finalCount - libraryCountBefore;
+        console.log(`[Seek] Library count: ${libraryCountBefore} → ${finalCount} (${actualAdded > 0 ? '+' : ''}${actualAdded})`);
       }
 
       // Set the final result

@@ -10,18 +10,100 @@ OPTIMIZATIONS (H-1, H-2):
 """
 
 import uuid
+import time
 from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Callable, TypeVar
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .vector_db import get_supabase_client
 from .semantic_search import get_embedding, cosine_similarity
 
+T = TypeVar('T')
+
 
 ThemeType = Literal["generation", "seek"]
 ItemType = Literal["insight", "idea", "use_case"]
 StatusType = Literal["active", "implemented", "posted", "archived"]
+
+
+def _is_retryable_error(error: Exception) -> bool:
+    """Check if error is retryable (transient) vs permanent."""
+    error_str = str(error).lower()
+    error_type = type(error).__name__
+    
+    # Network errors are retryable
+    if "network" in error_str or "connection" in error_str or "timeout" in error_str:
+        return True
+    
+    # Check for HTTP status codes in error message
+    # 429 = Too Many Requests (rate limit)
+    # 503 = Service Unavailable
+    # 502 = Bad Gateway
+    # 504 = Gateway Timeout
+    if "429" in error_str or "503" in error_str or "502" in error_str or "504" in error_str:
+        return True
+    
+    # Permanent errors (don't retry)
+    # 400 = Bad Request
+    # 401 = Unauthorized
+    # 404 = Not Found
+    if "400" in error_str or "401" in error_str or "404" in error_str:
+        return False
+    
+    # Default: retry on unknown errors (safer to retry than fail)
+    return True
+
+
+def _retry_supabase_operation(
+    operation: Callable[[], T],
+    max_retries: int = 3,
+    initial_delay: float = 0.5,
+    max_delay: float = 5.0,
+    operation_name: str = "Supabase operation"
+) -> T:
+    """
+    Retry a Supabase operation with exponential backoff.
+    
+    Args:
+        operation: Function to execute (no args)
+        max_retries: Maximum number of retry attempts
+        initial_delay: Initial delay in seconds
+        max_delay: Maximum delay in seconds
+        operation_name: Name for error messages
+    
+    Returns:
+        Result of operation
+    
+    Raises:
+        Exception: Last exception if all retries fail
+    """
+    last_error = None
+    
+    for attempt in range(max_retries + 1):
+        try:
+            return operation()
+        except Exception as e:
+            last_error = e
+            
+            # Don't retry on last attempt
+            if attempt >= max_retries:
+                break
+            
+            # Don't retry if error is permanent
+            if not _is_retryable_error(e):
+                break
+            
+            # Calculate delay with exponential backoff
+            delay = min(initial_delay * (2 ** attempt), max_delay)
+            
+            import sys
+            print(f"   ⚠️ {operation_name} failed (attempt {attempt + 1}/{max_retries + 1}): {str(e)[:100]}", file=sys.stderr)
+            print(f"      Retrying in {delay:.1f}s...", file=sys.stderr)
+            time.sleep(delay)
+    
+    # All retries exhausted or permanent error
+    raise last_error
 
 
 class ItemsBankSupabase:
@@ -39,10 +121,10 @@ class ItemsBankSupabase:
         description: str,
         *,
         embedding: Optional[list[float]] = None,
-        first_seen_date: Optional[str] = None,
+        first_seen_date: Optional[str] = None,  # YYYY-MM format (from filename) or YYYY-MM-DD (converted)
         # Coverage Intelligence: source date range tracking
-        source_start_date: Optional[str] = None,  # YYYY-MM-DD format
-        source_end_date: Optional[str] = None,  # YYYY-MM-DD format
+        source_start_date: Optional[str] = None,  # YYYY-MM-DD format (full date)
+        source_end_date: Optional[str] = None,  # YYYY-MM-DD format (full date)
         # Theme tracking
         theme: Optional[str] = None,
         # Deprecated - kept for backward compatibility in function signature
@@ -98,10 +180,20 @@ class ItemsBankSupabase:
             "description": description,
             "status": "active",
             "occurrence": 1,
-            "first_seen": first_seen_date or datetime.now().strftime("%Y-%m"),
+            # DATE FORMAT STANDARD:
+            # - first_seen / last_seen: YYYY-MM format (month-year, backward compatibility)
+            # - first_seen_date / last_seen_date: YYYY-MM-DD format (full date, preferred)
+            # - source_start_date / source_end_date: YYYY-MM-DD format (full date, Coverage Intelligence)
+            # Convert first_seen_date from YYYY-MM to YYYY-MM-DD if needed
+            if first_seen_date and len(first_seen_date) == 7:  # YYYY-MM format
+                first_seen_date_full = f"{first_seen_date}-01"  # Use first day of month
+            else:
+                first_seen_date_full = first_seen_date or datetime.now().strftime("%Y-%m-%d")
+            
+            "first_seen": first_seen_date[:7] if first_seen_date and len(first_seen_date) >= 7 else datetime.now().strftime("%Y-%m"),
             "last_seen": datetime.now().strftime("%Y-%m"),
             # Day-level precision dates for analytics
-            "first_seen_date": datetime.now().strftime("%Y-%m-%d"),
+            "first_seen_date": first_seen_date_full,
             "last_seen_date": datetime.now().strftime("%Y-%m-%d"),
             "category_id": None,
             "embedding": embedding,
@@ -153,17 +245,25 @@ class ItemsBankSupabase:
         """
         best_match_id = None
         
-        # Try server-side similarity search first (fast path)
+        # Try server-side similarity search first (fast path, with retry)
         try:
-            result = self.client.rpc(
-                "search_similar_library_items",
-                {
-                    "query_embedding": embedding,
-                    "match_threshold": threshold,
-                    "match_count": 1,  # We only need the best match
-                    "filter_item_type": item_type,
-                }
-            ).execute()
+            def rpc_search():
+                result = self.client.rpc(
+                    "search_similar_library_items",
+                    {
+                        "query_embedding": embedding,
+                        "match_threshold": threshold,
+                        "match_count": 1,  # We only need the best match
+                        "filter_item_type": item_type,
+                    }
+                ).execute()
+                return result
+            
+            result = _retry_supabase_operation(
+                rpc_search,
+                max_retries=2,  # Fewer retries for RPC (usually fast)
+                operation_name="RPC similarity search"
+            )
             
             if result.data and len(result.data) > 0:
                 best_match_id = result.data[0]["id"]
@@ -229,10 +329,21 @@ class ItemsBankSupabase:
         """
         Update existing item when deduplicating: increment occurrence and expand date range.
         """
-        # Fetch current item
-        result = self.client.table("library_items").select(
-            "occurrence, source_start_date, source_end_date"
-        ).eq("id", item_id).single().execute()
+        # Fetch current item (with retry)
+        def fetch_item():
+            result = self.client.table("library_items").select(
+                "occurrence, source_start_date, source_end_date"
+            ).eq("id", item_id).single().execute()
+            return result
+        
+        try:
+            result = _retry_supabase_operation(
+                fetch_item,
+                max_retries=2,
+                operation_name=f"Fetch item {item_id}"
+            )
+        except Exception:
+            return False
         
         if not result.data:
             return False
@@ -259,10 +370,20 @@ class ItemsBankSupabase:
             if not existing_end or source_end_date > existing_end:
                 update_data["source_end_date"] = source_end_date
         
-        # Update in Supabase
-        update_result = self.client.table("library_items").update(update_data).eq("id", item_id).execute()
+        # Update in Supabase (with retry)
+        def update_item():
+            update_result = self.client.table("library_items").update(update_data).eq("id", item_id).execute()
+            return update_result
         
-        return bool(update_result.data)
+        try:
+            update_result = _retry_supabase_operation(
+                update_item,
+                max_retries=2,
+                operation_name=f"Update item {item_id}"
+            )
+            return bool(update_result.data)
+        except Exception:
+            return False
     
     def find_similar_items(
         self,
@@ -507,18 +628,29 @@ class ItemsBankSupabase:
         if not items:
             return {"added": 0, "updated": 0, "total": 0}
         
+        import sys
+        
         # Extract embeddings (already pre-computed)
         embeddings = [item.get("embedding") for item in items]
         
         # PHASE 1: Parallel similarity search using ThreadPoolExecutor
-        print(f"   ⚡ Parallel dedup check for {len(items)} items (workers={max_workers})...", file=__import__('sys').stderr)
+        print(f"   ⚡ Parallel dedup check for {len(items)} items (workers={max_workers})...", file=sys.stderr)
+        # Emit progress marker to stdout for frontend (dedup phase)
+        print(f"[PROGRESS:current=0,total={len(items)},label=deduplicating]", flush=True)
         
-        similar_matches = self._batch_find_similar_parallel(
-            embeddings=embeddings,
-            item_type=item_type,
-            threshold=threshold,
-            max_workers=max_workers,
-        )
+        try:
+            similar_matches = self._batch_find_similar_parallel(
+                embeddings=embeddings,
+                item_type=item_type,
+                threshold=threshold,
+                max_workers=max_workers,
+            )
+        except Exception as e:
+            # Emit error marker for frontend
+            error_msg = str(e)[:200]  # Truncate long error messages
+            print(f"[ERROR:type=batch_dedup,message=Batch deduplication failed: {error_msg}]", flush=True)
+            print(f"   ⚠️ Batch deduplication failed: {e}", file=sys.stderr)
+            raise  # Re-raise to let caller handle
         
         # PHASE 2: Separate items into new vs update
         items_to_insert = []
@@ -535,6 +667,15 @@ class ItemsBankSupabase:
                 })
             else:
                 # New item - prepare insert (simplified schema v2)
+                # DATE FORMAT STANDARD: Convert first_seen_date from YYYY-MM to YYYY-MM-DD if needed
+                first_seen_date_raw = item.get("first_seen_date")
+                if first_seen_date_raw and len(first_seen_date_raw) == 7:  # YYYY-MM format
+                    first_seen_date_full = f"{first_seen_date_raw}-01"  # Use first day of month
+                    first_seen_month = first_seen_date_raw
+                else:
+                    first_seen_date_full = first_seen_date_raw or datetime.now().strftime("%Y-%m-%d")
+                    first_seen_month = first_seen_date_full[:7] if len(first_seen_date_full) >= 7 else datetime.now().strftime("%Y-%m")
+                
                 item_id = f"item-{uuid.uuid4().hex[:8]}"
                 items_to_insert.append({
                     "id": item_id,
@@ -543,10 +684,10 @@ class ItemsBankSupabase:
                     "description": item.get("description", ""),
                     "status": "active",
                     "occurrence": 1,
-                    "first_seen": item.get("first_seen_date") or datetime.now().strftime("%Y-%m"),
+                    "first_seen": first_seen_month,  # YYYY-MM format
                     "last_seen": datetime.now().strftime("%Y-%m"),
                     # Day-level precision dates for analytics
-                    "first_seen_date": datetime.now().strftime("%Y-%m-%d"),
+                    "first_seen_date": first_seen_date_full,  # YYYY-MM-DD format
                     "last_seen_date": datetime.now().strftime("%Y-%m-%d"),
                     "category_id": None,
                     "embedding": item.get("embedding"),
@@ -555,45 +696,91 @@ class ItemsBankSupabase:
                     "theme": "generation",
                 })
         
+        # Emit dedup complete marker
+        print(f"[STAT:dedupNew={len(items_to_insert)}]", flush=True)
+        print(f"[STAT:dedupDuplicates={len(items_to_update)}]", flush=True)
+        
         # PHASE 3: Batch insert new items
         added = 0
+        insert_errors = []
         if items_to_insert:
+            print(f"[PROGRESS:current=0,total={len(items_to_insert)},label=inserting]", flush=True)
             try:
-                # Supabase supports batch insert
-                result = self.client.table("library_items").insert(items_to_insert).execute()
-                added = len(result.data) if result.data else 0
+                # Supabase supports batch insert (with retry)
+                def batch_insert():
+                    result = self.client.table("library_items").insert(items_to_insert).execute()
+                    return len(result.data) if result.data else 0
+                
+                added = _retry_supabase_operation(
+                    batch_insert,
+                    max_retries=3,
+                    operation_name="Batch insert"
+                )
+                print(f"[PROGRESS:current={added},total={len(items_to_insert)},label=inserting]", flush=True)
             except Exception as e:
-                print(f"   ⚠️ Batch insert failed, falling back to individual inserts: {e}", file=__import__('sys').stderr)
-                for item_data in items_to_insert:
+                print(f"   ⚠️ Batch insert failed after retries, falling back to individual inserts: {e}", file=sys.stderr)
+                for idx, item_data in enumerate(items_to_insert):
                     try:
-                        self.client.table("library_items").insert(item_data).execute()
+                        def single_insert():
+                            self.client.table("library_items").insert(item_data).execute()
+                            return True
+                        
+                        _retry_supabase_operation(
+                            single_insert,
+                            max_retries=2,  # Fewer retries for individual inserts
+                            operation_name=f"Insert item {idx + 1}"
+                        )
                         added += 1
-                    except Exception:
-                        pass
+                    except Exception as item_err:
+                        insert_errors.append(f"Item {idx}: {str(item_err)[:50]}")
+                    # Emit progress every 5 items
+                    if (idx + 1) % 5 == 0:
+                        print(f"[PROGRESS:current={idx + 1},total={len(items_to_insert)},label=inserting]", flush=True)
         
         # PHASE 4: Batch update existing items (expand date ranges)
         updated = 0
+        update_errors = []
         if items_to_update:
+            print(f"[PROGRESS:current=0,total={len(items_to_update)},label=updating]", flush=True)
+            completed = 0
             # Group updates and process in parallel
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = [
+                futures = {
                     executor.submit(
                         self._update_existing_item_on_dedup,
                         update["existing_id"],
                         update["source_start_date"],
                         update["source_end_date"],
-                    )
+                    ): update["existing_id"]
                     for update in items_to_update
-                ]
+                }
                 for future in as_completed(futures):
-                    if future.result():
-                        updated += 1
+                    completed += 1
+                    try:
+                        if future.result():
+                            updated += 1
+                    except Exception as update_err:
+                        update_errors.append(f"Update failed: {str(update_err)[:50]}")
+                    # Emit progress every 5 items
+                    if completed % 5 == 0:
+                        print(f"[PROGRESS:current={completed},total={len(items_to_update)},label=updating]", flush=True)
+            print(f"[PROGRESS:current={len(items_to_update)},total={len(items_to_update)},label=updating]", flush=True)
+        
+        # Log any errors (to stderr for debugging)
+        all_errors = insert_errors + update_errors
+        if all_errors:
+            print(f"   ⚠️ {len(all_errors)} item(s) had errors during batch operation", file=sys.stderr)
+            for err in all_errors[:5]:  # Show first 5 errors
+                print(f"      - {err}", file=sys.stderr)
+            if len(all_errors) > 5:
+                print(f"      ... and {len(all_errors) - 5} more", file=sys.stderr)
         
         return {
             "added": added,
             "updated": updated,
             "total": len(items),
             "dedup_matches": len(items_to_update),
+            "errors": all_errors,
         }
     
     def _batch_find_similar_parallel(

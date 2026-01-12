@@ -401,51 +401,111 @@ def seek_use_case(
             )
             print(f"📄 Saved to: {output_file}", file=sys.stderr)
         
-        # Step 6: Harmonize into ItemsBank (using unified content structure)
+        # Step 6: Harmonize into ItemsBank (using batch operations for performance)
         emit_phase("integrating", "Adding use cases to Library...")
         
         items_added = 0
-        if content and items:
-            print(f"\n📦 Harmonizing use cases into ItemsBank...", file=sys.stderr)
-            bank = ItemsBank()
-            
-            for idx, item in enumerate(items):
-                emit_progress(idx + 1, len(items), "use cases")
-                
-                title = item.get("title", "")
-                
-                # Build description from available fields (unified structure)
-                description_parts = []
-                if item.get("what"):
-                    description_parts.append(f"**Job-to-be-Done:** {item['what']}")
-                if item.get("how"):
-                    description_parts.append(f"**How:** {item['how']}")
-                if item.get("takeaways"):
-                    description_parts.append(f"**Takeaway:** {item['takeaways']}")
-                if item.get("context"):
-                    description_parts.append(f"**Context:** {item['context']}")
-                
-                description = "\n\n".join(description_parts) if description_parts else title
-                tags = item.get("tags", [])
-                
-                bank.add_item(
-                    item_type="use_case",
-                    title=title,
-                    description=description,
-                    tags=tags,
-                    theme="seek",
-                )
-                items_added += 1
-            
-            print(f"📊 Harmonized {items_added} use case(s) into Library", file=sys.stderr)
-            
-            # NOTE: Category grouping removed - redundant with Theme Explorer and tags
-            # Theme Explorer provides dynamic similarity-based grouping
-            # Tags provide user-managed organization
+        items_merged = 0
         
-        # Emit completion
-        emit_phase("complete", "Seek complete!")
-        emit_stat("useCasesAdded", items_added)
+        # Calculate source date range from conversations (Issue #25: Coverage tracking)
+        source_start_date = None
+        source_end_date = None
+        if conversations:
+            conversation_dates = []
+            for conv in conversations:
+                if conv.get("messages"):
+                    for msg in conv["messages"]:
+                        ts = msg.get("timestamp", 0)
+                        if ts:
+                            msg_date = datetime.fromtimestamp(ts / 1000).date()
+                            conversation_dates.append(msg_date)
+            
+            if conversation_dates:
+                source_start_date = str(min(conversation_dates))
+                source_end_date = str(max(conversation_dates))
+                print(f"📅 Source date range: {source_start_date} to {source_end_date}", file=sys.stderr)
+        
+        # Issue #27: Wrap harmonization in try/finally to ensure complete marker is always emitted
+        try:
+            if content and items:
+                print(f"\n📦 Harmonizing use cases into ItemsBank...", file=sys.stderr)
+                bank = ItemsBank()
+                
+                # Issue #24: Refactor to use batch_add_items for 5-10x performance boost
+                # Prepare items for batch operation
+                from common.semantic_search import batch_get_embeddings
+                
+                prepared_items = []
+                for item in items:
+                    title = item.get("title", "")
+                    
+                    # Build description from available fields (unified structure)
+                    description_parts = []
+                    if item.get("what"):
+                        description_parts.append(f"**Job-to-be-Done:** {item['what']}")
+                    if item.get("how"):
+                        description_parts.append(f"**How:** {item['how']}")
+                    if item.get("takeaways"):
+                        description_parts.append(f"**Takeaway:** {item['takeaways']}")
+                    if item.get("context"):
+                        description_parts.append(f"**Context:** {item['context']}")
+                    
+                    description = "\n\n".join(description_parts) if description_parts else title
+                    tags = item.get("tags", [])
+                    
+                    # Date format: use today's date for first_seen_date
+                    first_seen_date = datetime.now().strftime("%Y-%m-%d")
+                    
+                    prepared_items.append({
+                        "title": title,
+                        "description": description,
+                        "tags": tags,
+                        "first_seen_date": first_seen_date,
+                        # embedding will be generated by batch_add_items
+                    })
+                
+                if prepared_items:
+                    # Batch generate embeddings (10x faster than individual calls)
+                    print(f"   ⚡ Batch generating {len(prepared_items)} embeddings...", file=sys.stderr)
+                    texts = [f"{p['title']} {p['description']}" for p in prepared_items]
+                    embeddings = batch_get_embeddings(texts)
+                    
+                    # Add embeddings to prepared items
+                    for i, item in enumerate(prepared_items):
+                        item["embedding"] = embeddings[i]
+                    
+                    # Batch add items with parallel deduplication
+                    print(f"   ⚡ Batch adding {len(prepared_items)} items with parallel deduplication...", file=sys.stderr)
+                    result = bank.batch_add_items(
+                        items=prepared_items,
+                        item_type="use_case",
+                        source_start_date=source_start_date,
+                        source_end_date=source_end_date,
+                        threshold=0.85,  # Default deduplication threshold
+                        max_workers=5,
+                    )
+                    
+                    items_added = result.get("added", 0)
+                    items_merged = result.get("updated", 0)  # Duplicates
+                    
+                    print(f"📊 Harmonized {items_added} new use case(s) + {items_merged} duplicate(s) into Library", file=sys.stderr)
+                else:
+                    print(f"⚠️  No items to harmonize", file=sys.stderr)
+                
+                # NOTE: Category grouping removed - redundant with Theme Explorer and tags
+                # Theme Explorer provides dynamic similarity-based grouping
+                # Tags provide user-managed organization
+        except Exception as e:
+            # Issue #27: Catch harmonization errors to prevent frontend hang
+            print(f"⚠️  Harmonization failed: {e}", file=sys.stderr)
+            emit_error("harmonization_failed", f"Failed to add use cases: {str(e)[:200]}")
+            items_added = 0
+            items_merged = 0
+        finally:
+            # Issue #27: Always emit completion marker (critical for frontend)
+            emit_phase("complete", "Seek complete!")
+            emit_stat("useCasesAdded", items_added)
+            emit_stat("useCasesMerged", items_merged)
         
         # End performance tracking
         perf_summary = end_run(success=True)

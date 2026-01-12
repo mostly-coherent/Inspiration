@@ -1066,10 +1066,15 @@ def harmonize_all_outputs(
     llm: LLMProvider,
     batch_size: int = 5,
     source_date_range: tuple[str, str] | None = None,  # (start_date, end_date) for coverage tracking
-) -> int:
+) -> dict[str, int]:
     """
     Harmonize all output files into the unified ItemsBank (v1), then delete them.
-    Returns number of files processed.
+    
+    Returns dict with stats:
+        - files_processed: Number of files processed
+        - items_added: Number of new items added
+        - items_merged: Number of existing items updated (deduplicated)
+        - items_processed: Total items compared
     
     Args:
         mode: Generation mode ("insights" or "ideas")
@@ -1078,6 +1083,8 @@ def harmonize_all_outputs(
         source_date_range: Optional (start_date, end_date) tuple for coverage tracking.
                           If provided, items will be marked with these dates for coverage analysis.
     """
+    empty_result = {"files_processed": 0, "items_added": 0, "items_merged": 0, "items_processed": 0}
+    
     config = MODE_CONFIG[mode]
     output_dir = config["output_dir"]
     bank_type = config["bank_type"]
@@ -1090,11 +1097,11 @@ def harmonize_all_outputs(
     theme_id, mode_id = mode_mapping[mode]
     
     if not output_dir.exists():
-        return 0
+        return empty_result
     
     output_files = sorted(output_dir.glob("*.md"))
     if not output_files:
-        return 0
+        return empty_result
     
     total_files = len(output_files)
     print(f"\n📦 Harmonizing {total_files} output file(s) into {config['aggregated_title']} Bank...")
@@ -1119,14 +1126,17 @@ def harmonize_all_outputs(
             parsed_items = _parse_output(content, mode)
             if parsed_items:
                 # Extract first_seen_date from filename (e.g., "Insights_2026-01-02_to_2026-01-08.judge.md" → "2026-01")
-                # Using YYYY-MM format (month-year only) for simpler date tracking
+                # DATE FORMAT STANDARD:
+                # - first_seen_date (from filename): YYYY-MM format (month-year only) for simpler tracking
+                # - source_start_date / source_end_date: YYYY-MM-DD format (full date) for Coverage Intelligence
+                # - first_seen_date (in DB): YYYY-MM-DD format (full date) - converted from YYYY-MM when saving
                 import re
                 date_match = re.search(r'(\d{4}-\d{2})-\d{2}_to_', f.name)
-                first_seen_date = date_match.group(1) if date_match else None
+                first_seen_date = date_match.group(1) if date_match else None  # YYYY-MM format
                 
                 # Attach date to each item for later use
                 for item in parsed_items:
-                    item["_first_seen_date"] = first_seen_date
+                    item["_first_seen_date"] = first_seen_date  # Will be converted to YYYY-MM-DD in batch_add_items
                 
                 items.extend(parsed_items)
             else:
@@ -1213,13 +1223,20 @@ def harmonize_all_outputs(
                 
                 # Quality scoring: Use LLM to rate items on novelty, interest, actionability
                 print(f"   🎯 Scoring quality for {len(prepared_items)} items...", file=sys.stderr)
+                # Emit progress markers for large batches (quality scoring can take 10-30s)
+                if len(prepared_items) > 5:
+                    print(f"[PROGRESS:current=0,total={len(prepared_items)},label=scoring]", flush=True)
                 try:
                     # Get LLM for quality scoring (use configured model)
                     llm_config = get_llm_config()
                     quality_llm = create_llm(llm_config)
                     quality_scores = batch_score_quality(prepared_items, mode_id, quality_llm)
+                    if len(prepared_items) > 5:
+                        print(f"[PROGRESS:current={len(prepared_items)},total={len(prepared_items)},label=scoring]", flush=True)
                     print(f"   ✅ Quality scores: {sum(1 for q in quality_scores if q == 'A')} A, {sum(1 for q in quality_scores if q == 'B')} B, {sum(1 for q in quality_scores if q == 'C')} C", file=sys.stderr)
                 except Exception as e:
+                    if len(prepared_items) > 5:
+                        print(f"[PROGRESS:current={len(prepared_items)},total={len(prepared_items)},label=scoring]", flush=True)
                     print(f"   ⚠️  Quality scoring failed: {e}", file=sys.stderr)
                     quality_scores = [None] * len(prepared_items)
                 
@@ -1291,14 +1308,14 @@ def harmonize_all_outputs(
             if batch_items_updated > 0:
                 print(f"   🔄 Updated {batch_items_updated} existing item(s) (duplicates)")
             
-            # Emit integration complete marker
+            # Emit integration progress marker (not complete - that's done by caller)
             emit_integration_complete(
                 items_compared=batch_items_processed,
                 items_added=batch_items_added,
                 items_merged=batch_items_updated,
                 items_filtered=0,  # Will be calculated from difference with sent items
             )
-            emit_complete(batch_items_added, batch_items_updated)
+            # NOTE: emit_complete() is called by the main() function after ALL harmonization
         
         for f in batch:
             f.unlink()
@@ -1309,7 +1326,13 @@ def harmonize_all_outputs(
     # Theme Explorer provides dynamic similarity-based grouping
     # Tags provide user-managed organization
     
-    return processed
+    # Return stats for caller to emit completion marker
+    return {
+        "files_processed": processed,
+        "items_added": total_items_added,
+        "items_merged": total_items_updated,
+        "items_processed": total_items_processed,
+    }
 
 
 def _parse_output(content: str, mode: Literal["insights", "ideas"]) -> list[dict[str, Any]]:
@@ -2239,7 +2262,24 @@ def main():
             
             if result["output_file"] and not args.dry_run:
                 print(f"📄 Output: {result['output_file']}")
-                harmonize_all_outputs(mode, llm, source_date_range=source_date_range)
+                # Wrap harmonization in try/except to ensure emit_complete() is always called
+                # This prevents frontend from hanging if harmonization fails
+                items_added = 0
+                items_merged = 0
+                try:
+                    harmonization_result = harmonize_all_outputs(mode, llm, source_date_range=source_date_range)
+                    items_added = harmonization_result.get("items_added", 0) if harmonization_result else 0
+                    items_merged = harmonization_result.get("items_merged", 0) if harmonization_result else 0
+                except Exception as e:
+                    print(f"⚠️  Harmonization failed: {e}", file=sys.stderr)
+                    emit_error("harmonization_failed", f"Harmonization failed: {str(e)[:200]}")
+                    items_added = 0
+                    items_merged = 0
+                finally:
+                    # Always emit complete, even if harmonization failed
+                    # This is critical - frontend waits for this marker
+                    emit_complete(items_added, items_merged)
+                
                 # Sync operations are non-critical - don't crash if they fail
                 # The main work (generation + harmonization) is already saved
                 try:
@@ -2250,6 +2290,9 @@ def main():
                 except Exception as e:
                     print(f"⚠️  Sync operation failed (non-critical, items are saved): {e}", file=sys.stderr)
                     print(f"   You can retry sync later via the UI or by running again", file=sys.stderr)
+            elif not args.dry_run:
+                # No output file but still need to emit completion for frontend
+                emit_complete(0, 0)
         else:
             for date in dates_to_process:
                 result = process_single_date(
@@ -2267,7 +2310,24 @@ def main():
                 print(f"{output_icon} {date}: {result['conversations']} conversations")
             
             if not args.dry_run:
-                harmonize_all_outputs(mode, llm)
+                # Wrap harmonization in try/except to ensure emit_complete() is always called
+                # This prevents frontend from hanging if harmonization fails
+                items_added = 0
+                items_merged = 0
+                try:
+                    harmonization_result = harmonize_all_outputs(mode, llm)
+                    items_added = harmonization_result.get("items_added", 0) if harmonization_result else 0
+                    items_merged = harmonization_result.get("items_merged", 0) if harmonization_result else 0
+                except Exception as e:
+                    print(f"⚠️  Harmonization failed: {e}", file=sys.stderr)
+                    emit_error("harmonization_failed", f"Harmonization failed: {str(e)[:200]}")
+                    items_added = 0
+                    items_merged = 0
+                finally:
+                    # Always emit complete, even if harmonization failed
+                    # This is critical - frontend waits for this marker
+                    emit_complete(items_added, items_merged)
+                
                 # Sync operations are non-critical - don't crash if they fail
                 # The main work (generation + harmonization) is already saved
                 try:

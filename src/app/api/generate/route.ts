@@ -472,47 +472,81 @@ async function runPythonScript(
 }
 
 function parseStats(stdout: string): GenerateResult["stats"] {
-  // Parse summary section from output
-  // v2 Item-Centric Architecture: No more "Candidates", now "Items generated/returned"
-  const daysProcessedMatch = stdout.match(/Days processed:\s*(\d+)/i);
-  const daysWithActivityMatch = stdout.match(/Days with activity:\s*(\d+)/i);
-  const daysWithOutputMatch = stdout.match(/Days with (?:ideas|posts):\s*(\d+)/i);
+  // Parse progress markers from stdout (structured format, more reliable than regex)
+  // Falls back to regex parsing for backward compatibility
   
-  // v2: Parse items stats (replaces candidates)
-  const itemsGeneratedMatch = stdout.match(/Items generated:\s*(\d+)/i);
-  const itemsAfterDedupMatch = stdout.match(/Items after dedup:\s*(\d+)/i);
-  const itemsReturnedMatch = stdout.match(/Items returned:\s*(\d+)/i);
+  // Extract stats from [STAT:key=value] markers
+  const statMarkers: Record<string, number> = {};
+  const statPattern = /\[STAT:(\w+)=([^\]]+)\]/g;
+  let statMatch;
+  while ((statMatch = statPattern.exec(stdout)) !== null) {
+    const key = statMatch[1];
+    const value = statMatch[2];
+    const numValue = Number(value);
+    if (!isNaN(numValue)) {
+      statMarkers[key] = numValue;
+    }
+  }
   
-  // Parse conversations - look for "Conversations analyzed:" or "X conversations"
-  const conversationsMatch = stdout.match(/Conversations analyzed:\s*(\d+)/i) || stdout.match(/(\d+)\s+conversations/i);
+  // Extract harmonization stats from emit_integration_complete markers
+  let harmonization: GenerateResult["stats"]["harmonization"] | undefined;
+  const integrationCompletePattern = /\[STAT:itemsCompared=(\d+)\].*?\[STAT:itemsAdded=(\d+)\].*?\[STAT:itemsMerged=(\d+)\]/s;
+  const integrationMatch = stdout.match(integrationCompletePattern);
+  if (integrationMatch) {
+    harmonization = {
+      itemsProcessed: parseInt(integrationMatch[1]),
+      itemsAdded: parseInt(integrationMatch[2]),
+      itemsUpdated: parseInt(integrationMatch[3]),
+      itemsDeduplicated: parseInt(integrationMatch[3]), // itemsMerged = itemsDeduplicated
+    };
+  }
   
-  // Parse harmonization stats
-  const harmonizationMatch = stdout.match(/Harmonization Stats:\s*(\d+)\s+processed,\s*(\d+)\s+added,\s*(\d+)\s+updated,\s*(\d+)\s+deduplicated/i);
+  // Fallback to regex parsing if markers not found (backward compatibility)
+  if (Object.keys(statMarkers).length === 0 && !harmonization) {
+    // Parse summary section from output (legacy regex parsing)
+    const daysProcessedMatch = stdout.match(/Days processed:\s*(\d+)/i);
+    const daysWithActivityMatch = stdout.match(/Days with activity:\s*(\d+)/i);
+    const daysWithOutputMatch = stdout.match(/Days with (?:ideas|posts):\s*(\d+)/i);
+    
+    const itemsGeneratedMatch = stdout.match(/Items generated:\s*(\d+)/i);
+    const itemsAfterDedupMatch = stdout.match(/Items after dedup:\s*(\d+)/i);
+    const itemsReturnedMatch = stdout.match(/Items returned:\s*(\d+)/i);
+    
+    const conversationsMatch = stdout.match(/Conversations analyzed:\s*(\d+)/i) || stdout.match(/(\d+)\s+conversations/i);
+    
+    const harmonizationMatch = stdout.match(/Harmonization Stats:\s*(\d+)\s+processed,\s*(\d+)\s+added,\s*(\d+)\s+updated,\s*(\d+)\s+deduplicated/i);
+    
+    const daysProcessed = daysProcessedMatch 
+      ? parseInt(daysProcessedMatch[1]) 
+      : (daysWithActivityMatch ? parseInt(daysWithActivityMatch[1]) : 0);
+    
+    return {
+      daysProcessed,
+      daysWithActivity: daysWithActivityMatch ? parseInt(daysWithActivityMatch[1]) : daysProcessed,
+      daysWithOutput: daysWithOutputMatch ? parseInt(daysWithOutputMatch[1]) : 0,
+      itemsGenerated: itemsGeneratedMatch ? parseInt(itemsGeneratedMatch[1]) : 0,
+      itemsAfterDedup: itemsAfterDedupMatch ? parseInt(itemsAfterDedupMatch[1]) : (itemsGeneratedMatch ? parseInt(itemsGeneratedMatch[1]) : 0),
+      itemsReturned: itemsReturnedMatch ? parseInt(itemsReturnedMatch[1]) : (itemsAfterDedupMatch ? parseInt(itemsAfterDedupMatch[1]) : (itemsGeneratedMatch ? parseInt(itemsGeneratedMatch[1]) : 0)),
+      conversationsAnalyzed: conversationsMatch ? parseInt(conversationsMatch[1]) : 0,
+      harmonization: harmonizationMatch ? {
+        itemsProcessed: parseInt(harmonizationMatch[1]),
+        itemsAdded: parseInt(harmonizationMatch[2]),
+        itemsUpdated: parseInt(harmonizationMatch[3]),
+        itemsDeduplicated: parseInt(harmonizationMatch[4]),
+      } : undefined,
+    };
+  }
   
-  // For aggregated ranges, daysProcessed = daysWithActivity if not explicitly stated
-  const daysProcessed = daysProcessedMatch 
-    ? parseInt(daysProcessedMatch[1]) 
-    : (daysWithActivityMatch ? parseInt(daysWithActivityMatch[1]) : 0);
-  
-  // v2: Extract items stats (all three fields)
-  const itemsGenerated = itemsGeneratedMatch ? parseInt(itemsGeneratedMatch[1]) : 0;
-  const itemsAfterDedup = itemsAfterDedupMatch ? parseInt(itemsAfterDedupMatch[1]) : itemsGenerated;
-  const itemsReturned = itemsReturnedMatch ? parseInt(itemsReturnedMatch[1]) : itemsAfterDedup;
-  
+  // Use structured markers (preferred)
   return {
-    daysProcessed,
-    daysWithActivity: daysWithActivityMatch ? parseInt(daysWithActivityMatch[1]) : daysProcessed,
-    daysWithOutput: daysWithOutputMatch ? parseInt(daysWithOutputMatch[1]) : 0,
-    itemsGenerated, // v2: Items initially generated (before dedup)
-    itemsAfterDedup, // v2: Items after deduplication
-    itemsReturned, // v2: Items returned in output file
-    conversationsAnalyzed: conversationsMatch ? parseInt(conversationsMatch[1]) : 0,
-    harmonization: harmonizationMatch ? {
-      itemsProcessed: parseInt(harmonizationMatch[1]),
-      itemsAdded: parseInt(harmonizationMatch[2]),
-      itemsUpdated: parseInt(harmonizationMatch[3]),
-      itemsDeduplicated: parseInt(harmonizationMatch[4]),
-    } : undefined,
+    daysProcessed: statMarkers.daysProcessed || statMarkers.daysWithActivity || 0,
+    daysWithActivity: statMarkers.daysWithActivity || statMarkers.daysProcessed || 0,
+    daysWithOutput: statMarkers.daysWithOutput || 0,
+    itemsGenerated: statMarkers.itemsGenerated || 0,
+    itemsAfterDedup: statMarkers.itemsAfterSelfDedup || statMarkers.itemsGenerated || 0,
+    itemsReturned: statMarkers.sentToLibrary || statMarkers.itemsAfterSelfDedup || statMarkers.itemsGenerated || 0,
+    conversationsAnalyzed: statMarkers.conversationsFound || 0,
+    harmonization,
   };
 }
 

@@ -431,6 +431,7 @@ export default function Home() {
       const decoder = new TextDecoder();
       let buffer = "";
       let streamError: string | null = null;
+      let receivedCompleteMarker = false;
 
       // Process SSE stream
       while (true) {
@@ -452,6 +453,10 @@ export default function Home() {
               case "phase":
                 setProgressPhase(data.phase);
                 setProgress(phaseProgress[data.phase] || 0);
+                // Track if we received the complete marker
+                if (data.phase === "complete") {
+                  receivedCompleteMarker = true;
+                }
                 break;
                 
               case "stat":
@@ -471,6 +476,7 @@ export default function Home() {
                 break;
                 
               case "complete":
+                receivedCompleteMarker = true;
                 setProgress(100);
                 setProgressPhase("complete");
                 setProgressMessage("Generation complete!");
@@ -526,11 +532,56 @@ export default function Home() {
         throw new Error(streamError);
       }
 
-      // Fetch final results from regular API to get full data
-      const finalResponse = await fetch("/api/items?view=items");
-      const libData = await finalResponse.json();
-      if (libData.success) {
-        setLibraryCountAfter(libData.stats?.totalItems || 0);
+      // Check if stream closed without complete marker (e.g., Python crash)
+      if (!receivedCompleteMarker) {
+        throw new Error("Generation stream closed unexpectedly - items may not have been saved. Please check the Library or try again.");
+      }
+
+      // Fetch final Library count with retry logic
+      // Small delay ensures DB writes are committed (harmonization happens before stream ends now)
+      // Retry handles any transient DB latency
+      const fetchLibraryCountWithRetry = async (retries = 3, delayMs = 500): Promise<number | null> => {
+        for (let i = 0; i < retries; i++) {
+          try {
+            // Small delay before each attempt (ensures DB consistency)
+            if (i > 0 || delayMs > 0) {
+              await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+            
+            const response = await fetch("/api/items?view=items");
+            const data = await response.json();
+            
+            if (data.success) {
+              const newCount = data.stats?.totalItems || 0;
+              // Verify count increased (if we added items) OR harmonization completed (even if all duplicates)
+              const itemsAdded = progressPhaseData.itemsAdded || 0;
+              const itemsMerged = progressPhaseData.itemsMerged || 0;
+              const hasChanges = itemsAdded > 0 || itemsMerged > 0;
+              
+              // If we added items but count didn't increase, retry (DB might not be updated yet)
+              // If all items were duplicates (itemsAdded=0, itemsMerged>0), count won't increase but DB is updated
+              // So we only retry if itemsAdded > 0 and count didn't increase
+              if (itemsAdded > 0 && libraryCountBefore !== null && newCount <= libraryCountBefore) {
+                // Count didn't increase yet, retry
+                console.log(`[Library] Count ${newCount} <= before ${libraryCountBefore}, retrying...`);
+                delayMs = Math.min(delayMs * 2, 2000); // Exponential backoff, max 2s
+                continue;
+              }
+              // If all duplicates (itemsAdded=0, itemsMerged>0), count won't increase but that's expected
+              // Return the count anyway - harmonization succeeded even if no new items
+              return newCount;
+            }
+          } catch (e) {
+            console.error(`[Library] Fetch attempt ${i + 1} failed:`, e);
+          }
+          delayMs = Math.min(delayMs * 2, 2000); // Exponential backoff
+        }
+        return null;
+      };
+      
+      const finalCount = await fetchLibraryCountWithRetry();
+      if (finalCount !== null) {
+        setLibraryCountAfter(finalCount);
       }
 
       // Create result object from streamed data

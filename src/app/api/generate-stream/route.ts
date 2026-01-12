@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
 
       try {
         const body: GenerateRequest = await request.json();
-        const { tool, theme, modeId, mode, days, bestOf, temperature, fromDate, toDate, dryRun } = body;
+        const { tool, theme, modeId, mode, days, itemCount, temperature, fromDate, toDate, dryRun } = body;
         
         // Get abort signal from request
         const signal = request.signal;
@@ -128,10 +128,10 @@ export async function POST(request: NextRequest) {
         
         // Override with custom values if provided, or use mode defaults, or use global defaults
         // Priority: per-request > per-mode > global config > hardcoded fallback
-        const effectiveBestOf = bestOf ?? modeConfig?.bestOf ?? 5;
+        const effectiveItemCount = itemCount ?? modeConfig?.itemCount ?? 10;
         const effectiveTemperature = temperature ?? modeSettings?.temperature ?? modeConfig?.temperature ?? generationDefaults.temperature;
         
-        args.push("--best-of", effectiveBestOf.toString());
+        args.push("--item-count", effectiveItemCount.toString());
         args.push("--temperature", effectiveTemperature.toString());
 
         if (dryRun) {
@@ -145,11 +145,24 @@ export async function POST(request: NextRequest) {
         send({ type: "log", message: `Running: ${pythonPath} ${toolConfig.script} ${args.join(" ")}` });
 
         // Execute Python script with streaming output
-        await runPythonScriptStream(toolPath, toolConfig.script, args, signal, send);
+        // The Python script emits [PHASE:complete] after harmonization is done
+        // We track this to know when library items are actually saved
+        let receivedComplete = false;
+        const wrappedSend = (data: object) => {
+          // Track if we received the complete phase from Python
+          if ("type" in data && data.type === "phase" && "phase" in data && data.phase === "complete") {
+            receivedComplete = true;
+          }
+          send(data);
+        };
+        
+        await runPythonScriptStream(toolPath, toolConfig.script, args, signal, wrappedSend);
 
-        // Parse output file
-        // This would need to be passed from the Python script or parsed from logs
-        send({ type: "complete", message: "Generation complete" });
+        // Only send our own complete if Python didn't emit one
+        // (e.g., dry run or error cases)
+        if (!receivedComplete) {
+          send({ type: "complete", message: "Generation complete" });
+        }
         controller.close();
       } catch (error) {
         send({ 
