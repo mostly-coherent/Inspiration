@@ -173,9 +173,9 @@ export function ProgressPanel({
         <div 
           className="h-3 bg-white/10 rounded-full overflow-hidden"
           role="progressbar"
-          aria-valuenow={String(Math.round(progress))}
-          aria-valuemin="0"
-          aria-valuemax="100"
+          aria-valuenow={Math.round(progress)}
+          aria-valuemin={0}
+          aria-valuemax={100}
           aria-label={`Generation progress: ${Math.round(progress)}%`}
         >
           <div
