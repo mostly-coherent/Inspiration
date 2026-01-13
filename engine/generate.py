@@ -520,8 +520,24 @@ def generate_items(
     if not items:
         # C1 FIX: Emit warning when parsing fails despite having output
         if raw_output and len(raw_output.strip()) > 50:
-            emit_warning("parsing", f"LLM returned {len(raw_output)} chars but 0 items parsed")
-            print(f"⚠️  Parsing failed - raw output preview: {raw_output[:300].replace(chr(10), ' ')}...", file=sys.stderr)
+            # Detect if LLM returned wrong content (not insights/ideas)
+            content_lower = raw_output.lower()
+            wrong_content_indicators = [
+                "linkedin post", "social media", "phase 1", "phase 2", "next step",
+                "run phase", "draft", "refinement", "workflow", "prompt",
+            ]
+            is_wrong_content = any(indicator in content_lower for indicator in wrong_content_indicators)
+            
+            if is_wrong_content:
+                emit_warning("parsing", f"LLM returned {len(raw_output)} chars but content appears to be wrong type (not {mode})")
+                print(f"⚠️  Parsing failed - LLM returned wrong content type", file=sys.stderr)
+                print(f"   Expected: {mode} items", file=sys.stderr)
+                print(f"   Got: Content about LinkedIn posts/workflows/prompts (wrong context?)", file=sys.stderr)
+                print(f"   Preview: {raw_output[:200].replace(chr(10), ' ')}...", file=sys.stderr)
+            else:
+                emit_warning("parsing", f"LLM returned {len(raw_output)} chars but 0 items parsed")
+                print(f"⚠️  Parsing failed - raw output preview: {raw_output[:300].replace(chr(10), ' ')}...", file=sys.stderr)
+            
             # Save failed output for debugging
             try:
                 from pathlib import Path
@@ -620,11 +636,42 @@ def _parse_items_from_output(raw_output: str, mode: str) -> list[dict]:
     - title: Compelling hook/attention grabber
     - description: Main content (combines problem+solution, post content, or JTBD)
     - tags: Auto-generated keywords
+    
+    Improved robustness (2026-01-12):
+    - Multiple fallback patterns (primary + legacy + relaxed)
+    - Better handling of edge cases (missing headers, malformed content)
+    - Clearer error messages for debugging
+    - Pre-validation to detect wrong content early
     """
     items = []
     
     if not raw_output or not raw_output.strip():
         return items
+    
+    # PRE-VALIDATION: Quick check if output looks like the expected format
+    # This catches cases where LLM returned completely wrong content
+    has_item_header = bool(re.search(r'^##\s*(Item|Post|Idea)\s+\d+', raw_output, re.MULTILINE | re.IGNORECASE))
+    has_no_items = "## No Items Found" in raw_output or "## No Items" in raw_output
+    
+    if not has_item_header and not has_no_items:
+        # Check for indicators of wrong content (LLM followed chat instructions instead of analyzing)
+        wrong_content_indicators = [
+            ("linkedin post", "LinkedIn post workflow"),
+            ("phase 1 complete", "workflow execution"),
+            ("next step:", "instruction following"),
+            ("run phase", "prompt execution"),
+            ("draft is now complete", "draft completion message"),
+            ("here's the", "direct response to chat"),
+        ]
+        
+        content_lower = raw_output.lower()
+        for indicator, description in wrong_content_indicators:
+            if indicator in content_lower:
+                print(f"⚠️  PRE-VALIDATION FAILED: LLM output appears to be {description} instead of {mode} items", file=sys.stderr)
+                print(f"   LLM likely followed instructions in the chat content instead of analyzing it", file=sys.stderr)
+                print(f"   Expected: ## Item 1: [Title]...", file=sys.stderr)
+                print(f"   Got (first 150 chars): {raw_output[:150].replace(chr(10), ' ')}...", file=sys.stderr)
+                return []  # Return empty - let caller handle the failure
     
     # Clean markdown code fences
     content = raw_output.strip()
@@ -636,62 +683,100 @@ def _parse_items_from_output(raw_output: str, mode: str) -> list[dict]:
             lines = lines[:-1]
         content = "\n".join(lines)
     
-    # Universal pattern: ## Item N: Title (works for all modes)
-    # Also matches legacy patterns for backward compatibility
-    patterns = [
+    # PRIMARY PATTERNS: Strict format matching (## Item N:, ## Post N:, etc.)
+    primary_patterns = [
         r'^## Item \d+:\s*(.+?)(?=^## Item \d+:|\Z|^## Source|^## Skipped|^## No Items|^---\s*$)',
         r'^## Post \d+:\s*(.+?)(?=^## Post \d+:|\Z|^## Source|^## Skipped|^## No Posts|^---\s*$)',
         r'^## Idea \d+:\s*(.+?)(?=^## Idea \d+:|\Z|^## Source|^## Skipped|^## No Ideas|^---\s*$)',
         r'^## Use Case \d+:\s*(.+?)(?=^## Use Case \d+:|\Z|^## Consider|^# Use Cases|^---\s*$)',
     ]
     
-    for pattern in patterns:
-        for i, match in enumerate(re.finditer(pattern, content, re.MULTILINE | re.DOTALL)):
-            full_match = match.group(0)
-            title_line = match.group(1).strip().split('\n')[0]
-            
-            # Build description from the content after title
-            lines = full_match.split('\n')
-            description_parts = []
-            tags = []
-            
-            # Skip title line, collect content
-            for line in lines[1:]:
-                line_stripped = line.strip()
+    # FALLBACK PATTERNS: More relaxed (handles variations like "Item 1" without colon, etc.)
+    fallback_patterns = [
+        r'^##\s*Item\s+\d+[:\-]\s*(.+?)(?=^##\s*Item\s+\d+|\Z|^##\s*Source|^##\s*Skipped|^---\s*$)',
+        r'^##\s*Post\s+\d+[:\-]\s*(.+?)(?=^##\s*Post\s+\d+|\Z|^##\s*Source|^##\s*Skipped|^---\s*$)',
+        r'^##\s*Idea\s+\d+[:\-]\s*(.+?)(?=^##\s*Idea\s+\d+|\Z|^##\s*Source|^##\s*Skipped|^---\s*$)',
+        r'^#\s*Item\s+\d+[:\-]\s*(.+?)(?=^#\s*Item\s+\d+|\Z|^##\s*Source|^---\s*$)',  # Single # instead of ##
+    ]
+    
+    # Try primary patterns first (strict)
+    patterns_to_try = primary_patterns + fallback_patterns
+    
+    for pattern_idx, pattern in enumerate(patterns_to_try):
+        matches = list(re.finditer(pattern, content, re.MULTILINE | re.DOTALL))
+        if matches:
+            for i, match in enumerate(matches):
+                full_match = match.group(0)
+                title_line = match.group(1).strip().split('\n')[0]
                 
-                # Stop at section breaks
-                if line_stripped.startswith('---'):
-                    break
+                # Build description from the content after title
+                lines = full_match.split('\n')
+                description_parts = []
+                tags = []
                 
-                # Extract tags
-                if line_stripped.lower().startswith('**tags:**'):
-                    tag_text = line_stripped.replace('**Tags:**', '').replace('**tags:**', '').strip()
-                    tags = [t.strip().strip(',').strip('[').strip(']') for t in tag_text.split(',') if t.strip()]
-                    continue
+                # Skip title line, collect content
+                for line in lines[1:]:
+                    line_stripped = line.strip()
+                    
+                    # Stop at section breaks
+                    if line_stripped.startswith('---'):
+                        break
+                    
+                    # Extract tags
+                    if line_stripped.lower().startswith('**tags:**') or line_stripped.lower().startswith('tags:'):
+                        tag_text = line_stripped.replace('**Tags:**', '').replace('**tags:**', '').replace('Tags:', '').replace('tags:', '').strip()
+                        tags = [t.strip().strip(',').strip('[').strip(']').strip('"').strip("'") for t in tag_text.split(',') if t.strip()]
+                        continue
+                    
+                    # Skip empty lines at start
+                    if not description_parts and not line_stripped:
+                        continue
+                    
+                    description_parts.append(line)
                 
-                # Skip empty lines at start
-                if not description_parts and not line_stripped:
-                    continue
+                description = '\n'.join(description_parts).strip()
                 
-                description_parts.append(line)
+                # Clean up description - remove trailing separators
+                description = re.sub(r'\n---\s*$', '', description).strip()
+                
+                # Validate item has meaningful content
+                if title_line and len(title_line) > 3:  # Title must be at least 3 chars
+                    item = {
+                        "id": f"Item {len(items) + 1}",
+                        "title": title_line,
+                        "description": description if description else title_line,  # Fallback: use title as description if empty
+                        "tags": tags[:10],  # Cap at 10 tags
+                    }
+                    items.append(item)
             
-            description = '\n'.join(description_parts).strip()
-            
-            # Clean up description - remove trailing separators
-            description = re.sub(r'\n---\s*$', '', description).strip()
-            
-            if title_line:
-                item = {
-                    "id": f"Item {i+1}",
-                    "title": title_line,
-                    "description": description,
-                    "tags": tags[:10],  # Cap at 10 tags
-                }
-                items.append(item)
+            # If we found items with this pattern, stop trying others
+            if items:
+                break
+    
+    # LAST RESORT: If no items found but content exists, try to extract any numbered sections
+    if not items and len(content) > 100:
+        # Look for any numbered list patterns (1., 2., etc.) or bullet points
+        numbered_pattern = r'(?:^|\n)(?:\d+\.|\*\s+|-\s+)\s*(.+?)(?=\n(?:\d+\.|\*\s+|-\s+)|\Z)'
+        numbered_matches = re.finditer(numbered_pattern, content, re.MULTILINE)
+        for match in numbered_matches:
+            text = match.group(1).strip()
+            if len(text) > 20:  # Only if substantial content
+                # Try to extract title (first sentence or first line)
+                lines = text.split('\n')
+                title = lines[0].strip()[:100]  # First line, max 100 chars
+                description = '\n'.join(lines[1:]).strip() if len(lines) > 1 else text
+                
+                if title:
+                    items.append({
+                        "id": f"Item {len(items) + 1}",
+                        "title": title,
+                        "description": description if description else title,
+                        "tags": [],
+                    })
         
-        # If we found items with this pattern, stop trying others
+        # If we found items via fallback, log it for debugging
         if items:
-            break
+            print(f"⚠️  Used fallback parsing (numbered list) - found {len(items)} items", file=sys.stderr)
     
     return items
 
@@ -1103,15 +1188,21 @@ def harmonize_all_outputs(
     llm: LLMProvider,
     batch_size: int = 5,
     source_date_range: tuple[str, str] | None = None,  # (start_date, end_date) for coverage tracking
+    files_to_process: list[Path] | None = None,  # Optional: specific files from current run (2026-01-12 fix)
 ) -> dict[str, int]:
     """
-    Harmonize all output files into the unified ItemsBank (v1), then delete them.
+    Harmonize output files into the unified ItemsBank (v1), then delete them.
+    
+    CRITICAL (2026-01-12): Each run is responsible for cleaning its own files.
+    If files_to_process is provided, only those files are harmonized (current run's files).
+    If None, processes ALL files in directory (backward compatibility, but warns about stale files).
     
     Returns dict with stats:
         - files_processed: Number of files processed
         - items_added: Number of new items added
         - items_merged: Number of existing items updated (deduplicated)
         - items_processed: Total items compared
+        - cleanup_failed: List of files that couldn't be deleted (for retry prompt)
     
     Args:
         mode: Generation mode ("insights" or "ideas")
@@ -1119,8 +1210,9 @@ def harmonize_all_outputs(
         batch_size: Number of files to process in each batch
         source_date_range: Optional (start_date, end_date) tuple for coverage tracking.
                           If provided, items will be marked with these dates for coverage analysis.
+        files_to_process: Optional list of Path objects to harmonize. If None, processes all files (legacy behavior).
     """
-    empty_result = {"files_processed": 0, "items_added": 0, "items_merged": 0, "items_processed": 0}
+    empty_result = {"files_processed": 0, "items_added": 0, "items_merged": 0, "items_processed": 0, "cleanup_failed": []}
     
     config = MODE_CONFIG[mode]
     output_dir = config["output_dir"]
@@ -1154,20 +1246,83 @@ def harmonize_all_outputs(
     theme_id, mode_id = mode_mapping[mode]
     
     if not output_dir.exists():
-        return empty_result
+        output_dir.mkdir(parents=True, exist_ok=True)
     
-    output_files = sorted(output_dir.glob("*.md"))
-    if not output_files:
-        return empty_result
+    # 2026-01-12 FIX: Only process files from current run if specified
+    # Also auto-retry failed harmonization files from previous runs
+    from pathlib import Path
+    failed_harmonization_dir = Path("data/output/failed_harmonization")
+    failed_files = []
+    failed_file_set = set()  # Track which files are from failed_harmonization (for reporting)
+    
+    if failed_harmonization_dir.exists():
+        failed_files = sorted(failed_harmonization_dir.glob("*.md"))
+        # Normalize paths for reliable comparison (resolve to absolute paths)
+        failed_file_set = {str(f.resolve()) for f in failed_files}
+        if failed_files:
+            print(f"\n" + "="*60, file=sys.stderr)
+            print(f"⚠️  PENDING FILES FROM PREVIOUS RUNS DETECTED", file=sys.stderr)
+            print(f"="*60, file=sys.stderr)
+            print(f"📁 Location: {failed_harmonization_dir}", file=sys.stderr)
+            print(f"📄 Files ({len(failed_files)}):", file=sys.stderr)
+            for f in failed_files:
+                print(f"   - {f.name}", file=sys.stderr)
+            print(f"\n🔄 These files will be auto-retried now...", file=sys.stderr)
+            print(f"="*60 + "\n", file=sys.stderr)
+            # Emit warning for frontend visibility
+            emit_warning("stale_files", f"{len(failed_files)} file(s) from previous failed runs will be retried")
+    
+    # Track counts separately for clear reporting
+    current_run_files = []
+    if files_to_process is not None:
+        current_run_files = [f for f in files_to_process if f.exists()]
+    
+    if files_to_process is not None:
+        # Process only files from current run + failed files from previous runs
+        output_files = current_run_files + failed_files  # Keep them in order: current first, then retries
+        if not output_files:
+            return empty_result
+        
+        current_count = len(current_run_files)
+        retry_count = len(failed_files)
+        
+        if retry_count > 0 and current_count > 0:
+            print(f"📦 Harmonizing into {config['aggregated_title']} Bank:", file=sys.stderr)
+            print(f"   - {current_count} file(s) from CURRENT run", file=sys.stderr)
+            print(f"   - {retry_count} file(s) RETRYING from previous runs", file=sys.stderr)
+        elif retry_count > 0:
+            print(f"📦 Harmonizing {retry_count} RETRIED file(s) into {config['aggregated_title']} Bank (no new files from current run)...", file=sys.stderr)
+        else:
+            print(f"\n📦 Harmonizing {current_count} file(s) from current run into {config['aggregated_title']} Bank...", file=sys.stderr)
+    else:
+        # Legacy behavior: process ALL files (warn about potential stale files)
+        stale_files = sorted(output_dir.glob("*.md"))
+        output_files = stale_files + failed_files  # Combine both
+        if not output_files:
+            return empty_result
+        
+        stale_count = len(stale_files)
+        retry_count = len(failed_files)
+        
+        print(f"\n⚠️  WARNING: No specific file list provided - processing ALL files:", file=sys.stderr)
+        if stale_count > 0:
+            print(f"   - {stale_count} file(s) in output directory (may be stale)", file=sys.stderr)
+        if retry_count > 0:
+            print(f"   - {retry_count} file(s) retrying from failed_harmonization", file=sys.stderr)
+        print(f"   This may include stale files from previous runs.", file=sys.stderr)
     
     total_files = len(output_files)
-    print(f"\n📦 Harmonizing {total_files} output file(s) into {config['aggregated_title']} Bank...")
     emit_integration_started()
     
     processed = 0
     total_items_processed = 0
     total_items_added = 0
     total_items_updated = 0
+    cleanup_failed = []  # Track files that couldn't be deleted (for retry prompt)
+    
+    # 2026-01-12: Track retried files separately for clear reporting
+    retried_success = []  # Files from failed_harmonization that succeeded
+    retried_failed = []   # Files from failed_harmonization that failed again
     
     for i in range(0, total_files, batch_size):
         batch = output_files[i:i + batch_size]
@@ -1390,24 +1545,44 @@ def harmonize_all_outputs(
             batch_success = True
         
         # C2 FIX: Only delete files after successful harmonization
+        # 2026-01-12: Track cleanup failures and retried files for clear reporting
         if batch_success:
             for f in batch:
+                # Normalize path for comparison (resolve to absolute path)
+                is_retry = str(f.resolve()) in failed_file_set
                 try:
-                    f.unlink()
-                    print(f"   🗑️  Deleted: {f.name}")
+                    if f.exists():
+                        f.unlink()
+                        if is_retry:
+                            retried_success.append(f.name)
+                            print(f"   ✅ RETRY SUCCESS: {f.name} (was in failed_harmonization, now deleted)")
+                        else:
+                            print(f"   🗑️  Deleted: {f.name}")
                 except Exception as del_err:
+                    cleanup_failed.append(str(f))
                     print(f"   ⚠️  Could not delete {f.name}: {del_err}", file=sys.stderr)
+                    print(f"   ⚠️  File will remain for manual cleanup or retry", file=sys.stderr)
             processed += len(batch)
         else:
-            # Move failed files instead of deleting
-            from pathlib import Path
+            # Move failed files to failed_harmonization directory for auto-retry on next run
             failed_dir = Path("data/output/failed_harmonization")
             failed_dir.mkdir(parents=True, exist_ok=True)
             for f in batch:
+                # Normalize path for comparison (resolve to absolute path)
+                is_retry = str(f.resolve()) in failed_file_set
                 try:
-                    new_path = failed_dir / f.name
-                    f.rename(new_path)
-                    print(f"   ⚠️  Moved to failed_harmonization: {f.name}", file=sys.stderr)
+                    # If already in failed_harmonization, keep it there (don't duplicate)
+                    if is_retry:
+                        retried_failed.append(f.name)
+                        print(f"   ❌ RETRY FAILED AGAIN: {f.name} (remains in failed_harmonization)", file=sys.stderr)
+                    else:
+                        new_path = failed_dir / f.name
+                        # Handle name conflicts (add timestamp if exists)
+                        if new_path.exists():
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            new_path = failed_dir / f"{f.stem}_{timestamp}{f.suffix}"
+                        f.rename(new_path)
+                        print(f"   ⚠️  Moved to failed_harmonization: {f.name} (will auto-retry on next run)", file=sys.stderr)
                 except Exception as move_err:
                     print(f"   ⚠️  Could not move {f.name}: {move_err}", file=sys.stderr)
     
@@ -1422,12 +1597,41 @@ def harmonize_all_outputs(
     except Exception:
         pass  # Best effort
     
+    # 2026-01-12: Summary of retried files
+    if retried_success or retried_failed:
+        print(f"\n" + "-"*40, file=sys.stderr)
+        print(f"📊 RETRY SUMMARY (files from previous failed runs):", file=sys.stderr)
+        if retried_success:
+            print(f"   ✅ {len(retried_success)} file(s) retried SUCCESSFULLY:", file=sys.stderr)
+            for f in retried_success:
+                print(f"      - {f}", file=sys.stderr)
+        if retried_failed:
+            print(f"   ❌ {len(retried_failed)} file(s) FAILED AGAIN:", file=sys.stderr)
+            for f in retried_failed:
+                print(f"      - {f}", file=sys.stderr)
+            print(f"\n   ⚠️  Failed files remain in: {failed_harmonization_dir}", file=sys.stderr)
+            print(f"   ⚠️  They will be auto-retried on next run.", file=sys.stderr)
+            emit_warning("retry_failed", f"{len(retried_failed)} file(s) from previous runs failed again. Will retry on next run.")
+        print(f"-"*40 + "\n", file=sys.stderr)
+    
+    # 2026-01-12: Warn if cleanup failed (user needs to retry)
+    if cleanup_failed:
+        print(f"\n⚠️  CLEANUP FAILED: {len(cleanup_failed)} file(s) could not be deleted:", file=sys.stderr)
+        for failed_file in cleanup_failed:
+            print(f"   - {failed_file}", file=sys.stderr)
+        print(f"\n⚠️  ACTION REQUIRED: Please retry harmonization to clean up these files.", file=sys.stderr)
+        print(f"   Or manually delete them from: {output_dir}", file=sys.stderr)
+        emit_warning("cleanup_failed", f"{len(cleanup_failed)} file(s) could not be deleted. Retry harmonization.")
+    
     # Return stats for caller to emit completion marker
     return {
         "files_processed": processed,
         "items_added": total_items_added,
         "items_merged": total_items_updated,
         "items_processed": total_items_processed,
+        "cleanup_failed": cleanup_failed,
+        "retried_success": retried_success,  # 2026-01-12: Files from failed_harmonization that succeeded
+        "retried_failed": retried_failed,    # 2026-01-12: Files from failed_harmonization that failed again
     }
 
 
@@ -2314,6 +2518,29 @@ def main():
         
         print(f"📅 Processing: {dates_to_process[0]} to {dates_to_process[-1]} ({mode} mode)")
     
+    # 2026-01-12 FIX: Detect stale files BEFORE starting generation
+    # These will be processed ALONG WITH current run's output, with clear breakdown
+    config = MODE_CONFIG[mode]
+    output_dir = config["output_dir"]
+    stale_output_files = []  # Files in output directory from previous runs
+    if output_dir.exists():
+        stale_output_files = sorted(output_dir.glob("*.md"))
+        if stale_output_files:
+            print(f"\n" + "="*60, file=sys.stderr)
+            print(f"⚠️  STALE FILES DETECTED IN OUTPUT DIRECTORY", file=sys.stderr)
+            print(f"="*60, file=sys.stderr)
+            print(f"📁 Directory: {output_dir}", file=sys.stderr)
+            print(f"📄 Files ({len(stale_output_files)}):", file=sys.stderr)
+            for f in stale_output_files[:5]:  # Show first 5
+                print(f"   - {f.name}", file=sys.stderr)
+            if len(stale_output_files) > 5:
+                print(f"   ... and {len(stale_output_files) - 5} more", file=sys.stderr)
+            print(f"\n✅ These files will be processed ALONG WITH current run's output.", file=sys.stderr)
+            print(f"   The report will show breakdown: Previous Run vs Current Run.", file=sys.stderr)
+            print(f"="*60 + "\n", file=sys.stderr)
+            # Emit warning for frontend
+            emit_warning("stale_files", f"{len(stale_output_files)} leftover file(s) from previous runs will be processed")
+    
     llm_config = get_llm_config()
     llm = create_llm(llm_config)
     
@@ -2375,17 +2602,57 @@ def main():
             
             if result["output_file"] and not args.dry_run:
                 print(f"📄 Output: {result['output_file']}")
+                # 2026-01-12 FIX: Track current run's file + stale files for processing
+                # Ensure all paths are Path objects for consistency
+                current_run_files = [Path(result["output_file"])] if result["output_file"] else []
+                
+                # Include stale output files from previous runs (detected earlier)
+                # This ensures they get processed and reported with clear breakdown
+                all_files_to_process = stale_output_files + current_run_files
+                
+                if stale_output_files:
+                    print(f"\n📦 Harmonizing {len(all_files_to_process)} total files:", file=sys.stderr)
+                    print(f"   - {len(stale_output_files)} from PREVIOUS runs (stale)", file=sys.stderr)
+                    print(f"   - {len(current_run_files)} from CURRENT run", file=sys.stderr)
+                
                 # Wrap harmonization in try/except to ensure emit_complete() is always called
                 # This prevents frontend from hanging if harmonization fails
                 items_added = 0
                 items_merged = 0
+                cleanup_failed = []
                 try:
-                    harmonization_result = harmonize_all_outputs(mode, llm, source_date_range=source_date_range)
+                    harmonization_result = harmonize_all_outputs(
+                        mode, 
+                        llm, 
+                        source_date_range=source_date_range,
+                        files_to_process=all_files_to_process,  # 2026-01-12: Process current + stale files
+                    )
                     items_added = harmonization_result.get("items_added", 0) if harmonization_result else 0
                     items_merged = harmonization_result.get("items_merged", 0) if harmonization_result else 0
+                    cleanup_failed = harmonization_result.get("cleanup_failed", []) if harmonization_result else []
+                    retried_success = harmonization_result.get("retried_success", []) if harmonization_result else []
+                    retried_failed = harmonization_result.get("retried_failed", []) if harmonization_result else []
+                    
+                    # 2026-01-12: Summary of what was processed
+                    if stale_output_files or retried_success or retried_failed:
+                        print(f"\n📊 HARMONIZATION SUMMARY:", file=sys.stderr)
+                        if stale_output_files:
+                            print(f"   📂 {len(stale_output_files)} stale file(s) from previous runs → processed", file=sys.stderr)
+                        if retried_success:
+                            print(f"   ✅ {len(retried_success)} failed file(s) retried successfully", file=sys.stderr)
+                        if retried_failed:
+                            print(f"   ❌ {len(retried_failed)} failed file(s) still failing (will retry next run)", file=sys.stderr)
+                        if current_run_files:
+                            print(f"   🆕 {len(current_run_files)} file(s) from current run → processed", file=sys.stderr)
+                        print(f"   📊 Total: {items_added} items added, {items_merged} items merged", file=sys.stderr)
+                    
+                    # 2026-01-12: If cleanup failed, emit warning for retry prompt
+                    if cleanup_failed:
+                        print(f"⚠️  Cleanup failed for {len(cleanup_failed)} file(s). User should retry harmonization.", file=sys.stderr)
+                        emit_warning("cleanup_failed", f"{len(cleanup_failed)} file(s) could not be deleted. Retry harmonization.")
                 except Exception as e:
                     print(f"⚠️  Harmonization failed: {e}", file=sys.stderr)
-                    emit_error("harmonization_failed", f"Harmonization failed: {str(e)[:200]}")
+                    emit_error("harmonization_failed", f"Harmonization failed: {str(e)[:200]}. Retry harmonization to process files.")
                     items_added = 0
                     items_merged = 0
                 finally:
@@ -2407,6 +2674,8 @@ def main():
                 # No output file but still need to emit completion for frontend
                 emit_complete(0, 0)
         else:
+            # Per-date processing: collect all output files from current run
+            current_run_files = []
             for date in dates_to_process:
                 result = process_single_date(
                     date,
@@ -2421,19 +2690,35 @@ def main():
                 has_output_key = "has_posts" if mode == "insights" else "has_ideas"
                 output_icon = "✅" if result[has_output_key] else "❌"
                 print(f"{output_icon} {date}: {result['conversations']} conversations")
+                
+                # 2026-01-12: Track output files from current run
+                if result.get("output_file"):
+                    current_run_files.append(result["output_file"])
             
             if not args.dry_run:
+                # 2026-01-12 FIX: Only harmonize files from current run
                 # Wrap harmonization in try/except to ensure emit_complete() is always called
                 # This prevents frontend from hanging if harmonization fails
                 items_added = 0
                 items_merged = 0
+                cleanup_failed = []
                 try:
-                    harmonization_result = harmonize_all_outputs(mode, llm)
+                    harmonization_result = harmonize_all_outputs(
+                        mode, 
+                        llm,
+                        files_to_process=current_run_files if current_run_files else None,  # 2026-01-12: Only process current run's files
+                    )
                     items_added = harmonization_result.get("items_added", 0) if harmonization_result else 0
                     items_merged = harmonization_result.get("items_merged", 0) if harmonization_result else 0
+                    cleanup_failed = harmonization_result.get("cleanup_failed", []) if harmonization_result else []
+                    
+                    # 2026-01-12: If cleanup failed, emit warning for retry prompt
+                    if cleanup_failed:
+                        print(f"⚠️  Cleanup failed for {len(cleanup_failed)} file(s). User should retry harmonization.", file=sys.stderr)
+                        emit_warning("cleanup_failed", f"{len(cleanup_failed)} file(s) could not be deleted. Retry harmonization.")
                 except Exception as e:
                     print(f"⚠️  Harmonization failed: {e}", file=sys.stderr)
-                    emit_error("harmonization_failed", f"Harmonization failed: {str(e)[:200]}")
+                    emit_error("harmonization_failed", f"Harmonization failed: {str(e)[:200]}. Retry harmonization to process files.")
                     items_added = 0
                     items_merged = 0
                 finally:
