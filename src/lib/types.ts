@@ -51,6 +51,18 @@ export interface ThemeExplorerConfig {
   sliderMin: number; // Minimum slider value
   sliderMax: number; // Maximum slider value
   maxThemesToDisplay: number; // Max themes in list
+  // Unexplored Territory settings (LIB-10)
+  unexplored: {
+    daysBack: number; // How many days of conversations to analyze
+    minConversations: number; // Minimum conversations per topic
+    includeLowSeverity: boolean; // Show 3-7 conversation topics
+  };
+  // Counter-Intuitive settings (LIB-11)
+  counterIntuitive: {
+    enabled: boolean; // Enable/disable feature
+    minClusterSize: number; // Minimum items in cluster to analyze
+    maxSuggestions: number; // Max suggestions to generate
+  };
 }
 
 // v3: Theme Synthesis configuration

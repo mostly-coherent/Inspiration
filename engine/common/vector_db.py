@@ -145,10 +145,12 @@ def index_message(
     chat_type: str,
     message_type: str,
     embedding: Optional[list[float]] = None,
+    source: str = "cursor",
+    source_detail: Optional[dict] = None,
 ) -> bool:
     """
     Index a single message in the vector database.
-    
+
     Args:
         client: Supabase client
         message_id: Unique message identifier (hash of workspace:chat_id:timestamp:text[:50])
@@ -159,26 +161,28 @@ def index_message(
         chat_type: Type of chat (composer/chat)
         message_type: Type of message (user/assistant)
         embedding: Pre-computed embedding (optional, will generate if not provided)
-    
+        source: Message source ("cursor" or "claude_code")
+        source_detail: Optional source-specific metadata (JSONB)
+
     Returns:
         True if indexed successfully
-    
+
     Note:
-        - `timestamp`: When the chat message actually occurred (from Cursor DB)
+        - `timestamp`: When the chat message actually occurred (from source DB)
         - `indexed_at`: When this message was indexed into the Vector DB (set here)
         - `created_at`: When the DB row was created (auto-set by PostgreSQL)
         - `updated_at`: When the DB row was last updated (auto-set by trigger)
     """
     if not text.strip():
         return False
-    
+
     # Generate embedding if not provided
     if embedding is None:
         try:
             embedding = get_embedding(text)
         except Exception:
             return False
-    
+
     try:
         # Insert or update message in vector DB
         # timestamp = chat message timestamp (when chat occurred)
@@ -192,9 +196,11 @@ def index_message(
             "chat_id": chat_id,
             "chat_type": chat_type,
             "message_type": message_type,
+            "source": source,
+            "source_detail": source_detail,
             "indexed_at": datetime.now().isoformat(),  # DB entry timestamp (when indexed)
         }).execute()
-        
+
         return len(result.data) > 0
     except Exception:
         return False
@@ -206,7 +212,7 @@ def index_messages_batch(
 ) -> tuple[int, int]:
     """
     Index multiple messages in a single batch operation (much faster than individual inserts).
-    
+
     Args:
         client: Supabase client
         messages: List of message dicts, each containing:
@@ -218,13 +224,15 @@ def index_messages_batch(
             - chat_type: str
             - message_type: str
             - embedding: list[float]
-    
+            - source: str (optional, defaults to "cursor")
+            - source_detail: dict (optional, source-specific metadata)
+
     Returns:
         Tuple of (successful_count, failed_count)
-    
+
     Note:
         - Uses bulk upsert for better performance (10-50x faster than individual inserts)
-        - `timestamp`: When the chat message actually occurred (from Cursor DB)
+        - `timestamp`: When the chat message actually occurred (from source DB)
         - `indexed_at`: When messages were indexed (set to now for all)
     """
     if not messages:
@@ -253,6 +261,8 @@ def index_messages_batch(
             "chat_id": msg["chat_id"],
             "chat_type": msg["chat_type"],
             "message_type": msg["message_type"],
+            "source": msg.get("source", "cursor"),
+            "source_detail": msg.get("source_detail"),
             "indexed_at": indexed_at,  # DB entry timestamp (when indexed)
         })
     

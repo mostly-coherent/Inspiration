@@ -11,6 +11,11 @@ interface MemoryStats {
   latestDate: string | null;
 }
 
+interface SourceBreakdown {
+  cursor: number;
+  claudeCode: number;
+}
+
 interface LibraryStats {
   totalItems: number;
   totalCategories: number;
@@ -50,6 +55,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     thisWeek: 0,
     byMode: {},
   });
+  const [sourceBreakdown, setSourceBreakdown] = useState<SourceBreakdown | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Fetch Memory stats
@@ -97,23 +103,35 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     }
   }, []);
 
+  // Fetch source breakdown
+  const fetchSourceBreakdown = useCallback(async () => {
+    try {
+      const res = await fetch("/api/brain-stats/sources");
+      const data = await res.json();
+      setSourceBreakdown(data);
+    } catch (e) {
+      console.error("Failed to fetch source breakdown:", e);
+    }
+  }, []);
+
   // Fetch all stats on mount
   useEffect(() => {
     const fetchAll = async () => {
       setIsLoading(true);
-      await Promise.all([fetchMemoryStats(), fetchLibraryStats()]);
+      await Promise.all([fetchMemoryStats(), fetchLibraryStats(), fetchSourceBreakdown()]);
       setIsLoading(false);
     };
     fetchAll();
-  }, [fetchMemoryStats, fetchLibraryStats]);
+  }, [fetchMemoryStats, fetchLibraryStats, fetchSourceBreakdown]);
 
   // Refresh library stats after sync completes
   useEffect(() => {
     if (syncStatus?.startsWith("✓")) {
       fetchLibraryStats();
       fetchMemoryStats();
+      fetchSourceBreakdown();
     }
-  }, [syncStatus, fetchLibraryStats, fetchMemoryStats]);
+  }, [syncStatus, fetchLibraryStats, fetchMemoryStats, fetchSourceBreakdown]);
 
   const isCloudMode = syncStatus === "☁️ Cloud Mode (Read-only)";
 
@@ -220,11 +238,32 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 <span>{memoryStats.latestDate}</span>
               </div>
             )}
-            
+
+            {/* Source Breakdown */}
+            {sourceBreakdown && (sourceBreakdown.cursor > 0 || sourceBreakdown.claudeCode > 0) && (
+              <div className="flex items-center gap-1.5 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
+                {sourceBreakdown.cursor > 0 && (
+                  <>
+                    <span className="text-blue-400">Cursor</span>
+                    <span className="font-medium text-slate-300">{sourceBreakdown.cursor.toLocaleString()}</span>
+                  </>
+                )}
+                {sourceBreakdown.cursor > 0 && sourceBreakdown.claudeCode > 0 && (
+                  <span className="text-slate-600">|</span>
+                )}
+                {sourceBreakdown.claudeCode > 0 && (
+                  <>
+                    <span className="text-purple-400">Claude Code</span>
+                    <span className="font-medium text-slate-300">{sourceBreakdown.claudeCode.toLocaleString()}</span>
+                  </>
+                )}
+              </div>
+            )}
+
             {syncStatus && !isCloudMode && (
               <span className={`px-2 py-1 rounded-full ${
-                syncStatus.startsWith("✓") 
-                  ? "bg-emerald-500/10 text-emerald-400" 
+                syncStatus.startsWith("✓")
+                  ? "bg-emerald-500/10 text-emerald-400"
                   : "bg-amber-500/10 text-amber-400"
               }`}>
                 {syncStatus}

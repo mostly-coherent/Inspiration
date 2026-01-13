@@ -8,6 +8,18 @@ export const DEFAULT_THEME_EXPLORER: ThemeExplorerConfig = {
   sliderMin: 0.45,
   sliderMax: 0.92,
   maxThemesToDisplay: 20,
+  // Unexplored Territory defaults (LIB-10)
+  unexplored: {
+    daysBack: 90,
+    minConversations: 5,
+    includeLowSeverity: false,
+  },
+  // Counter-Intuitive defaults (LIB-11)
+  counterIntuitive: {
+    enabled: true,
+    minClusterSize: 5,
+    maxSuggestions: 3,
+  },
 };
 
 interface ThemeExplorerSectionProps {
@@ -24,13 +36,26 @@ export function ThemeExplorerSection({
   onToggle,
 }: ThemeExplorerSectionProps) {
   const isModified = () => {
+    const unexplored = themeExplorer.unexplored || DEFAULT_THEME_EXPLORER.unexplored;
+    const counterIntuitive = themeExplorer.counterIntuitive || DEFAULT_THEME_EXPLORER.counterIntuitive;
+    
     return (
       themeExplorer.defaultZoom !== DEFAULT_THEME_EXPLORER.defaultZoom ||
       themeExplorer.sliderMin !== DEFAULT_THEME_EXPLORER.sliderMin ||
       themeExplorer.sliderMax !== DEFAULT_THEME_EXPLORER.sliderMax ||
-      themeExplorer.maxThemesToDisplay !== DEFAULT_THEME_EXPLORER.maxThemesToDisplay
+      themeExplorer.maxThemesToDisplay !== DEFAULT_THEME_EXPLORER.maxThemesToDisplay ||
+      unexplored.daysBack !== DEFAULT_THEME_EXPLORER.unexplored.daysBack ||
+      unexplored.minConversations !== DEFAULT_THEME_EXPLORER.unexplored.minConversations ||
+      unexplored.includeLowSeverity !== DEFAULT_THEME_EXPLORER.unexplored.includeLowSeverity ||
+      counterIntuitive.enabled !== DEFAULT_THEME_EXPLORER.counterIntuitive.enabled ||
+      counterIntuitive.minClusterSize !== DEFAULT_THEME_EXPLORER.counterIntuitive.minClusterSize ||
+      counterIntuitive.maxSuggestions !== DEFAULT_THEME_EXPLORER.counterIntuitive.maxSuggestions
     );
   };
+  
+  // Ensure nested objects exist
+  const unexplored = themeExplorer.unexplored || DEFAULT_THEME_EXPLORER.unexplored;
+  const counterIntuitive = themeExplorer.counterIntuitive || DEFAULT_THEME_EXPLORER.counterIntuitive;
 
   return (
     <CollapsibleSection
@@ -130,6 +155,143 @@ export function ThemeExplorerSection({
       />
       <div className="text-xs text-slate-500 -mt-2 ml-3">
         💡 <strong>Recommendation:</strong> 20 (default) is scannable. Increase to 30-50 if you have many items. Decrease to 10 if you prefer simplicity.
+      </div>
+
+      {/* Unexplored Territory Settings */}
+      <div className="p-4 bg-amber-900/10 border border-amber-700/30 rounded-lg mt-4">
+        <h4 className="text-sm font-medium text-amber-200 mb-1 flex items-center gap-2">
+          🧭 Unexplored Territory
+        </h4>
+        <p className="text-xs text-slate-500 mb-3">
+          Find topics you discuss frequently but haven&apos;t extracted to your Library yet.
+        </p>
+        
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-slate-400 block mb-1">Days to analyze</label>
+            <select
+              value={unexplored.daysBack}
+              onChange={(e) =>
+                setThemeExplorer((prev) => ({
+                  ...prev,
+                  unexplored: { ...unexplored, daysBack: parseInt(e.target.value) },
+                }))
+              }
+              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200"
+            >
+              <option value={30}>Last 30 days</option>
+              <option value={60}>Last 60 days</option>
+              <option value={90}>Last 90 days</option>
+              <option value={180}>Last 180 days</option>
+              <option value={365}>Last year</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className="text-xs text-slate-400 block mb-1">Min conversations per topic</label>
+            <select
+              value={unexplored.minConversations}
+              onChange={(e) =>
+                setThemeExplorer((prev) => ({
+                  ...prev,
+                  unexplored: { ...unexplored, minConversations: parseInt(e.target.value) },
+                }))
+              }
+              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200"
+            >
+              <option value={3}>3+ conversations (more results)</option>
+              <option value={5}>5+ conversations (balanced)</option>
+              <option value={8}>8+ conversations (fewer, stronger)</option>
+              <option value={10}>10+ conversations (high confidence)</option>
+            </select>
+          </div>
+          
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={unexplored.includeLowSeverity}
+              onChange={(e) =>
+                setThemeExplorer((prev) => ({
+                  ...prev,
+                  unexplored: { ...unexplored, includeLowSeverity: e.target.checked },
+                }))
+              }
+              className="w-4 h-4 rounded bg-slate-800 border-slate-600"
+            />
+            <span className="text-sm text-slate-300">Include low severity topics (3-7 conversations)</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Counter-Intuitive Settings */}
+      <div className="p-4 bg-purple-900/10 border border-purple-700/30 rounded-lg mt-4">
+        <h4 className="text-sm font-medium text-purple-200 mb-1 flex items-center gap-2">
+          🔄 Counter-Intuitive Insights
+        </h4>
+        <p className="text-xs text-slate-500 mb-3">
+          AI-generated &quot;good opposite&quot; perspectives to challenge your assumptions. Reflection prompts only — doesn&apos;t create Library items.
+        </p>
+        
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={counterIntuitive.enabled}
+              onChange={(e) =>
+                setThemeExplorer((prev) => ({
+                  ...prev,
+                  counterIntuitive: { ...counterIntuitive, enabled: e.target.checked },
+                }))
+              }
+              className="w-4 h-4 rounded bg-slate-800 border-slate-600"
+            />
+            <span className="text-sm text-slate-300">Enable Counter-Intuitive tab</span>
+          </label>
+          
+          {counterIntuitive.enabled && (
+            <>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Min theme size to analyze</label>
+                <select
+                  value={counterIntuitive.minClusterSize}
+                  onChange={(e) =>
+                    setThemeExplorer((prev) => ({
+                      ...prev,
+                      counterIntuitive: { ...counterIntuitive, minClusterSize: parseInt(e.target.value) },
+                    }))
+                  }
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200"
+                >
+                  <option value={3}>3+ items (more suggestions)</option>
+                  <option value={5}>5+ items (balanced)</option>
+                  <option value={10}>10+ items (only strong themes)</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Max suggestions</label>
+                <select
+                  value={counterIntuitive.maxSuggestions}
+                  onChange={(e) =>
+                    setThemeExplorer((prev) => ({
+                      ...prev,
+                      counterIntuitive: { ...counterIntuitive, maxSuggestions: parseInt(e.target.value) },
+                    }))
+                  }
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200"
+                >
+                  <option value={1}>1 (minimal)</option>
+                  <option value={3}>3 (default)</option>
+                  <option value={5}>5 (more options)</option>
+                </select>
+              </div>
+              
+              <div className="text-xs text-slate-500 bg-slate-800/30 p-2 rounded">
+                ⚡ LLM cost: ~$0.05-0.10 per theme analyzed. Suggestions are cached.
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </CollapsibleSection>
   );

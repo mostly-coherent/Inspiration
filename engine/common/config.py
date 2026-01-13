@@ -53,6 +53,16 @@ DEFAULT_CONFIG = {
             "filePath": None,
         },
     },
+    "messageSources": {
+        "cursor": {
+            "enabled": True,
+            "autoDetect": True,
+        },
+        "claudeCode": {
+            "enabled": True,
+            "autoDetect": True,
+        },
+    },
     "ui": {
         "defaultTool": "insights",
         "defaultMode": "sprint",

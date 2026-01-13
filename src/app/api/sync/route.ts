@@ -107,26 +107,44 @@ export async function POST() {
             ));
           }
         } else {
-          // Parse stdout for stats
-          const indexedMatch = stdout.match(/Indexed: (\d+)/);
-          const failedMatch = stdout.match(/Failed: (\d+)/);
-          const skippedMatch = stdout.match(/Already indexed.*?(\d+)/);
-          const indexed = indexedMatch ? parseInt(indexedMatch[1]) : 0;
-          const failed = failedMatch ? parseInt(failedMatch[1]) : 0;
-          const skipped = skippedMatch ? parseInt(skippedMatch[1]) : 0;
-          
+          // Parse stdout for multi-source stats
+          const cursorMatch = stdout.match(/Cursor:\s+(\d+)\s+indexed,\s+(\d+)\s+skipped,\s+(\d+)\s+failed/);
+          const claudeMatch = stdout.match(/Claude Code:\s+(\d+)\s+indexed,\s+(\d+)\s+skipped,\s+(\d+)\s+failed/);
+
+          const stats: any = {};
+
+          if (cursorMatch) {
+            stats.cursor = {
+              indexed: parseInt(cursorMatch[1]),
+              skipped: parseInt(cursorMatch[2]),
+              failed: parseInt(cursorMatch[3]),
+            };
+          }
+
+          if (claudeMatch) {
+            stats.claudeCode = {
+              indexed: parseInt(claudeMatch[1]),
+              skipped: parseInt(claudeMatch[2]),
+              failed: parseInt(claudeMatch[3]),
+            };
+          }
+
+          const totalIndexed =
+            (stats.cursor?.indexed || 0) +
+            (stats.claudeCode?.indexed || 0);
+
           // Check if there were no new messages
-          if (stdout.includes("No new messages to sync")) {
-            resolve(NextResponse.json({ 
-              success: true, 
+          if (totalIndexed === 0) {
+            resolve(NextResponse.json({
+              success: true,
               message: "Brain is up to date",
-              stats: { indexed: 0, skipped, failed }
+              stats,
             }));
           } else {
-            resolve(NextResponse.json({ 
-              success: true, 
-              message: "Sync completed successfully",
-              stats: { indexed, skipped, failed }
+            resolve(NextResponse.json({
+              success: true,
+              message: `Synced ${totalIndexed} new message${totalIndexed === 1 ? '' : 's'}`,
+              stats,
             }));
           }
         }

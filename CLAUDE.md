@@ -26,10 +26,12 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 - **Library** — Items and Categories with automatic grouping via cosine similarity
 - **Memory** — Indexed chat history with sync status and date coverage
 - **Theme Explorer (LIB-8)** — Pattern discovery via dynamic similarity grouping (forest → trees zoom), AI synthesis per theme
+- **Unexplored Territory (LIB-10)** — Find topics discussed in Memory but missing from Library
+- **Counter-Intuitive (LIB-11)** — LLM-generated reflection prompts for "good opposite" perspectives
 - **Coverage Intelligence (v5)** — Automated gap detection and suggested generation runs
 - **Explore Coverage** — Visual chart of Memory terrain vs Library coverage
 
-**Longitudinal Intelligence Status (v4 Phase 3):** 1/3 complete — Theme Explorer operational; Learning Trajectory (LIB-9) and Gap Detection (LIB-10) pending.
+**Longitudinal Intelligence Status (v4 Phase 3):** 3/3 complete — Theme Explorer with Patterns, Unexplored, and Counter-Intuitive tabs operational.
 
 ### New User Onboarding
 
@@ -176,7 +178,11 @@ python3 engine/generate.py --mode insights \
 |------|---------|
 | `src/app/page.tsx` | Main UI — redirects to onboarding if new user, integrated Coverage suggestions |
 | `src/app/onboarding/page.tsx` | 3-step onboarding wizard (Welcome → API Keys → Sync) |
-| `src/app/themes/page.tsx` | Theme Explorer (LIB-8) — pattern discovery via similarity grouping + AI synthesis |
+| `src/app/themes/page.tsx` | Theme Explorer (LIB-8/10/11) — Patterns, Unexplored Territory, Counter-Intuitive tabs |
+| `src/components/UnexploredTab.tsx` | Unexplored Territory tab — find Memory topics missing from Library |
+| `src/components/CounterIntuitiveTab.tsx` | Counter-Intuitive tab — LLM reflection prompts |
+| `engine/common/unexplored_territory.py` | Unexplored detection algorithm (Memory vs Library clustering) |
+| `engine/common/counter_intuitive.py` | Counter-perspective LLM generation |
 | `src/app/explore-coverage/page.tsx` | Coverage visualization — chart + suggested runs (v5) |
 | `src/app/settings/page.tsx` | Settings wizard (workspaces, VectorDB, voice, LLM, mode settings) |
 | `src/app/api/coverage/analyze/route.ts` | Coverage analysis API (v5) |

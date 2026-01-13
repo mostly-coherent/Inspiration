@@ -1,7 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { ThemeExplorerTabs, getTabFromSearchParams, type ThemeTab } from "@/components/ThemeExplorerTabs";
+import { UnexploredTab } from "@/components/UnexploredTab";
+import { CounterIntuitiveTab } from "@/components/CounterIntuitiveTab";
 
 interface ThemePreview {
   id: string;
@@ -57,7 +61,7 @@ function getZoomLabel(threshold: number): { label: string; description: string }
   return ZOOM_LABELS[ZOOM_LABELS.length - 1];
 }
 
-export default function ThemesPage() {
+function ThemesPage() {
   // Item type filter
   const [itemTypeFilter, setItemTypeFilter] = useState<ItemTypeFilter>("all");
   
@@ -89,6 +93,18 @@ export default function ThemesPage() {
   const [synthesisLoading, setSynthesisLoading] = useState(false);
   const [synthesisError, setSynthesisError] = useState<string | null>(null);
   
+  // Tab-specific config
+  const [unexploredConfig, setUnexploredConfig] = useState({
+    daysBack: 90,
+    minConversations: 5,
+    includeLowSeverity: false,
+  });
+  const [counterIntuitiveConfig, setCounterIntuitiveConfig] = useState({
+    enabled: true,
+    minClusterSize: 5,
+    maxSuggestions: 3,
+  });
+  
   // Load config values on mount
   useEffect(() => {
     const loadConfig = async () => {
@@ -96,7 +112,7 @@ export default function ThemesPage() {
         const res = await fetch("/api/config");
         const data = await res.json();
         if (data.success && data.config?.themeExplorer) {
-          const { defaultZoom, sliderMin: min, sliderMax: max } = data.config.themeExplorer;
+          const { defaultZoom, sliderMin: min, sliderMax: max, unexplored, counterIntuitive } = data.config.themeExplorer;
           if (defaultZoom !== undefined) {
             // Set default zoom for all types
             setThresholds({
@@ -109,6 +125,24 @@ export default function ThemesPage() {
           }
           if (min !== undefined) setSliderMin(min);
           if (max !== undefined) setSliderMax(max);
+          
+          // Load unexplored config
+          if (unexplored) {
+            setUnexploredConfig({
+              daysBack: unexplored.daysBack ?? 90,
+              minConversations: unexplored.minConversations ?? 5,
+              includeLowSeverity: unexplored.includeLowSeverity ?? false,
+            });
+          }
+          
+          // Load counter-intuitive config
+          if (counterIntuitive) {
+            setCounterIntuitiveConfig({
+              enabled: counterIntuitive.enabled ?? true,
+              minClusterSize: counterIntuitive.minClusterSize ?? 5,
+              maxSuggestions: counterIntuitive.maxSuggestions ?? 3,
+            });
+          }
         }
       } catch (err) {
         console.error("Failed to load theme explorer config:", err);
@@ -199,6 +233,10 @@ export default function ThemesPage() {
 
   const zoomInfo = getZoomLabel(threshold);
 
+  // Get active tab from URL
+  const searchParams = useSearchParams();
+  const activeTab = getTabFromSearchParams(searchParams);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950">
       {/* Header */}
@@ -219,95 +257,105 @@ export default function ThemesPage() {
                   <span className="text-3xl">🔭</span> Theme Explorer
                 </h1>
                 <p className="text-slate-400 text-sm">
-                  {itemTypeFilter === "all" 
-                    ? "Discover patterns across all your Library items"
-                    : `Explore ${ITEM_TYPE_TABS.find(t => t.id === itemTypeFilter)?.label} themes`}
+                  {activeTab === "patterns" 
+                    ? "Discover patterns across your Library"
+                    : activeTab === "unexplored"
+                      ? "Find topics missing from your Library"
+                      : "Explore counter-intuitive perspectives"}
                 </p>
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-lg font-semibold text-white">{data?.themeCount || 0} Themes</div>
-              <div className="text-sm text-slate-400">
-                {data?.totalItems || 0} {itemTypeFilter === "all" ? "items" : ITEM_TYPE_TABS.find(t => t.id === itemTypeFilter)?.label.toLowerCase()}
+            {activeTab === "patterns" && (
+              <div className="text-right">
+                <div className="text-lg font-semibold text-white">{data?.themeCount || 0} Themes</div>
+                <div className="text-sm text-slate-400">
+                  {data?.totalItems || 0} {itemTypeFilter === "all" ? "items" : ITEM_TYPE_TABS.find(t => t.id === itemTypeFilter)?.label.toLowerCase()}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </header>
 
-      {/* Item Type Tabs + Zoom Control - Fixed */}
-      <div className="sticky top-[73px] z-10 bg-slate-900/80 backdrop-blur-md border-b border-slate-800/30">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          {/* Item Type Filter Tabs */}
-          <div className="flex flex-wrap gap-2 mb-4">
-            {ITEM_TYPE_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setItemTypeFilter(tab.id)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  itemTypeFilter === tab.id
-                    ? "bg-indigo-600/40 text-indigo-200 border border-indigo-500/50 shadow-lg shadow-indigo-500/10"
-                    : "bg-slate-800/40 text-slate-400 border border-slate-700/50 hover:bg-slate-800/60 hover:text-slate-300"
-                }`}
-              >
-                <span className="mr-1.5">{tab.icon}</span>
-                {tab.label}
-              </button>
-            ))}
-          </div>
-          
-          {/* Current filter description */}
-          <div className="text-xs text-slate-500 mb-4">
-            {ITEM_TYPE_TABS.find(t => t.id === itemTypeFilter)?.description}
-          </div>
-          
-          {/* Zoom Slider */}
-          <div className="glass-card p-4 rounded-xl">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <span className="text-xl mr-2">🔍</span>
-                <span className="text-base font-semibold text-white">{zoomInfo.label}</span>
-                <span className="text-slate-400 ml-2 text-sm">— {zoomInfo.description}</span>
-              </div>
-              <div className="flex items-center gap-3 text-xs text-slate-400">
-                <span>🌳 Forest</span>
-                <span>←</span>
-                <span>→</span>
-                <span>🌲 Trees</span>
-              </div>
-            </div>
-            
-            <div className="relative">
-              <input
-                type="range"
-                min={sliderMin}
-                max={sliderMax}
-                step="0.01"
-                value={threshold}
-                onChange={(e) => setThreshold(parseFloat(e.target.value))}
-                aria-label={`Theme similarity threshold: ${(threshold * 100).toFixed(0)}%`}
-                aria-valuemin={sliderMin * 100}
-                aria-valuemax={sliderMax * 100}
-                aria-valuenow={Math.round(threshold * 100)}
-                aria-valuetext={`${zoomInfo.label}: ${zoomInfo.description}`}
-                className="w-full h-2 bg-gradient-to-r from-emerald-600 via-amber-500 to-rose-600 rounded-full appearance-none cursor-pointer
-                  [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 
-                  [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-lg
-                  [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-slate-300
-                  [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:hover:scale-110 [&::-webkit-slider-thumb]:transition-transform"
-              />
-              <div className="flex justify-between mt-2 text-xs text-slate-500">
-                <span>Broad themes</span>
-                <span>Similarity: {(threshold * 100).toFixed(0)}%</span>
-                <span>Specific themes</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Tab Navigation */}
+      <ThemeExplorerTabs activeTab={activeTab} />
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      {/* Tab-specific content */}
+      {activeTab === "patterns" ? (
+        <>
+          {/* Item Type Tabs + Zoom Control - Fixed */}
+          <div className="sticky top-[73px] z-10 bg-slate-900/80 backdrop-blur-md border-b border-slate-800/30">
+            <div className="max-w-7xl mx-auto px-6 py-4">
+              {/* Item Type Filter Tabs */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                {ITEM_TYPE_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setItemTypeFilter(tab.id)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      itemTypeFilter === tab.id
+                        ? "bg-indigo-600/40 text-indigo-200 border border-indigo-500/50 shadow-lg shadow-indigo-500/10"
+                        : "bg-slate-800/40 text-slate-400 border border-slate-700/50 hover:bg-slate-800/60 hover:text-slate-300"
+                    }`}
+                  >
+                    <span className="mr-1.5">{tab.icon}</span>
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              
+              {/* Current filter description */}
+              <div className="text-xs text-slate-500 mb-4">
+                {ITEM_TYPE_TABS.find(t => t.id === itemTypeFilter)?.description}
+              </div>
+              
+              {/* Zoom Slider */}
+              <div className="glass-card p-4 rounded-xl">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <span className="text-xl mr-2">🔍</span>
+                    <span className="text-base font-semibold text-white">{zoomInfo.label}</span>
+                    <span className="text-slate-400 ml-2 text-sm">— {zoomInfo.description}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-slate-400">
+                    <span>🌳 Forest</span>
+                    <span>←</span>
+                    <span>→</span>
+                    <span>🌲 Trees</span>
+                  </div>
+                </div>
+                
+                <div className="relative">
+                  <input
+                    type="range"
+                    min={sliderMin}
+                    max={sliderMax}
+                    step="0.01"
+                    value={threshold}
+                    onChange={(e) => setThreshold(parseFloat(e.target.value))}
+                    aria-label={`Theme similarity threshold: ${(threshold * 100).toFixed(0)}%`}
+                    aria-valuemin={sliderMin * 100}
+                    aria-valuemax={sliderMax * 100}
+                    aria-valuenow={Math.round(threshold * 100)}
+                    aria-valuetext={`${zoomInfo.label}: ${zoomInfo.description}`}
+                    className="w-full h-2 bg-gradient-to-r from-emerald-600 via-amber-500 to-rose-600 rounded-full appearance-none cursor-pointer
+                      [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 
+                      [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-lg
+                      [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-slate-300
+                      [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:hover:scale-110 [&::-webkit-slider-thumb]:transition-transform"
+                  />
+                  <div className="flex justify-between mt-2 text-xs text-slate-500">
+                    <span>Broad themes</span>
+                    <span>Similarity: {(threshold * 100).toFixed(0)}%</span>
+                    <span>Specific themes</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <main className="max-w-7xl mx-auto px-6 py-8">
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-6">
             <p className="text-red-400">{error}</p>
@@ -496,6 +544,29 @@ export default function ThemesPage() {
           </div>
         )}
       </main>
+        </>
+      ) : activeTab === "unexplored" ? (
+        <main className="max-w-7xl mx-auto px-6 py-8">
+          <UnexploredTab config={unexploredConfig} />
+        </main>
+      ) : (
+        <main className="max-w-7xl mx-auto px-6 py-8">
+          <CounterIntuitiveTab config={counterIntuitiveConfig} />
+        </main>
+      )}
     </div>
+  );
+}
+
+// Wrap the page in Suspense for useSearchParams
+export default function ThemesPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+      </div>
+    }>
+      <ThemesPage />
+    </Suspense>
   );
 }

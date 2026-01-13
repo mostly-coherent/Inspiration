@@ -41,6 +41,10 @@ See PLAN.md for detailed use case descriptions.
 │                      │  Idea Bank   │     │  Cursor DB   │                  │
 │                      │ Insight Bank │     │  (SQLite)    │                  │
 │                      └──────────────┘     └──────────────┘                  │
+│                                           ┌──────────────┐                  │
+│                                           │ Claude Code  │                  │
+│                                           │   (JSONL)    │                  │
+│                                           └──────────────┘                  │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -110,6 +114,205 @@ See PLAN.md for detailed use case descriptions.
 - **Local:** Single-process development - Node.js spawns Python directly
 - **Automatic:** Code detects environment and routes accordingly (no config needed)
 - **Rationale:** Vercel can't spawn processes, Railway can't match Vercel's frontend optimizations
+
+---
+
+## Multi-Source Chat History Architecture
+
+### Overview
+
+Inspiration supports multiple AI coding assistant sources with automatic detection and unified storage:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     MULTI-SOURCE EXTRACTION                         │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌──────────────────┐                 ┌──────────────────┐         │
+│  │   Cursor (SQLite) │                 │ Claude Code (JSONL)│         │
+│  │                  │                 │                  │         │
+│  │  Mac/Windows:    │                 │  Mac/Windows:    │         │
+│  │  ~/Library/...   │                 │  ~/.claude/      │         │
+│  │  %APPDATA%/...   │                 │  projects/       │         │
+│  └────────┬─────────┘                 └────────┬─────────┘         │
+│           │                                    │                   │
+│           │   ┌────────────────────┐           │                   │
+│           └──▶│ Source Detector    │◀──────────┘                   │
+│               │ (Auto-detects both)│                               │
+│               └─────────┬──────────┘                               │
+│                         │                                          │
+│           ┌─────────────┴─────────────┐                            │
+│           ▼                           ▼                            │
+│  ┌────────────────┐          ┌────────────────┐                   │
+│  │ cursor_db.py   │          │claude_code_db.py│                   │
+│  │                │          │                │                   │
+│  │ • Bubble format│          │ • JSONL parser │                   │
+│  │ • SQLite query │          │ • Subagent msgs│                   │
+│  │ • Composer data│          │ • CWD matching │                   │
+│  └────────┬───────┘          └────────┬───────┘                   │
+│           │                           │                            │
+│           └────────┬──────────────────┘                            │
+│                    ▼                                               │
+│          ┌──────────────────┐                                      │
+│          │ sync_messages.py │                                      │
+│          │                  │                                      │
+│          │ • Per-source sync│                                      │
+│          │ • Unified pipeline│                                     │
+│          └────────┬─────────┘                                      │
+│                   ▼                                                │
+│          ┌──────────────────┐                                      │
+│          │ Unified Vector DB │                                      │
+│          │                  │                                      │
+│          │ • source column  │                                      │
+│          │ • source_detail  │                                      │
+│          │ • embeddings     │                                      │
+│          └──────────────────┘                                      │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Source Detection
+
+**Files:** `engine/common/source_detector.py`
+
+Auto-detects available sources on user's system:
+
+| Source | Format | macOS Location | Windows Location |
+|--------|--------|---------------|------------------|
+| **Cursor** | SQLite | `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` | `%APPDATA%/Cursor/User/globalStorage/state.vscdb` |
+| **Claude Code** | JSONL | `~/.claude/projects/{workspace}/{session}.jsonl` | `%APPDATA%/Claude/projects/{workspace}/{session}.jsonl` |
+
+**Detection Logic:**
+```python
+sources = detect_sources()  # Returns list of ChatSource objects
+print_detection_report(sources)  # User-friendly summary
+
+# Example output:
+# ✅ Cursor
+#    Location: /Users/user/Library/.../state.vscdb
+#    Format:   sqlite
+# ✅ Claude Code
+#    Location: /Users/user/.claude/projects
+#    Format:   jsonl
+# 📊 Total sources: 2
+```
+
+### Extraction Modules
+
+#### Cursor Extraction (`engine/common/cursor_db.py`)
+
+- **Format:** SQLite database with "Bubble" message architecture
+- **Challenge:** Messages fragmented across `composerData` and `bubbleId` keys
+- **Extraction:** Multi-strategy approach with fallback patterns
+- **Output:** Unified message format with timestamps, workspace, metadata
+
+#### Claude Code Extraction (`engine/common/claude_code_db.py`)
+
+- **Format:** JSONL (one JSON event per line)
+- **Structure:** `{type, message, timestamp, uuid, sessionId, cwd, gitBranch, ...}`
+- **Features:**
+  - Parses main session + subagent files
+  - Handles workspace path mismatches (directory encoding vs. actual CWD)
+  - Error recovery (malformed JSON, missing timestamps)
+- **Output:** Same unified message format as Cursor
+
+**Key Innovation — Workspace Matching:**
+```python
+# Claude Code directory: "-Users-username-Personal-Workspace"
+# Actual workspace (cwd): "/Users/username/Personal Workspace"
+# Solution: Extract actual workspace from message metadata (cwd field)
+actual_workspace = messages[0]["metadata"].get("cwd")  # Use this, not directory name
+```
+
+### Unified Sync Pipeline
+
+**File:** `engine/scripts/sync_messages.py`
+
+**Per-Source Sync State:**
+```json
+{
+  "sources": {
+    "cursor": {
+      "last_sync_timestamp": 1234567890000,
+      "messages_indexed": 1000
+    },
+    "claude_code": {
+      "last_sync_timestamp": 9876543210000,
+      "messages_indexed": 500
+    }
+  }
+}
+```
+
+**Sync Flow:**
+```
+1. Detect available sources (detect_sources())
+2. For each source:
+   a. Get last sync timestamp
+   b. Extract new conversations (cursor_db or claude_code_db)
+   c. Generate embeddings
+   d. Index to Vector DB with source attribution
+   e. Update sync state
+3. Return stats: "Cursor: X indexed | Claude Code: Y indexed"
+```
+
+### Vector DB Schema
+
+**Table:** `cursor_messages`
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `message_id` | TEXT | Unique ID (prefixed with source: `cursor:{hash}` or `claude_code:{uuid}`) |
+| `text` | TEXT | Message content |
+| `timestamp` | BIGINT | Unix timestamp (milliseconds) |
+| `workspace` | TEXT | Workspace path |
+| `chat_id` | TEXT | Conversation/session ID |
+| `chat_type` | TEXT | "composer_chat" or "claude_code_session" |
+| `message_type` | TEXT | "user" or "assistant" |
+| `source` | TEXT | **NEW:** "cursor" or "claude_code" |
+| `source_detail` | JSONB | **NEW:** Source-specific metadata (tokens, git branch, subagent flag, etc.) |
+| `embedding` | VECTOR(1536) | OpenAI embedding for semantic search |
+| `indexed_at` | TIMESTAMPTZ | When this message was indexed |
+
+**RPC Function:** `search_cursor_messages(..., source_filter)`
+
+Supports optional source filtering for targeted queries.
+
+### Configuration
+
+**File:** `engine/common/config.py`
+
+```json
+{
+  "messageSources": {
+    "cursor": {
+      "enabled": true,
+      "autoDetect": true
+    },
+    "claudeCode": {
+      "enabled": true,
+      "autoDetect": true
+    }
+  }
+}
+```
+
+### Frontend Integration
+
+**Source Breakdown Display:**
+- **Component:** `ScoreboardHeader.tsx`
+- **API:** `/api/brain-stats/sources` → `{cursor: X, claudeCode: Y}`
+- **UI:** Shows "Cursor: 1,234 | Claude Code: 567" in Memory stats
+
+**Sync Output:**
+- **API:** `/api/sync` → Parses multi-source output
+- **Format:** `"Cursor: X indexed, Y skipped | Claude Code: A indexed, B skipped"`
+
+### Backward Compatibility
+
+- Existing messages without `source` field → Default to `source='cursor'`
+- Migration SQL is idempotent (safe to run multiple times)
+- No breaking changes to existing APIs
 
 ---
 

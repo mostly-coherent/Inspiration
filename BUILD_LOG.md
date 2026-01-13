@@ -6,6 +6,245 @@
 
 ---
 
+## Progress - 2026-01-13 (Theme Explorer Tab Navigation — Phase 1 Complete)
+
+**Done:**
+- ✅ **Unified Theme Explorer Design (LIB-8/LIB-10/LIB-11)**
+  - Created `THEME_EXPLORER_ENHANCEMENTS.md` — Consolidated build plan for three-tab architecture
+  - Deleted `UNEXPLORED_TERRITORY_BUILD_PLAN.md` — Superseded by unified plan
+  - **Key Decision:** Counter-Intuitive tab provides reflection prompts only (no Library items)
+    - Preserves Library sanctity (chat-only)
+    - Added kill criteria: < 20% engagement → remove feature
+
+- ✅ **Phase 1: Tab Navigation Implementation**
+  - Created `src/components/ThemeExplorerTabs.tsx` — Tab switcher with URL routing
+  - Created `src/components/UnexploredTab.tsx` — Placeholder with "Coming Soon" preview
+  - Created `src/components/CounterIntuitiveTab.tsx` — Placeholder with reflection prompts notice
+  - Updated `src/app/themes/page.tsx` — Integrated tab navigation, conditional content rendering
+  - Added Suspense boundary for Next.js 14+ compatibility
+
+- ✅ **Bug Fix: Supabase Import Error**
+  - Fixed `src/app/api/brain-stats/sources/route.ts` — Changed from `@/lib/supabase` to `@supabase/supabase-js`
+
+- ✅ **E2E Tests Added**
+  - Test 27: Theme Explorer shows tab navigation
+  - Test 28: Unexplored tab shows coming soon
+  - Test 29: Counter-Intuitive tab shows reflection prompts notice
+  - All 3 tests passing
+
+**Evidence:**
+- Playwright tests: 3/3 passing (7.5s total)
+- Screenshots: `e2e-results/27-theme-tabs.png`, `e2e-results/28-unexplored-tab.png`, `e2e-results/29-counter-intuitive-tab.png`
+- TypeScript compilation: ✅ No errors
+
+**Next:**
+- Phase 3: Implement Counter-Intuitive (LLM projection for reflection prompts)
+
+---
+
+## Progress - 2026-01-13 (Unexplored Territory — Phase 2 Complete)
+
+**Done:**
+- ✅ **Backend: Unexplored Territory Detection (Layer 1)**
+  - Created `engine/common/unexplored_territory.py`
+  - Algorithm: Cluster conversations → Cluster Library → Find mismatch
+  - Severity levels: High (15+ convs), Medium (8-14), Low (3-7)
+  - Handles embedding parsing (string → list conversion)
+  - CLI for testing: `python3 engine/common/unexplored_territory.py --days 90 --include-low`
+
+- ✅ **API Endpoint**
+  - Created `src/app/api/themes/unexplored/route.ts`
+  - Endpoint: `GET /api/themes/unexplored?days=90&includeLow=true`
+  - Returns: `{ success, areas[], count, analyzedDays }`
+
+- ✅ **Frontend: Functional Unexplored Tab**
+  - Updated `src/components/UnexploredTab.tsx` — Full implementation (not placeholder)
+  - Severity filter (All/High/Medium/Low)
+  - Area cards with conversation stats and sample snippets
+  - "Generate Ideas" and "Generate Insights" action buttons
+  - Loading, error, and empty states
+
+- ✅ **Tab Navigation Update**
+  - Updated `src/components/ThemeExplorerTabs.tsx` — Unexplored tab now "ready" (not "coming_soon")
+
+- ✅ **E2E Tests Updated**
+  - Test 28 updated: "Unexplored tab is functional" (not "shows coming soon")
+  - All 3 tab tests passing (27, 28, 29)
+
+**Evidence:**
+- Playwright tests: 3/3 passing (15.1s total)
+- CLI test: Found 1 unexplored area with `--min-convs 3 --include-low`
+- TypeScript compilation: ✅ No errors
+
+**Technical Notes:**
+- Embeddings in `cursor_messages` stored as strings, needed JSON parsing
+- Default thresholds: conversation_threshold=0.70, library_threshold=0.75, coverage_threshold=0.65
+- Adjusted severity thresholds to match realistic cluster sizes (15/8/min_convs)
+
+**Next:**
+- Phase 3: Implement Counter-Intuitive (LLM projection for reflection prompts)
+
+---
+
+## Progress - 2026-01-13 (Counter-Intuitive — Phase 3 Complete)
+
+**Done:**
+- ✅ **Backend: Counter-Intuitive Generation**
+  - Created `engine/prompts/counter_intuitive.md` — LLM prompt template
+  - Created `engine/common/counter_intuitive.py` — Core detection logic
+  - Algorithm: Find strong Library themes → LLM generates "good opposite" → Reflection prompts
+  - Supports "Keep in Mind" (save) and "Dismiss" actions
+  - CLI: `python3 engine/common/counter_intuitive.py --min-size 5 --max 3`
+
+- ✅ **API Endpoints**
+  - `GET /api/themes/counter-intuitive` — Generate counter-perspectives
+  - `POST /api/themes/counter-intuitive/save` — Save reflection ("Keep in Mind")
+  - `GET /api/themes/counter-intuitive/save` — Get saved reflections
+  - `DELETE /api/themes/counter-intuitive/save?id=X` — Dismiss suggestion
+
+- ✅ **Frontend: Functional Counter-Intuitive Tab**
+  - Updated `src/components/CounterIntuitiveTab.tsx` — Full implementation
+  - Min cluster size selector (3+/5+/10+ items)
+  - "Saved Reflections" toggle view
+  - Info banner: "Reflection prompts only — Library stays pure"
+  - "Keep in Mind" and "Dismiss" action buttons
+
+- ✅ **Tab Navigation Update**
+  - Updated `src/components/ThemeExplorerTabs.tsx` — Counter-Intuitive tab now "ready"
+
+- ✅ **E2E Tests Updated**
+  - Test 29 updated: "Counter-Intuitive tab is functional"
+  - Uses `domcontentloaded` instead of `networkidle` (LLM is slow)
+  - All 3 tab tests passing (27, 28, 29)
+
+**Evidence:**
+- Playwright tests: 3/3 passing (13.7s total)
+- CLI test: Generated counter-perspective for "Documentation & Paradox & Hidden" theme
+- TypeScript compilation: ✅ No errors
+
+**Technical Notes:**
+- Prompt template uses plain text format (not JSON examples) to avoid Python format() conflicts
+- LLM calls can take 30-60s — E2E test adjusted to not wait for network idle
+- Saved reflections stored in `data/saved_reflections.json`
+- Dismissed suggestions stored in `data/dismissed_reflections.json`
+
+**Kill Criteria (for future evaluation):**
+- < 20% engagement after 2 weeks → Remove feature
+- > 80% dismiss rate → Feature doesn't resonate
+- Zero saved reflections → No value delivered
+
+**Next:**
+- Phase 4: Settings & Docs (Theme Explorer configuration)
+
+---
+
+## Progress - 2026-01-13 (Settings & Docs — Phase 4 Complete)
+
+**Done:**
+- ✅ **Settings: Theme Explorer Section Extended**
+  - Updated `ThemeExplorerConfig` type with nested `unexplored` and `counterIntuitive` objects
+  - Updated `ThemeExplorerSection.tsx` with new settings UI:
+    - Unexplored: Days to analyze, min conversations, include low severity toggle
+    - Counter-Intuitive: Enable/disable, min cluster size, max suggestions
+  - Settings persist to `data/config.json`
+
+- ✅ **Documentation Updates**
+  - Updated `CLAUDE.md` — Added Unexplored Territory and Counter-Intuitive to features list and key files
+  - Updated `README.md` — Reflected "3/3 complete" status, updated feature table and descriptions
+  - Updated `THEME_EXPLORER_ENHANCEMENTS.md` — Marked Phase 4 complete
+
+**Evidence:**
+- Playwright tests: 3/3 passing (27, 28, 29)
+- TypeScript compilation: ✅ No errors
+
+**Technical Notes:**
+- Settings use nested objects for clean separation: `themeExplorer.unexplored`, `themeExplorer.counterIntuitive`
+- Default values centralized in `DEFAULT_THEME_EXPLORER` constant
+- UI shows/hides Counter-Intuitive options based on `enabled` toggle
+
+---
+
+## Progress - 2026-01-13 (Code Review & Fix — Composer-1)
+
+**Issue Found:**
+- ⚠️ **CRITICAL:** Settings UI created but not wired to tab components
+  - Problem: `UnexploredTab` and `CounterIntuitiveTab` used hardcoded defaults, ignored settings
+  - Root cause: Phase 4 added settings UI but didn't wire data flow to consuming components
+
+**Fixes Applied:**
+- ✅ Added props interfaces to `UnexploredTab` and `CounterIntuitiveTab`
+- ✅ Modified `themes/page.tsx` to load unexplored/counterIntuitive config from API
+- ✅ Pass config as props to tab components
+- ✅ Initialize tab state from config props (daysBack, minConversations, minClusterSize, etc.)
+- ✅ Added disabled state UI for Counter-Intuitive tab when `enabled = false`
+
+**Verification:**
+- TypeScript compilation: ✅ No errors
+- Linter: ✅ No errors
+- E2E tests: ✅ Still passing (27, 28, 29)
+
+**Next Steps:**
+- Manual testing needed to verify settings actually control tab behavior
+- Test all settings combinations (see CODE_REVIEW_FINDINGS.md)
+
+**Evidence:**
+- Review document: `CODE_REVIEW_FINDINGS.md`
+- Modified files: `UnexploredTab.tsx`, `CounterIntuitiveTab.tsx`, `themes/page.tsx`
+
+---
+
+## Progress - 2026-01-12 (Multi-Source Chat History Support — MVP Complete)
+
+**Done:**
+- ✅ **Implemented multi-source chat history support (Cursor + Claude Code)**
+  - **Auto-Detection System:**
+    - Created `engine/common/source_detector.py` — Cross-platform detection (Mac/Windows)
+    - Detects Cursor (SQLite at `~/Library/Application Support/Cursor/...`)
+    - Detects Claude Code (JSONL at `~/.claude/projects/...`)
+  - **Claude Code Extraction:**
+    - Created `engine/common/claude_code_db.py` — Full JSONL parsing with subagent support
+    - Handles workspace path mismatches (directory encoding vs. actual CWD)
+    - Robust error recovery (malformed JSON, missing timestamps)
+    - Extracts 250+ messages from 1.5MB session files
+  - **Unified Sync Pipeline:**
+    - Refactored `engine/scripts/sync_messages.py` — Per-source sync state tracking
+    - Updated `engine/common/vector_db.py` — Added `source` and `source_detail` parameters
+    - Updated `engine/common/config.py` — Added `messageSources` configuration
+  - **Database Schema:**
+    - Created `engine/scripts/migrate_to_multi_source.sql` — Added source columns, updated RPC
+    - Backward compatible: Existing messages default to `source='cursor'`
+  - **Frontend Integration:**
+    - Created `src/app/api/brain-stats/sources/route.ts` — Source breakdown API
+    - Updated `src/components/ScoreboardHeader.tsx` — Multi-source stats display
+    - Updated `src/app/api/sync/route.ts` — Parse multi-source sync output
+  - **Testing:**
+    - Created comprehensive unit tests: `engine/tests/test_claude_code_db.py`
+    - E2E tested: Detected both sources, extracted 5 conversations (252 messages)
+    - Added pytest to requirements.txt
+
+**Evidence:**
+- Files created: 6 new files (source_detector.py, claude_code_db.py, brain-stats/sources API, migration SQL, unit tests, tests/__init__.py)
+- Files modified: 6 files (sync_messages.py, vector_db.py, config.py, sync/route.ts, ScoreboardHeader.tsx, requirements.txt)
+- E2E test output: ✅ Found 5 Claude Code conversations, 252 messages extracted from last 7 days
+- README.md updated: All references to "Cursor" updated to "Cursor and Claude Code" or "AI coding assistants"
+
+**Architecture:**
+```
+┌─ Cursor SQLite → cursor_db.py ──────┐
+│                                       ├──→ sync_messages.py → Unified Vector DB → Analysis
+└─ Claude Code JSONL → claude_code_db.py ┘
+```
+
+**Next Steps:**
+- [ ] User to run database migration SQL in Supabase
+- [ ] Update ARCHITECTURE.md with multi-source design
+- [ ] Test full sync → generate → seek workflow with both sources
+- [ ] Update onboarding wizard (detect both sources, streamline to 2 steps)
+
+**Status:** Backend 100% complete | Frontend stats display complete | Migration SQL ready | Docs updated
+
+---
+
 ## Progress - 2026-01-12 (LIB-10: Unexplored Territory Build Plan)
 
 **Done:**
