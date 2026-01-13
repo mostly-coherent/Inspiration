@@ -14,12 +14,19 @@ interface ThemePreview {
   items: { id: string; title: string; description?: string }[];
 }
 
+interface OneOffItem {
+  id: string;
+  title: string;
+  description?: string;
+}
+
 interface ThemePreviewData {
   success: boolean;
   threshold: number;
   totalItems: number;
   themeCount: number;
   themes: ThemePreview[];
+  oneOffItems: OneOffItem[];
   stats: {
     avgItemsPerTheme: number;
     singleItemThemes: number;
@@ -92,6 +99,10 @@ function ThemesPage() {
   const [synthesis, setSynthesis] = useState<SynthesisData | null>(null);
   const [synthesisLoading, setSynthesisLoading] = useState(false);
   const [synthesisError, setSynthesisError] = useState<string | null>(null);
+  
+  // One-off items expansion state
+  const [oneOffExpanded, setOneOffExpanded] = useState(false);
+  const [selectedOneOffId, setSelectedOneOffId] = useState<string | null>(null);
   
   // Tab-specific config
   const [unexploredConfig, setUnexploredConfig] = useState({
@@ -539,13 +550,115 @@ function ThemesPage() {
                     <div className="text-sm text-slate-400">Patterns found</div>
                   </div>
                   
-                  {data.stats && (
-                    <div className="bg-slate-800/50 rounded-lg p-4" title="Items that don't fit neatly into any theme — could be unique interests or emerging patterns">
-                      <div className="text-3xl font-bold text-amber-400">
-                        {data.stats.singleItemThemes}
-                      </div>
-                      <div className="text-sm text-slate-400">One-off items</div>
-                      <div className="text-xs text-slate-500 mt-1">Unique ideas that stand alone</div>
+                  {data.stats && data.stats.singleItemThemes > 0 && (
+                    <div className="space-y-2">
+                      {/* Clickable One-off items card */}
+                      <button
+                        onClick={() => {
+                          setOneOffExpanded(!oneOffExpanded);
+                          if (oneOffExpanded) setSelectedOneOffId(null); // Reset selection when collapsing
+                        }}
+                        className="w-full text-left bg-slate-800/50 rounded-lg p-4 hover:bg-slate-800/70 transition-colors border border-transparent hover:border-amber-500/30"
+                        title="Click to explore these unique items — they might be unexplored territory!"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-3xl font-bold text-amber-400">
+                              {data.stats.singleItemThemes}
+                            </div>
+                            <div className="text-sm text-slate-400 flex items-center gap-2">
+                              One-off items
+                              <span className="text-xs bg-amber-900/50 text-amber-400 px-1.5 py-0.5 rounded">
+                                🧭 Explore
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-500 mt-1">Unique ideas that stand alone</div>
+                          </div>
+                          <svg
+                            className={`w-5 h-5 text-slate-400 transition-transform ${oneOffExpanded ? "rotate-180" : ""}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </button>
+                      
+                      {/* Expanded One-off items content */}
+                      {oneOffExpanded && (
+                        <div className="bg-amber-900/20 border border-amber-700/30 rounded-lg p-4 space-y-4">
+                          {/* WIP Banner */}
+                          <div className="flex items-start gap-2">
+                            <span className="text-lg">🚧</span>
+                            <div>
+                              <p className="text-amber-200 text-sm font-medium">Unexplored Territory?</p>
+                              <p className="text-xs text-slate-400 mt-1">
+                                These items don&apos;t cluster with anything else — they&apos;re either unique gems or topics you haven&apos;t explored enough yet.
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {/* List of one-off items */}
+                          <div className="space-y-2">
+                            {data.oneOffItems && data.oneOffItems.length > 0 ? (
+                              <>
+                                {/* Show clickable items if <= 20, otherwise just text */}
+                                {data.stats.singleItemThemes <= 20 ? (
+                                  // Clickable items with details
+                                  data.oneOffItems.map((item) => (
+                                    <div key={item.id}>
+                                      <button
+                                        onClick={() => setSelectedOneOffId(selectedOneOffId === item.id ? null : item.id)}
+                                        className={`w-full text-left text-sm pl-3 border-l-2 py-1.5 transition-all ${
+                                          selectedOneOffId === item.id
+                                            ? "text-amber-200 border-amber-400 bg-amber-900/20"
+                                            : "text-slate-300 border-amber-600/50 hover:text-amber-200 hover:border-amber-500/70"
+                                        }`}
+                                      >
+                                        <span className="text-amber-400 mr-2">•</span>
+                                        {item.title}
+                                        {item.description && (
+                                          <span className="ml-2 text-xs text-slate-500">
+                                            {selectedOneOffId === item.id ? "▼" : "▶"}
+                                          </span>
+                                        )}
+                                      </button>
+                                      {/* Expanded details */}
+                                      {selectedOneOffId === item.id && item.description && (
+                                        <div className="ml-6 mt-1 mb-2 p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                                          <p className="text-sm text-slate-300">{item.description}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))
+                                ) : (
+                                  // Non-clickable list for > 20 items (show first 10)
+                                  <>
+                                    {data.oneOffItems.slice(0, 10).map((item) => (
+                                      <div
+                                        key={item.id}
+                                        className="text-sm text-slate-300 pl-3 border-l-2 border-amber-600/50 py-1"
+                                      >
+                                        <span className="text-amber-400 mr-2">•</span>
+                                        {item.title}
+                                      </div>
+                                    ))}
+                                    <div className="text-xs text-slate-500 pl-3">
+                                      + {data.stats.singleItemThemes - 10} more...
+                                    </div>
+                                  </>
+                                )}
+                              </>
+                            ) : (
+                              <div className="text-sm text-slate-400 italic pl-3">
+                                No one-off items at this zoom level
+                              </div>
+                            )}
+                          </div>
+                          
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

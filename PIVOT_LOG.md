@@ -1435,3 +1435,66 @@ python3 engine/generate.py --mode insights --days 30 --item-count 25
 
 ---
 
+## Decision: Theme Explorer Unified Architecture (LIB-10/11) - 2026-01-13
+
+**Decision:** Consolidate pattern discovery into unified Theme Explorer with 3 tabs:
+1. **Patterns** — Cluster existing Library items (existing functionality)
+2. **Unexplored** — Find topics in Memory but missing from Library
+3. **Counter-Intuitive** — LLM-generated reflection prompts (not Library items)
+
+**Rationale:** Same user goal ("What should I explore?") deserves unified experience. Reduces cognitive load vs. separate pages.
+
+**Key Design Choices:**
+- Counter-Intuitive generates **reflection prompts only** (Library stays chat-derived only)
+- Unexplored includes "Enrich Library" action (reuses existing Generate engine with `--topic` filter)
+- "Dismiss" functionality for both tabs (persistent, stored in JSON files)
+
+**Kill Criteria (Counter-Intuitive):**
+- < 20% engagement after 2 weeks → Remove tab
+- > 80% dismiss rate → Feature doesn't resonate
+- Zero saved reflections → No value delivered
+
+**Status:** ✅ Implemented | **DRI:** AI Agent
+
+<!-- Archived detailed build plans: _archive/THEME_EXPLORER_ENHANCEMENTS.md, _archive/UNEXPLORED_ENRICH_BUILD_PLAN.md -->
+
+---
+
+## Decision: Remove Coverage Intelligence - 2026-01-13
+
+**Decision:** Remove Coverage Intelligence (time-period based gap detection) in favor of Unexplored Territory (topic-based gap detection).
+
+**Rationale:** 
+- Coverage Intelligence was temporal ("which weeks are missing items?")
+- Unexplored Territory is semantic ("which topics are missing from Library?")
+- Semantic beats temporal for user value — users care about topics, not time periods
+
+**Files Removed:**
+- `src/app/explore-coverage/` — Entire page
+- `src/components/CoverageSuggestions.tsx`, `CoverageVisualization.tsx`, `AnalysisCoverage.tsx`
+- `src/app/api/coverage/` — All coverage APIs
+- `engine/common/coverage.py`, `engine/common/topic_filter.py`
+- `engine/scripts/add_coverage_*.sql`, `fix_coverage_*.sql`
+
+**Status:** ✅ Implemented | **DRI:** AI Agent
+
+<!-- Archived detailed build plan: _archive/UNEXPLORED_ENRICH_BUILD_PLAN.md -->
+
+---
+
+## Code Review: Theme Explorer Settings Wiring Fix - 2026-01-13
+
+**Issue Found:** Settings UI existed but had no effect on tab behavior. Settings persisted to `config.json` but `UnexploredTab` and `CounterIntuitiveTab` used hardcoded defaults.
+
+**Root Cause:** Data flow broken: Config → API → State → (missing link) → Components
+
+**Fix Applied:**
+1. Added props interfaces to both tab components
+2. Updated `themes/page.tsx` to load and pass config to tabs
+3. Added disabled state UI for Counter-Intuitive when `config.enabled === false`
+
+**Status:** ✅ Fixed | **DRI:** Composer-1
+
+<!-- Archived detailed review: _archive/CODE_REVIEW_FINDINGS.md, _archive/CODEFIX_REVIEW_COUNTER_INTUITIVE.md -->
+
+---

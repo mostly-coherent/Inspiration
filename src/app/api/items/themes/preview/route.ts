@@ -272,6 +272,9 @@ export async function GET(request: Request) {
 
     // Sort by item count (largest themes first)
     themes.sort((a, b) => b.itemCount - a.itemCount);
+    
+    // Extract single-item themes (one-off items) for separate display
+    const singleItemThemes = themes.filter((t) => t.itemCount === 1);
 
     return NextResponse.json({
       success: true,
@@ -279,11 +282,16 @@ export async function GET(request: Request) {
       totalItems: items.length,
       themeCount: themes.length,
       themes: themes.slice(0, explorerConfig.maxThemesToDisplay),
+      oneOffItems: singleItemThemes.slice(0, 20).map((t) => ({
+        id: t.id,
+        title: t.items?.[0]?.title || t.name,
+        description: t.items?.[0]?.description,
+      })),
       stats: {
         avgItemsPerTheme: themes.length > 0 
           ? Math.round((items.length / themes.length) * 10) / 10 
           : 0,
-        singleItemThemes: themes.filter((t) => t.itemCount === 1).length,
+        singleItemThemes: singleItemThemes.length,
       },
     });
   } catch (error) {
