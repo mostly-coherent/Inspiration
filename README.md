@@ -2,10 +2,13 @@
 
 > **Turn your AI coding conversations into a mirror for your thinking.**
 > If you treat AI as a thinking partner (not just a code generator), you've been having months of conversations about what matters to you. Inspiration helps you see the patterns.
+> 
+> Works with **Cursor** and **Claude Code** chat history.
 
 ![Type](https://img.shields.io/badge/Type-Tool-purple)
 ![Status](https://img.shields.io/badge/Status-Active-green)
 ![Stack](https://img.shields.io/badge/Stack-Next.js%2015%20%7C%20Python%20%7C%20Claude%20%7C%20Supabase-orange)
+![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-blue)
 
 <img src="public/screenshots/homepage.png" alt="Inspiration - Main Interface" width="800">
 
@@ -22,7 +25,24 @@
 
 **This tool is for pattern seekers and reflective builders.**
 
+Agentic coding fundamentally changed how we think and learn. Instead of searching StackOverflow or reading docs, we *converse* with AI about problems. Instead of solo debugging, we *collaborate* with Claude to explore solutions. Each conversation captures not just code, but **your reasoning, your context, your evolving understanding of problems**.
+
+**That conversation history is a goldmine of your intellectual growth—if you can mine it.**
+
 If you just want to ship code fast and don't care about longitudinal self-knowledge, this probably isn't for you. But if you're intellectually curious about your own thinking—if the idea of **"semantic search over your own conversations"** or **"LLM-synthesized themes of your interests"** sounds compelling—keep reading.
+
+---
+
+## 🔒 Privacy First
+
+**Your data stays yours:**
+- ✅ **Local-first:** Chat history stays on your machine—Inspiration reads it directly
+- ✅ **Optional cloud sync:** Supabase Vector DB only if *you* configure it with your own instance
+- ✅ **API usage:** Only analyzed message content sent to LLM APIs (Anthropic/OpenAI) for generation
+- ✅ **No tracking:** Zero analytics, no telemetry, no data collection by this app
+- ✅ **Open source:** Full transparency—[audit the code yourself](https://github.com/mostly-coherent/Inspiration)
+
+**You control everything:** Your API keys, your optional cloud storage, what gets indexed. This is a tool for self-reflection, not a service that stores your data.
 
 ---
 
@@ -35,9 +55,29 @@ If you just want to ship code fast and don't care about longitudinal self-knowle
 | **✨ Insights** | Extract learnings worth sharing (blogs, tweets, research sparks) | Knowledge synthesis: What have you learned that's worth teaching others? |
 | **🔍 Seek** | "I want to build X"—find similar examples from your own history | Self-search: Mine your past conversations for evidence and context |
 
-**The more you use AI coding assistants as thinking partners, the more valuable your conversation history becomes.**
+**The shift to agentic coding means your conversation history is now a record of your thinking process.**
 
-This isn't just about generating ideas—it's about **understanding your own intellectual trajectory**. What were you curious about 6 months ago? What patterns keep recurring? What did you learn but forget?
+Before AI assistants, your problem-solving happened in your head—invisible and lost. Now it's captured in every Cursor/Claude Code conversation. But without structure, it's just noise. Inspiration turns that noise into signal.
+
+This isn't just about generating ideas—it's about **understanding your own intellectual trajectory**. What were you curious about 6 months ago? What patterns keep recurring? What did you learn but forget? Agentic coding made your thinking visible. Inspiration makes it analyzable.
+
+---
+
+## 📋 Requirements
+
+| Requirement | Version/Details |
+|-------------|-----------------|
+| **Operating System** | macOS or Windows (Linux support coming soon) |
+| **Node.js** | 18.18.0+ (for Next.js 15) |
+| **Python** | 3.10+ (3.11+ recommended) |
+| **Disk Space** | 100MB–2GB (scales with chat history size) |
+| **API Keys** | Anthropic (required), OpenAI (optional), Supabase (optional for 500MB+ history) |
+| **Chat History** | Cursor or Claude Code with existing conversations |
+
+**Platform Notes:**
+- Cursor chat history auto-detected on macOS and Windows
+- Claude Code JSONL history supported on all platforms
+- Cloud deployment (Vercel): Read-only mode—can't sync local chat history
 
 ---
 
@@ -76,6 +116,18 @@ That's it. The **onboarding wizard** handles everything else:
 > **Minimal setup:** Just Anthropic key → basic generation works immediately.  
 > **Full power:** Add OpenAI key → deduplication and smarter Library management.
 
+### 💰 Typical Costs
+
+| Activity | Estimated Cost | What It Does |
+|----------|----------------|-------------|
+| **First sync** | $0.50–$5.00 | Indexes 3-6 months of chat history (one-time) |
+| **Daily scan (24h)** | $0.10–$0.50 | Generates 3-5 ideas or insights from yesterday |
+| **Weekly scan (7d)** | $0.50–$2.00 | Generates 10-15 items from last week |
+| **Theme Explorer** | $0.05–$0.20 | Synthesizes patterns from existing Library |
+| **Unexplored Territory** | $0.20–$1.00 | Auto-enriches missing topics (per run) |
+
+*Costs vary by history size, LLM model, and Library size. The app shows cost estimates before each run. With performance optimizations (IMP-15/16/17), typical costs are 50-80% lower than naive implementations due to topic filtering and embedding caching.*
+
 ---
 
 ## ✨ Features
@@ -104,14 +156,46 @@ That's it. The **onboarding wizard** handles everything else:
 
 ---
 
+<details>
+<summary><strong>🤔 Why not just ask Claude directly?</strong> (Click to expand)</summary>
+
+**You could** manually search and ask:
+- ❌ Search Cursor history (basic text search, no semantic understanding)
+- ❌ Copy/paste conversations into Claude (context limit ~200K tokens = 1-2 weeks max)
+- ❌ Ask "What patterns do you see?" (one-off answer, no deduplication, no tracking)
+- ❌ Repeat process every time you want insights (doesn't scale)
+
+**Inspiration automates:**
+- ✅ **Unlimited semantic search** — 2GB+ chat history with vector similarity
+- ✅ **Deduplication before presentation** — No repeated ideas cluttering your Library
+- ✅ **Accumulating library** — Value compounds over time as Library grows
+- ✅ **Cross-session synthesis** — See patterns across 6+ months of conversations
+- ✅ **One-click Theme Explorer** — Dynamic grouping + LLM synthesis of your thinking
+- ✅ **Unexplored Territory detection** — Auto-finds topics you discuss but haven't captured
+- ✅ **Performance optimizations** — 275x fewer API calls, 50-80% cost reduction via topic filtering
+
+**The difference:** Manual = one-off queries that don't scale. Inspiration = longitudinal intelligence system that grows smarter as you use it.
+
+**The compound value:** Each time you run generation, your Library grows. Theme Explorer gets richer. Unexplored Territory finds new gaps. It's not just a query tool—it's a second brain that learns your intellectual patterns.
+
+</details>
+
+---
+
 ## 🎯 Why This Is Intellectually Stimulating
+
+**Agentic coding created a new form of thinking-out-loud.** Every conversation with Claude is you reasoning through problems, exploring trade-offs, iterating on solutions. Before AI assistants, this thinking happened in your head—invisible and lost. Now it's captured in chat logs, but scattered and unsearchable.
+
+**Inspiration makes that captured thinking analyzable.**
 
 **For reflective engineers and pattern seekers:**
 
 - **Self-Discovery Through Data** — Run Theme Explorer and discover: *"I didn't realize I've been circling this problem for 6 months"*
 - **Meta-Analysis** — It's like running analytics on your own brain. What patterns emerge when you have 500+ conversations indexed?
+- **Evolution Tracking** — See how your thinking has changed: *"3 months ago I was focused on frontend performance, now I'm obsessed with system design"*
 - **Pattern Recognition** — Theme Explorer's 3 tabs show patterns (what exists), unexplored territory (what's missing), and counter-intuitive prompts (what to challenge)
 - **Compound Knowledge** — Your Library grows with every conversation. Watch your intellectual progress quantified.
+- **Externalized Cognition** — Agentic coding externalized your thought process. Inspiration helps you learn from it.
 
 **The "Aha Moment" User Story:**
 
@@ -178,4 +262,18 @@ See `ARCHITECTURE.md` for system design, data flow, and technical details.
 
 ---
 
-**Status:** Active | **Author:** [@mostly-coherent](https://github.com/mostly-coherent)
+## 💬 Support & Community
+
+**Need help?**
+- 📖 **Documentation:** See `ARCHITECTURE.md` for technical deep dive and `CLAUDE.md` for AI assistant context
+- 🐛 **Bug reports:** [GitHub Issues](https://github.com/mostly-coherent/Inspiration/issues)
+- 💡 **Feature requests:** [GitHub Issues](https://github.com/mostly-coherent/Inspiration/issues) (label: enhancement)
+- 💬 **Discussions:** [GitHub Discussions](https://github.com/mostly-coherent/Inspiration/discussions)
+
+**Contributing:**
+- Pull requests welcome! See open issues tagged `good first issue`
+- Share your experience: What patterns did Theme Explorer reveal? What did Unexplored Territory find?
+
+---
+
+**Status:** Active | **License:** MIT | **Author:** [@mostly-coherent](https://github.com/mostly-coherent)
