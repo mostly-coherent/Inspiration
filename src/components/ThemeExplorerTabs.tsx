@@ -9,7 +9,7 @@ interface TabConfig {
   label: string;
   icon: string;
   description: string;
-  status: "ready" | "coming_soon";
+  status: "ready" | "coming_soon" | "experimental";
 }
 
 const TABS: TabConfig[] = [
@@ -21,18 +21,18 @@ const TABS: TabConfig[] = [
     status: "ready",
   },
   {
-    id: "unexplored",
-    label: "Unexplored",
-    icon: "🧭",
-    description: "Find what's MISSING from Library but in Memory",
-    status: "ready",  // ✅ Phase 2 complete
-  },
-  {
     id: "counterIntuitive",
     label: "Counter-Intuitive",
     icon: "🔄",
     description: "Reflection prompts for GOOD OPPOSITES",
     status: "ready",  // ✅ Phase 3 complete
+  },
+  {
+    id: "unexplored",
+    label: "Unexplored",
+    icon: "🧭",
+    description: "Find what's MISSING from Library but in Memory",
+    status: "experimental",  // 🚧 Work in progress - value unclear
   },
 ];
 
@@ -62,6 +62,7 @@ export function ThemeExplorerTabs({ activeTab, onTabChange }: ThemeExplorerTabsP
           {TABS.map((tab) => {
             const isActive = activeTab === tab.id;
             const isComingSoon = tab.status === "coming_soon";
+            const isExperimental = tab.status === "experimental";
             
             return (
               <button
@@ -79,7 +80,7 @@ export function ThemeExplorerTabs({ activeTab, onTabChange }: ThemeExplorerTabsP
                 `}
                 aria-current={isActive ? "page" : undefined}
                 aria-disabled={isComingSoon}
-                title={isComingSoon ? "Coming soon" : tab.description}
+                title={isComingSoon ? "Coming soon" : isExperimental ? `${tab.description} (experimental feature)` : tab.description}
               >
                 <span className="flex items-center gap-2">
                   <span className={isComingSoon ? "opacity-50" : ""}>{tab.icon}</span>
@@ -87,6 +88,11 @@ export function ThemeExplorerTabs({ activeTab, onTabChange }: ThemeExplorerTabsP
                   {isComingSoon && (
                     <span className="text-[10px] bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-full">
                       Soon
+                    </span>
+                  )}
+                  {isExperimental && (
+                    <span className="text-[10px] bg-amber-900/50 text-amber-400 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                      🚧 WIP
                     </span>
                   )}
                 </span>

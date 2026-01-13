@@ -115,32 +115,74 @@ export function UnexploredTab({ config }: UnexploredTabProps) {
         <div>
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
             <span className="text-2xl">🧭</span> Unexplored Territory
+            <span className="text-xs bg-amber-900/50 text-amber-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+              🚧 Experimental
+            </span>
           </h2>
           <p className="text-slate-400 text-sm mt-1">
-            Topics you discuss frequently but haven&apos;t extracted to Library
+            Find topics you discuss often but haven&apos;t captured ideas/insights about yet
           </p>
         </div>
         
-        {/* Severity Filter */}
-        <div className="flex gap-2">
-          {(["all", "high", "medium", "low"] as SeverityFilter[]).map((severity) => (
-            <button
-              key={severity}
-              onClick={() => setSeverityFilter(severity)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all
-                ${severity === severityFilter
-                  ? "bg-amber-600/30 text-amber-200 border border-amber-500/50"
-                  : "bg-slate-800/40 text-slate-400 border border-slate-700/50 hover:bg-slate-800/60 hover:text-slate-300"
-                }
-              `}
-            >
-              {severity === "all" ? "All" : (
-                <>
-                  {severityIcon(severity)} {severity.charAt(0).toUpperCase() + severity.slice(1)}
-                </>
-              )}
-            </button>
-          ))}
+        {/* Discussion Frequency Filter */}
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-2">
+            {(["all", "high", "medium", "low"] as SeverityFilter[]).map((severity) => {
+              const labels = {
+                all: "All Frequencies",
+                high: "Very Often",
+                medium: "Regularly",
+                low: "Occasionally"
+              };
+              const descriptions = {
+                all: "Show all discussion frequencies",
+                high: "15+ conversations - topics you discuss very frequently",
+                medium: "8-14 conversations - topics you discuss regularly",
+                low: "3-7 conversations - topics mentioned occasionally"
+              };
+              
+              return (
+                <button
+                  key={severity}
+                  onClick={() => setSeverityFilter(severity)}
+                  title={descriptions[severity as keyof typeof descriptions]}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all
+                    ${severity === severityFilter
+                      ? "bg-amber-600/30 text-amber-200 border border-amber-500/50"
+                      : "bg-slate-800/40 text-slate-400 border border-slate-700/50 hover:bg-slate-800/60 hover:text-slate-300"
+                    }
+                  `}
+                >
+                  {severity !== "all" && severityIcon(severity)} {labels[severity as keyof typeof labels]}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-slate-500">
+            {severityFilter === "all" && "Showing all topics regardless of discussion frequency"}
+            {severityFilter === "high" && "Showing topics discussed 15+ times"}
+            {severityFilter === "medium" && "Showing topics discussed 8-14 times"}
+            {severityFilter === "low" && "Showing topics discussed 3-7 times"}
+          </p>
+        </div>
+      </div>
+
+      {/* Experimental Feature Banner */}
+      <div className="bg-amber-900/20 border border-amber-700/30 rounded-xl p-4">
+        <div className="flex items-start gap-3">
+          <span className="text-xl">🚧</span>
+          <div className="text-sm">
+            <p className="text-amber-200 font-medium mb-1">Experimental Feature — We&apos;re Validating Its Value</p>
+            <p className="text-slate-400">
+              This feature analyzes your indexed chat history (Memory) to find topics you discuss frequently but haven&apos;t extracted to Library yet.
+              {" "}<strong className="text-slate-300">Finding zero results could mean:</strong>
+            </p>
+            <ul className="mt-2 text-slate-400 space-y-1 list-disc list-inside">
+              <li>✅ <span className="text-green-400">Good news:</span> Your Library already covers your discussion topics well</li>
+              <li>❓ <span className="text-amber-400">Possible:</span> Memory index may be incomplete (check Settings → Memory)</li>
+              <li>🔧 <span className="text-blue-400">Technical:</span> Algorithm may need tuning for your conversation patterns</li>
+            </ul>
+          </div>
         </div>
       </div>
 
@@ -175,14 +217,30 @@ export function UnexploredTab({ config }: UnexploredTabProps) {
           </div>
           <h3 className="text-xl font-semibold text-white mb-2">
             {severityFilter === "all" 
-              ? "No Unexplored Territories Found!"
-              : `No ${severityFilter} priority areas found`}
+              ? "Great! Your Library is Well-Covered"
+              : severityFilter === "high"
+                ? "No Frequently Discussed Topics Missing"
+                : severityFilter === "medium"
+                  ? "No Regularly Discussed Topics Missing"
+                  : "No Occasionally Mentioned Topics Missing"}
           </h3>
-          <p className="text-slate-400 max-w-md mx-auto">
+          <p className="text-slate-400 max-w-md mx-auto mb-4">
             {severityFilter === "all"
-              ? "Your Library covers your discussions well. Keep exploring!"
-              : `Try selecting a different severity level or \"All\" to see more.`}
+              ? "You've extracted ideas/insights for most topics you discuss. Nice work!"
+              : severityFilter === "high"
+                ? "Topics you discuss very often (15+ times) are already in your Library."
+                : severityFilter === "medium"
+                  ? "Topics you discuss regularly (8-14 times) are already in your Library."
+                  : "Topics you mention occasionally (3-7 times) are already in your Library."}
           </p>
+          <div className="text-sm text-slate-500 max-w-lg mx-auto">
+            <p className="mb-2">💡 <strong>What this means:</strong></p>
+            <p className="text-left px-6">
+              {severityFilter === "all"
+                ? "You're capturing ideas from your conversations effectively. No major gaps detected in the last 90 days."
+                : "Try other frequency levels to explore different patterns, or this is good news — you've already captured the important stuff!"}
+            </p>
+          </div>
         </div>
       )}
 
@@ -191,8 +249,12 @@ export function UnexploredTab({ config }: UnexploredTabProps) {
         <div className="space-y-4">
           {/* Stats Header */}
           <div className="text-sm text-slate-400">
-            Found {filteredAreas.length} unexplored {filteredAreas.length === 1 ? "area" : "areas"} 
-            {severityFilter !== "all" && ` (${severityFilter} severity)`}
+            Found {filteredAreas.length} {filteredAreas.length === 1 ? "topic" : "topics"} you discuss 
+            {severityFilter === "high" && " very often (15+ times)"}
+            {severityFilter === "medium" && " regularly (8-14 times)"}
+            {severityFilter === "low" && " occasionally (3-7 times)"}
+            {severityFilter === "all" && " frequently"}
+            {" "}but haven&apos;t extracted yet
           </div>
 
           {/* Area Cards */}
