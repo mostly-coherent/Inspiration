@@ -393,7 +393,7 @@ inspiration/
 
 ## 🎯 NEXT FOCUS
 
-**Priority:** Testing Coverage Intelligence and preparing for public release.
+**Priority:** Testing Unexplored Territory Enrich feature and preparing for public release.
 
 **Current Status:**
 - ✅ v1 implementation complete (all phases done)
@@ -403,10 +403,11 @@ inspiration/
 - ✅ v3 Complete — Library-centric UI with Scoreboard, Two-Panel Layout, Settings Hub
 - ✅ v3.1 Complete — View Modes (Library View / Comprehensive View)
 - ✅ v4 Complete — Library Enhancements (Merge Similar, Auto-Archive, Bulk Actions)
-- ✅ v5 Complete — Coverage Intelligence (Gap Detection, Suggested Runs, Visualization)
+- ✅ v5 Complete — Coverage Intelligence → **Removed 2026-01-13** (replaced by Unexplored Territory Enrich)
 - ✅ Performance Optimizations — IMP-15 (pgvector RPC), IMP-16 (Batch+Parallel), IMP-17 (Topic Filter)
+- ✅ Unexplored Territory Enrich — Topic-based generation from Theme Explorer
 
-**v5 Complete!** Coverage Intelligence fully operational with optimized harmonization.
+**v5 Pivot!** Coverage Intelligence removed. Replaced by Unexplored Territory with "Enrich Library" feature.
 
 ---
 
@@ -474,25 +475,20 @@ inspiration/
 |----|---------|-------------|--------|
 | LIB-8 | **Theme Synthesis** | Pattern discovery via dynamic similarity grouping (Theme Explorer) | ✅ Complete |
 | LIB-9 | **Learning Trajectory** | "Your interests shifted from X → Y → Z over 6 months" — Temporal evolution tracking | ⏳ Pending |
-| LIB-10 | **Unexplored Territory** | "You've explored A and C extensively, but B is absent" — Surface domains missing from Library but relevant to existing work | 📋 Planned |
+| LIB-10 | **Unexplored Territory** | "You've explored A and C extensively, but B is absent" — Surface domains missing from Library but relevant to existing work | ✅ Complete |
+| LIB-11 | **Counter-Intuitive** | LLM-generated "good opposite" perspectives as reflection prompts | ✅ Complete |
 
-**What Theme Explorer Does (LIB-8):**
-- Groups Library items by semantic similarity (zoom slider: forest → trees)
+**What Theme Explorer Does (LIB-8, LIB-10, LIB-11):**
+- **Patterns (LIB-8):** Groups Library items by semantic similarity (zoom slider: forest → trees)
+- **Unexplored Territory (LIB-10):** Finds topics discussed frequently but not captured in Library, with "Enrich Library" action
+- **Counter-Intuitive (LIB-11):** LLM-generated "good opposite" perspectives as reflection prompts
 - AI synthesis reveals common threads within each theme
-- Filters by item type (Ideas/Insights/Use Cases)
-- Answers: "What patterns exist in my current Library?"
 
-**What's Still Missing (LIB-9, LIB-10):**
+**What's Still Missing (LIB-9):**
 - **LIB-9 (Learning Trajectory):** Tracks HOW interests change over time (temporal dimension) — requires 6-12 months of data
-- **LIB-10 (Unexplored Territory):** Identifies WHAT topics are absent from exploration — "You discuss testing in 18 conversations but have 0 Library items about it"
-- LIB-9 requires analyzing Library state ACROSS time periods; LIB-10 compares current Memory (conversations) vs. Library coverage
+- LIB-9 requires analyzing Library state ACROSS time periods
 
-**Why LIB-10 First:**
-- ✅ Immediate value (works with existing data)
-- ✅ Actionable ("Explore X next" vs. retrospective reflection)
-- ✅ Higher impact upfront (shapes future exploration)
-
-**Build Plan:** See `UNEXPLORED_TERRITORY_BUILD_PLAN.md` for 3-layer detection system (Memory vs. Library, Adjacency Analysis, Strategic Synthesis)
+**Build Plan:** See `UNEXPLORED_ENRICH_BUILD_PLAN.md` for Unexplored Territory implementation
 
 ### Features Also Removed (2026-01-10)
 
@@ -657,4 +653,4 @@ Users can now edit prompt templates directly in the UI. While we create backups 
 
 ---
 
-**Last Updated:** 2026-01-10 (v5 Coverage Intelligence + Performance Optimizations Complete)
+**Last Updated:** 2026-01-13 (Coverage Intelligence removed; Unexplored Territory Enrich complete)

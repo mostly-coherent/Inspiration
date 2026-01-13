@@ -14,9 +14,11 @@ Threshold Rules:
 | 5-9          | 0             | Low      |
 """
 
+import json
 import os
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
 
@@ -32,6 +34,22 @@ except ImportError:
 
 from common.config import load_env_file
 from common.semantic_search import cosine_similarity
+
+
+def load_dismissed_topics() -> set[str]:
+    """Load dismissed topics from JSON file."""
+    dismissed_file = Path(__file__).parent.parent.parent / "data" / "dismissed_topics.json"
+    
+    if not dismissed_file.exists():
+        return set()
+    
+    try:
+        with open(dismissed_file) as f:
+            data = json.load(f)
+            return {t["topic"].lower() for t in data.get("topics", [])}
+    except Exception as e:
+        print(f"⚠️  Error loading dismissed topics: {e}", file=sys.stderr)
+        return set()
 
 
 @dataclass
@@ -401,6 +419,18 @@ def detect_memory_library_mismatch(
                 sample_conversations=samples,
                 layer=1,
             ))
+    
+    # Filter out dismissed topics
+    dismissed = load_dismissed_topics()
+    if dismissed:
+        before_filter = len(unexplored_areas)
+        unexplored_areas = [
+            area for area in unexplored_areas 
+            if area.title.lower() not in dismissed
+        ]
+        filtered_count = before_filter - len(unexplored_areas)
+        if filtered_count > 0:
+            print(f"   Filtered out {filtered_count} dismissed topics", file=sys.stderr)
     
     # Sort by severity (high first) then by conversation count
     severity_order = {"high": 0, "medium": 1, "low": 2}

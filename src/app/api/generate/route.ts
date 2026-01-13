@@ -6,7 +6,7 @@ import { existsSync } from "fs";
 import { GenerateRequest, GenerateResult, TOOL_CONFIG, PRESET_MODES, getToolPath, ThemeType, ModeType, ToolType, GenerationDefaults } from "@/lib/types";
 import { logger } from "@/lib/logger";
 import { parseRankedItems, extractEstimatedCost } from "@/lib/resultParser";
-import { resolveThemeModeFromTool, validateThemeMode, getModeSettings, getMode } from "@/lib/themes";
+import { resolveThemeModeFromTool, validateThemeMode, getModeSettings } from "@/lib/themes";
 import { getPythonPath } from "@/lib/pythonPath";
 
 // Default generation settings (fallback if config not found)
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
     
     // Get mode settings from themes.json (v1)
     const modeSettings = getModeSettings(resolvedTheme, resolvedMode);
-    const themeMode = getMode(resolvedTheme, resolvedMode); // v2: For accessing defaultItemCount
+    // Note: themeMode was used in v2 for defaultItemCount but is now handled by modeSettings
     
     // Note: 90-day limit removed in v1 - Vector DB enables unlimited date ranges
     

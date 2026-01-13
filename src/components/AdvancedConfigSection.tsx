@@ -26,7 +26,7 @@ import {
   DEFAULT_SEEK,
   DEFAULT_SEMANTIC,
   DEFAULT_THEME_EXPLORER,
-  DEFAULT_MODELS,
+  // DEFAULT_MODELS is available but not currently used in this component
 } from "./config";
 
 interface AdvancedConfigSectionProps {

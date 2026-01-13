@@ -23,10 +23,8 @@ import { ExpectedOutput } from "@/components/ExpectedOutput";
 import { LogoutButton } from "@/components/LogoutButton";
 import { SimpleModeSelector } from "@/components/SimpleModeSelector";
 import { ScoreboardHeader } from "@/components/ScoreboardHeader";
-import { AnalysisCoverage } from "@/components/AnalysisCoverage";
 import { ViewToggle, ViewMode } from "@/components/ViewToggle";
 import { LibraryView } from "@/components/LibraryView";
-import { CoverageSuggestions, SuggestedRun } from "@/components/CoverageSuggestions";
 import { loadThemesAsync } from "@/lib/themes";
 
 export default function Home() {
@@ -120,23 +118,6 @@ export default function Home() {
   const [libraryCountBefore, setLibraryCountBefore] = useState<number | null>(null);
   const [libraryCountAfter, setLibraryCountAfter] = useState<number | null>(null);
   
-  // Analysis coverage state (v3)
-  const [analysisCoverage, setAnalysisCoverage] = useState<{
-    conversationsAnalyzed?: number;
-    messagesAnalyzed?: number;
-    actualFromDate?: string;
-    actualToDate?: string;
-    workspaces?: number;
-  } | null>(null);
-
-  // Coverage Intelligence state (v5)
-  const [coverageStats, setCoverageStats] = useState<{
-    coverageScore: number;
-    gapCounts: { high: number; medium: number; low: number };
-    totalGaps: number;
-  } | null>(null);
-  const [suggestedRuns, setSuggestedRuns] = useState<SuggestedRun[]>([]);
-
   // Progress tracking
   const [progress, setProgress] = useState(0);
   const [estimatedSeconds, setEstimatedSeconds] = useState(0);
@@ -309,31 +290,8 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run once on mount - handleSync is stable
 
-  // Fetch coverage analysis (v5)
-  const fetchCoverageAnalysis = useCallback(async () => {
-    try {
-      const res = await fetch("/api/coverage/analyze");
-      const data = await res.json();
-      if (data.success) {
-        setCoverageStats({
-          coverageScore: data.coverageScore,
-          gapCounts: data.gapCounts,
-          totalGaps: (data.gapCounts?.high || 0) + (data.gapCounts?.medium || 0) + (data.gapCounts?.low || 0),
-        });
-        setSuggestedRuns(data.suggestedRuns || []);
-      }
-    } catch (e) {
-      console.error("Failed to fetch coverage analysis:", e);
-    }
-  }, []);
-
-  // Fetch coverage on mount and after generation
-  useEffect(() => {
-    fetchCoverageAnalysis();
-  }, [fetchCoverageAnalysis]);
-
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // UNIFIED GENERATION LOGIC (COV-13 refactor)
+  // UNIFIED GENERATION LOGIC
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   
   /**
@@ -348,7 +306,6 @@ export default function Home() {
     setResult(null);
     setProgress(0);
     setElapsedSeconds(0);
-    setAnalysisCoverage(null);
     setLibraryCountBefore(null);
     setLibraryCountAfter(null);
     setProgressErrorExplanation(undefined);
@@ -672,15 +629,6 @@ export default function Home() {
       
       setResult(result);
       
-      // Update analysis coverage
-      setAnalysisCoverage({
-        conversationsAnalyzed: finalData.conversationsFound || 0,
-        workspaces: 3,
-      });
-        
-        // Refresh coverage analysis after successful generation
-        fetchCoverageAnalysis();
-      
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         setProgressPhase("stopped");
@@ -724,24 +672,6 @@ export default function Home() {
       abortController.current = null;
       setIsGenerating(false);
     }
-  };
-
-  // Handle running a suggested coverage run (clicks from CoverageSuggestions)
-  const handleRunSuggestion = (run: SuggestedRun) => {
-    const body = {
-      theme: "generation",
-      modeId: run.itemType,
-      mode: "custom",
-      fromDate: run.startDate,
-      toDate: run.endDate,
-    };
-    
-    const displayInfo = {
-      tool: (run.itemType === "idea" ? "ideas" : "insights") as ToolType,
-      mode: "custom" as PresetMode,
-    };
-    
-    executeGeneration(body, displayInfo);
   };
 
   // Handle manual generation (Generate button click)
@@ -861,16 +791,6 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-2">
             <a 
-              href="/explore-coverage" 
-              className="p-2 text-slate-400 hover:text-emerald-400 transition-colors"
-              title="Coverage Intelligence"
-              aria-label="Open coverage intelligence"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </a>
-            <a 
               href="/settings" 
               className="p-2 text-slate-400 hover:text-amber-400 transition-colors"
               title="Settings"
@@ -926,22 +846,7 @@ export default function Home() {
           onSyncClick={handleSync}
           isSyncing={isSyncing}
           syncStatus={syncStatus}
-          coverageStats={coverageStats}
         />
-
-        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        {/* COVERAGE SUGGESTIONS — Quick run recommendations */}
-        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        {suggestedRuns.length > 0 && !isGenerating && (
-          <div className="glass-card p-5">
-            <CoverageSuggestions
-              suggestedRuns={suggestedRuns}
-              onRunSuggestion={handleRunSuggestion}
-              isGenerating={isGenerating}
-              initialDisplay={6}
-            />
-          </div>
-        )}
 
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         {/* VIEW MODE: Library Browse vs Generate New */}
@@ -1101,25 +1006,6 @@ export default function Home() {
                     </div>
                   )}
                 </div>
-
-                {/* v3: Analysis Coverage - Shows after generation */}
-                {(result?.success || analysisCoverage) && (
-                  <AnalysisCoverage
-                    plannedDays={showAdvanced ? (useCustomDates ? undefined : customDays) : currentModeConfig?.days}
-                    plannedHours={!showAdvanced ? currentModeConfig?.hours : undefined}
-                    plannedFromDate={useCustomDates ? fromDate : undefined}
-                    plannedToDate={useCustomDates ? toDate : undefined}
-                    conversationsAnalyzed={result?.stats?.conversationsAnalyzed || analysisCoverage?.conversationsAnalyzed}
-                    workspaces={analysisCoverage?.workspaces}
-                    isComplete={result?.success}
-                    itemsGenerated={result?.stats?.itemsGenerated}
-                    itemsAfterDedup={result?.stats?.itemsAfterDedup}
-                    itemsNew={result?.stats?.harmonization?.itemsAdded}
-                    itemsUpdated={result?.stats?.harmonization?.itemsUpdated}
-                    libraryBefore={libraryCountBefore ?? undefined}
-                    libraryAfter={libraryCountAfter ?? undefined}
-                  />
-                )}
 
                 {/* Results */}
                 {result && <ResultsPanel result={result} onRetry={handleGenerate} onRetryWithDays={handleRetryWithDays} />}

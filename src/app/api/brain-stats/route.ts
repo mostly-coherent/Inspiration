@@ -31,7 +31,7 @@ export async function GET() {
           const supabase = createClient(supabaseUrl, supabaseKey);
           
           // Get earliest and latest message dates
-          const { data: messages, error } = await supabase
+          const { data: messages } = await supabase
             .from("cursor_messages")
             .select("timestamp")
             .order("timestamp", { ascending: true })

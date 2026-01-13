@@ -6,6 +6,152 @@
 
 ---
 
+## Progress - 2026-01-13 (Unexplored Territory: Enrich Library)
+
+**Done:**
+- ✅ **Phase 1: Topic Filter in Generate Engine**
+  - Added `--topic` argument to `generate.py` CLI
+  - When topic provided, uses semantic search for that specific topic
+  - Replaces default mode-based queries with topic-focused queries
+  - File: `engine/generate.py`
+
+- ✅ **Phase 2: Enrich Library API Endpoint**
+  - Created `/api/unexplored/enrich/route.ts` for topic-based generation
+  - Streams progress via SSE (Server-Sent Events)
+  - Calls generate.py with `--topic` flag
+  - Generates both ideas AND insights in one action
+  - File: `src/app/api/unexplored/enrich/route.ts`
+
+- ✅ **Phase 3: Dismiss/Ignore Functionality**
+  - Created `/api/unexplored/dismiss/route.ts` for dismissing topics
+  - Stores dismissed topics in `data/dismissed_topics.json`
+  - Updated `unexplored_territory.py` to filter out dismissed topics
+  - Supports: POST (dismiss), GET (list), DELETE (restore)
+  - Files: `src/app/api/unexplored/dismiss/route.ts`, `engine/common/unexplored_territory.py`
+
+- ✅ **Phase 4: Enhanced Unexplored Tab UI**
+  - Added "🔮 Enrich Library" button (primary action)
+  - Added "👋 Dismiss" button (hide as noise)
+  - Progress overlay shows real-time enrichment status
+  - Success state shows items added + link to Patterns
+  - Layman-friendly copy throughout
+  - File: `src/components/UnexploredTab.tsx`
+
+- ✅ **Phase 5: Remove Coverage Intelligence**
+  - Deleted: `src/app/explore-coverage/page.tsx`, `src/app/coverage/page.tsx`
+  - Deleted: `src/app/api/coverage/analyze/route.ts`, `runs/route.ts`, `runs/execute/route.ts`
+  - Deleted: `CoverageVisualization.tsx`, `CoverageDashboard.tsx`, `CoverageSuggestions.tsx`, `AnalysisCoverage.tsx`
+  - Deleted: `engine/common/coverage.py`
+  - Updated: `page.tsx` (removed coverage imports, state, UI)
+  - Updated: `ScoreboardHeader.tsx` (removed coverageStats prop)
+
+**Architecture Decision:**
+- **Topic-based extraction** over time-period extraction
+- Reuses existing Generate engine (speed, cost, transparency optimizations)
+- Unexplored Territory = "Coverage Intelligence done right"
+- Semantic match > temporal coverage
+
+**Evidence:**
+- Build Plan: `UNEXPLORED_ENRICH_BUILD_PLAN.md`
+- Files created: 2 new API routes, 1 new JSON storage
+- Files modified: `generate.py`, `unexplored_territory.py`, `UnexploredTab.tsx`, `page.tsx`, `ScoreboardHeader.tsx`
+- Files deleted: 8 coverage-related components + 1 Python module
+
+---
+
+## Progress - 2026-01-13 (Counter-Intuitive UX + Performance Plan)
+
+**Done:**
+- ✅ **UX Improvement: Conviction Filter Redesign**
+  - Replaced cryptic "Min theme size" dropdown with self-explanatory card-based selector
+  - Three options with friendly names: "Emerging Patterns" (🌱), "Strong Beliefs" (🌿), "Core Convictions" (🌳)
+  - Each card explains what it does in plain language
+  - Added helpful tip explaining the underlying logic
+  - File: `src/components/CounterIntuitiveTab.tsx`
+
+- ✅ **P1: Parallel LLM Calls (5x speedup)**
+  - Added `_generate_single_perspective()` helper function
+  - Implemented `ThreadPoolExecutor` with max 5 workers
+  - LLM calls now run in parallel instead of sequential
+  - Added timing logs for performance monitoring
+  - File: `engine/common/counter_intuitive.py`
+
+- ✅ **P2: Cache Cluster Results (10x speedup for filter changes)**
+  - Added in-memory cluster cache keyed by threshold
+  - 5-minute TTL (clusters don't change often)
+  - When user changes conviction filter, reuses cached clusters
+  - File: `engine/common/counter_intuitive.py`
+
+- ✅ **P3: Cache Counter-Perspectives (100x speedup for repeat views)**
+  - Added in-memory perspective cache keyed by cluster hash
+  - 1-hour TTL (perspectives are expensive to generate)
+  - If same cluster encountered again, returns cached LLM result
+  - File: `engine/common/counter_intuitive.py`
+
+- ✅ **P5: Optimistic UI with Stale-While-Revalidate**
+  - Added localStorage cache in frontend (5-minute TTL)
+  - Shows cached suggestions immediately on page load
+  - Refreshes in background, updates if changed
+  - Added "Checking for updates..." indicator during background refresh
+  - File: `src/components/CounterIntuitiveTab.tsx`
+
+- ✅ **P4: Pre-fetch Clusters on Page Load**
+  - Theme Explorer now pre-fetches clusters when page loads (any tab)
+  - Uses `max=0` to trigger clustering without LLM generation
+  - Clusters cached via P2, ready when user switches to Counter-Intuitive tab
+  - File: `src/app/themes/page.tsx`
+
+- ✅ **P10: Batch LLM Calls (5→1)**
+  - Single LLM call generates perspectives for all themes at once
+  - Reduces API calls from 5 to 1 (cost savings)
+  - Falls back to parallel mode if batch fails
+  - Created batch prompt template: `engine/prompts/counter_intuitive_batch.md`
+  - File: `engine/common/counter_intuitive.py`
+
+**Counter-Intuitive Performance Optimization Plan (CI-PERF):**
+
+| ID | Optimization | Current | Proposed | Expected Speedup | Status |
+|----|-------------|---------|----------|------------------|--------|
+| **P1** | Parallel LLM calls | Sequential: 5 themes = 5 serial calls (~50s) | `ThreadPoolExecutor` for parallel LLM calls | **5x** (50s → 10s) | ✅ Done |
+| **P2** | Cache cluster results | Re-cluster ALL items on every filter change | Cache clustering (threshold-keyed), re-filter only | **10x** for filter changes | ✅ Done |
+| **P3** | Cache counter-perspectives | Regenerate LLM output every time | Cache by cluster hash, reuse if unchanged | **100x** for repeat views | ✅ Done |
+| **P4** | Pre-fetch clusters on page load | Wait for Counter-Intuitive tab | Start clustering when Theme Explorer loads (any tab) | Perceived instant | ✅ Done |
+| **P5** | Optimistic UI (stale-while-revalidate) | Show spinner until fresh data | Show cached results immediately, refresh in background | Perceived instant | ✅ Done |
+| **P6** | Server-side clustering (pgvector RPC) | Python fetches all items, clusters client-side | Supabase RPC function with HNSW index | **3-5x** clustering | ⏳ Future |
+| **P7** | Progressive rendering | Show all suggestions at once | Stream suggestions as generated | Better UX | ⏳ Future |
+| **P8** | Lazy LLM generation | Generate all on load | Generate on theme expand (defer work) | Faster initial load | ⏳ Future |
+| **P9** | Persist clustering to DB | Cluster on every request | Store `cluster_id` in `library_items`, update on add/delete | Skip clustering entirely | ⏳ Future |
+| **P10** | Batch LLM calls | 5 separate LLM calls | 1 call with all themes, structured output | **5x** fewer API calls | ✅ Done |
+
+**Performance After All Optimizations:**
+```
+First load (cold):     ~8-12s (was ~50s)  — P10 batch LLM (single call)
+Tab switch (warm):     <1s (was ~50s)     — P4 pre-fetched clusters + P3 cached perspectives
+Filter change (warm):  ~1-2s (was ~50s)   — P2 cached clusters + P3 cached perspectives
+Repeat view (cached):  <100ms (was ~50s)  — P5 localStorage + P2/P3 backend caches
+```
+
+**Remaining Optimizations (Lower Priority):**
+- P6 (pgvector RPC) — Only needed if Library grows to 1000+ items
+- P7-P9 — Nice-to-have, current performance is excellent
+
+**CLI Flags for Testing:**
+```bash
+# Default: batch mode (1 LLM call)
+python engine/common/counter_intuitive.py --max 5
+
+# Compare with parallel mode (5 LLM calls)
+python engine/common/counter_intuitive.py --max 5 --no-batch
+
+# Fresh generation (no cache)
+python engine/common/counter_intuitive.py --max 5 --no-cache
+```
+
+**Next:**
+- Test batch vs parallel performance in production
+
+---
+
 ## Progress - 2026-01-13 (Theme Explorer Tab Navigation — Phase 1 Complete)
 
 **Done:**

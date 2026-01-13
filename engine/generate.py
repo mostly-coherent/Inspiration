@@ -1977,6 +1977,7 @@ def process_aggregated_range(
     timestamp_range: tuple[int, int] | None = None,  # Optional (start_ts, end_ts) for precise time-based ranges
     source_date_range: tuple[str, str] | None = None,  # Optional (start_date, end_date) for coverage tracking
     topic_filter: bool = True,  # IMP-17: Pre-filter covered topics to reduce LLM costs
+    topic_query: str | None = None,  # Unexplored Territory: Topic to filter conversations by (overrides default search queries)
 ) -> dict:
     """Process a date range with aggregated output."""
     # OPTIMIZATION: Search entire date range at once instead of per-date
@@ -2025,27 +2026,37 @@ def process_aggregated_range(
             # Load search queries from mode settings (configurable per mode)
             from common.mode_settings import get_mode_setting
             
-            # Map mode to theme/mode IDs
-            theme_id = "generation"
-            mode_id = "insight" if mode == "insights" else "idea"
-            
-            # Get queries from mode settings, fallback to defaults
-            search_queries = get_mode_setting(theme_id, mode_id, "semanticSearchQueries", None)
-            
-            if not search_queries:
-                # Fallback to defaults if not configured
-                if mode == "insights":
-                    search_queries = [
-                        "What did I learn? What problems did I solve?",
-                        "What decisions did I make? What patterns did I notice?",
-                        "What insights came up?",
-                    ]
-                else:  # ideas
-                    search_queries = [
-                        "What should I build? What problems need solving?",
-                        "What tools would be useful? What features should I add?",
-                        "What prototypes could I make?",
-                    ]
+            # UNEXPLORED TERRITORY: If topic_query provided, use it instead of default queries
+            if topic_query:
+                # Topic-based search: find conversations about the specific topic
+                search_queries = [
+                    topic_query,
+                    f"discussions about {topic_query}",
+                    f"thoughts on {topic_query}",
+                ]
+                print(f"🎯 Topic filter: Searching for conversations about '{topic_query}'", file=sys.stderr)
+            else:
+                # Map mode to theme/mode IDs
+                theme_id = "generation"
+                mode_id = "insight" if mode == "insights" else "idea"
+                
+                # Get queries from mode settings, fallback to defaults
+                search_queries = get_mode_setting(theme_id, mode_id, "semanticSearchQueries", None)
+                
+                if not search_queries:
+                    # Fallback to defaults if not configured
+                    if mode == "insights":
+                        search_queries = [
+                            "What did I learn? What problems did I solve?",
+                            "What decisions did I make? What patterns did I notice?",
+                            "What insights came up?",
+                        ]
+                    else:  # ideas
+                        search_queries = [
+                            "What should I build? What problems need solving?",
+                            "What tools would be useful? What features should I add?",
+                            "What prototypes could I make?",
+                        ]
             
             # Collect unique chat_ids from semantic search (PARALLELIZED across date range)
             relevant_chat_ids: set[tuple[str, str, str]] = set()
@@ -2395,6 +2406,9 @@ def main():
                         help="Disable IMP-17 pre-generation topic filter (generate all topics)")
     parser.add_argument("--items", dest="items_alias", type=int, default=None,
                         help="Alias for --item-count (for coverage runs)")
+    # Unexplored Territory: Topic-based generation
+    parser.add_argument("--topic", dest="topic_query", type=str, default=None,
+                        help="Topic to filter conversations by (semantic search). Used by Unexplored Territory Enrich feature.")
     
     args = parser.parse_args()
     
@@ -2580,6 +2594,7 @@ def main():
                 timestamp_range=timestamp_range,  # For hours-based processing
                 source_date_range=source_date_range,  # For coverage tracking
                 topic_filter=not args.no_topic_filter,  # IMP-17: Pre-filter covered topics
+                topic_query=args.topic_query,  # Unexplored Territory: Topic-based generation
             )
             
             has_output_key = "has_posts" if mode == "insights" else "has_ideas"

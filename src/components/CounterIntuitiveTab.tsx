@@ -53,6 +53,46 @@ interface CounterIntuitiveTabProps {
   };
 }
 
+// P5: localStorage cache helpers
+const CACHE_KEY_PREFIX = "ci-suggestions-";
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function getCachedSuggestions(minSize: number): CounterIntuitiveSuggestion[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const cached = localStorage.getItem(`${CACHE_KEY_PREFIX}${minSize}`);
+    if (!cached) return null;
+    const parsed = JSON.parse(cached);
+    // Validate structure to prevent errors from malformed data
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.suggestions) || typeof parsed.timestamp !== "number") {
+      localStorage.removeItem(`${CACHE_KEY_PREFIX}${minSize}`);
+      return null;
+    }
+    const { suggestions, timestamp } = parsed;
+    // Check if cache is still valid
+    if (Date.now() - timestamp < CACHE_TTL) {
+      return suggestions;
+    }
+    // Cache expired, remove it
+    localStorage.removeItem(`${CACHE_KEY_PREFIX}${minSize}`);
+  } catch {
+    // Ignore localStorage errors (malformed JSON, quota exceeded, etc.)
+  }
+  return null;
+}
+
+function setCachedSuggestions(minSize: number, suggestions: CounterIntuitiveSuggestion[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(
+      `${CACHE_KEY_PREFIX}${minSize}`,
+      JSON.stringify({ suggestions, timestamp: Date.now() })
+    );
+  } catch {
+    // Ignore localStorage errors (e.g., quota exceeded)
+  }
+}
+
 export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,12 +101,25 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
   const [showSaved, setShowSaved] = useState(false);
   const [minClusterSize, setMinClusterSize] = useState(config?.minClusterSize || 5);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false); // P5: Track background refresh
   
   // Check if feature is enabled
   const isEnabled = config?.enabled !== false; // Default to true if config not provided
 
   const fetchSuggestions = useCallback(async () => {
-    setLoading(true);
+    // P5: Check localStorage cache first (stale-while-revalidate)
+    const cached = getCachedSuggestions(minClusterSize);
+    const hasCachedData = cached && cached.length > 0;
+    
+    if (hasCachedData) {
+      // Show cached data immediately
+      setSuggestions(cached);
+      setLoading(false);
+      // Refresh in background
+      setIsRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     
     try {
@@ -84,12 +137,22 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
         throw new Error(data.error || "Unknown error");
       }
       
-      setSuggestions(data.suggestions || []);
+      const newSuggestions = data.suggestions || [];
+      setSuggestions(newSuggestions);
+      
+      // P5: Update cache
+      setCachedSuggestions(minClusterSize, newSuggestions);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-      setSuggestions([]);
+      // Only show error if we don't have cached data
+      // Use hasCachedData flag instead of cached variable to avoid stale closure
+      if (!hasCachedData) {
+        setError(err instanceof Error ? err.message : "Unknown error");
+        setSuggestions([]);
+      }
+      // If we have cached data, silently fail the refresh
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   }, [minClusterSize]);
 
@@ -166,11 +229,11 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
             <span className="text-4xl">🔄</span>
           </div>
           <h3 className="text-xl font-semibold text-white mb-2">
-            Feature Disabled
+            This Feature is Turned Off
           </h3>
           <p className="text-slate-400 max-w-md mx-auto">
-            Counter-Intuitive insights are currently disabled. Enable them in{" "}
-            <a href="/settings" className="text-indigo-400 hover:text-indigo-300 underline">
+            Counter-Intuitive Thinking is currently disabled. You can turn it on in{" "}
+            <a href="/settings" className="text-purple-400 hover:text-purple-300 underline">
               Settings → Theme Explorer
             </a>
             .
@@ -186,45 +249,121 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-            <span className="text-2xl">🔄</span> Counter-Intuitive Insights
+            <span className="text-2xl">🔄</span> Counter-Intuitive Thinking
+            <span className="text-xs bg-purple-900/50 text-purple-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+              🚧 Experimental
+            </span>
           </h2>
           <p className="text-slate-400 text-sm mt-1">
-            Challenge your assumptions with &quot;good opposite&quot; perspectives
+            What if the opposite of what you believe is also true?
           </p>
         </div>
         
-        {/* Controls */}
-        <div className="flex gap-2 items-center">
-          <label className="text-xs text-slate-400">Min theme size:</label>
-          <select
-            value={minClusterSize}
-            onChange={(e) => setMinClusterSize(parseInt(e.target.value))}
-            className="px-2 py-1 rounded bg-slate-800/60 border border-slate-700/50 text-slate-300 text-xs"
-          >
-            <option value={3}>3+ items</option>
-            <option value={5}>5+ items</option>
-            <option value={10}>10+ items</option>
-          </select>
-          
+        {/* Saved Reflections Button */}
+        <button
+          onClick={() => setShowSaved(!showSaved)}
+          title="View prompts you've saved for later reflection"
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            showSaved
+              ? "bg-purple-600/30 text-purple-200 border border-purple-500/50"
+              : "bg-slate-800/40 text-slate-400 border border-slate-700/50 hover:bg-slate-800/60"
+          }`}
+        >
+          📚 My Reflections ({savedReflections.length})
+        </button>
+      </div>
+
+      {/* Conviction Filter - Prominent & Self-Explanatory */}
+      <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-lg">🎯</span>
+          <span className="text-sm font-medium text-white">Which of my beliefs should I question?</span>
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <button
-            onClick={() => setShowSaved(!showSaved)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              showSaved
-                ? "bg-purple-600/30 text-purple-200 border border-purple-500/50"
-                : "bg-slate-800/40 text-slate-400 border border-slate-700/50 hover:bg-slate-800/60"
+            onClick={() => setMinClusterSize(3)}
+            className={`p-3 rounded-lg text-left transition-all ${
+              minClusterSize === 3
+                ? "bg-amber-600/20 border-2 border-amber-500/50 shadow-lg shadow-amber-500/10"
+                : "bg-slate-800/40 border border-slate-700/50 hover:bg-slate-800/60"
             }`}
           >
-            📚 Saved ({savedReflections.length})
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-lg">🌱</span>
+              <span className={`font-medium ${minClusterSize === 3 ? "text-amber-200" : "text-slate-200"}`}>
+                New Ideas
+              </span>
+            </div>
+            <p className="text-xs text-slate-400">
+              Topics I&apos;ve talked about 3+ times. Catch assumptions before they harden.
+            </p>
+          </button>
+
+          <button
+            onClick={() => setMinClusterSize(5)}
+            className={`p-3 rounded-lg text-left transition-all ${
+              minClusterSize === 5
+                ? "bg-indigo-600/20 border-2 border-indigo-500/50 shadow-lg shadow-indigo-500/10"
+                : "bg-slate-800/40 border border-slate-700/50 hover:bg-slate-800/60"
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-lg">🌿</span>
+              <span className={`font-medium ${minClusterSize === 5 ? "text-indigo-200" : "text-slate-200"}`}>
+                Strong Opinions
+              </span>
+            </div>
+            <p className="text-xs text-slate-400">
+              Topics I&apos;ve explored 5+ times. The sweet spot for meaningful challenges.
+            </p>
+          </button>
+
+          <button
+            onClick={() => setMinClusterSize(10)}
+            className={`p-3 rounded-lg text-left transition-all ${
+              minClusterSize === 10
+                ? "bg-purple-600/20 border-2 border-purple-500/50 shadow-lg shadow-purple-500/10"
+                : "bg-slate-800/40 border border-slate-700/50 hover:bg-slate-800/60"
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-lg">🌳</span>
+              <span className={`font-medium ${minClusterSize === 10 ? "text-purple-200" : "text-slate-200"}`}>
+                Deep Convictions
+              </span>
+            </div>
+            <p className="text-xs text-slate-400">
+              Topics I return to constantly (10+). Question your core assumptions.
+            </p>
           </button>
         </div>
+
+        <p className="text-xs text-slate-500 mt-3 text-center">
+          💡 The more you talk about something, the more entrenched your view may be. Challenging it could unlock new perspectives.
+        </p>
+        
+        {/* P5: Background refresh indicator */}
+        {isRefreshing && (
+          <div className="flex items-center justify-center gap-2 mt-2 text-xs text-slate-500">
+            <div className="animate-spin rounded-full h-3 w-3 border-b border-slate-400"></div>
+            <span>Checking for updates...</span>
+          </div>
+        )}
       </div>
 
       {/* Info Banner */}
-      <div className="bg-indigo-900/20 border border-indigo-700/30 rounded-lg p-3 text-sm">
-        <p className="text-indigo-300">
-          💡 <strong>Reflection prompts only</strong> — These don&apos;t create Library items. 
-          Your Library stays pure (chat-derived only). Use these to seed future thinking.
-        </p>
+      <div className="bg-purple-900/20 border border-purple-700/30 rounded-xl p-4">
+        <div className="flex items-start gap-3">
+          <span className="text-xl">🚧</span>
+          <div className="text-sm">
+            <p className="text-purple-200 font-medium mb-1">Experimental Feature</p>
+            <p className="text-slate-400">
+              These are <strong className="text-slate-300">thinking prompts</strong>, not items for your Library.
+              Your Library only contains ideas from your actual conversations — these are AI-generated &quot;what if&quot; questions to spark new thinking.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Error State */}
@@ -245,8 +384,8 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
         <div className="flex items-center justify-center py-16">
           <div className="flex flex-col items-center gap-3">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-400"></div>
-            <span className="text-slate-300">Analyzing your Library themes...</span>
-            <span className="text-slate-500 text-xs">This may take 30-60 seconds (LLM generation)</span>
+            <span className="text-slate-300">Looking for beliefs to challenge...</span>
+            <span className="text-slate-500 text-xs">⏱️ Usually takes 30-60 seconds</span>
           </div>
         </div>
       )}
@@ -255,12 +394,15 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
       {showSaved && !loading && (
         <div className="space-y-4">
           <h3 className="text-lg font-medium text-white flex items-center gap-2">
-            📚 Saved Reflections
+            📚 My Saved Reflections
           </h3>
           
           {savedReflections.length === 0 ? (
-            <div className="text-center py-8 text-slate-400">
-              No saved reflections yet. Click &quot;Keep in Mind&quot; on suggestions to save them.
+            <div className="text-center py-8">
+              <p className="text-slate-400">No saved reflections yet.</p>
+              <p className="text-slate-500 text-sm mt-1">
+                When you see a thought-provoking prompt, click &quot;Save for Later&quot; to keep it here.
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -270,7 +412,7 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
                   className="bg-purple-900/20 border border-purple-700/30 rounded-xl p-4"
                 >
                   <div className="text-sm text-purple-300 mb-1">
-                    Counter to: &quot;{reflection.clusterTitle}&quot;
+                    Challenging: &quot;{reflection.clusterTitle}&quot;
                   </div>
                   <p className="text-white font-medium">{reflection.counterPerspective}</p>
                   <p className="text-slate-400 text-sm mt-2 italic">
@@ -288,7 +430,7 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
             onClick={() => setShowSaved(false)}
             className="text-slate-400 text-sm hover:text-slate-300"
           >
-            ← Back to suggestions
+            ← Back to new suggestions
           </button>
         </div>
       )}
@@ -303,12 +445,16 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
                 <span className="text-4xl">🤔</span>
               </div>
               <h3 className="text-xl font-semibold text-white mb-2">
-                No Strong Themes Found
+                No Beliefs Strong Enough to Challenge Yet
               </h3>
-              <p className="text-slate-400 max-w-md mx-auto">
-                Counter-intuitive insights work best with strong Library themes ({minClusterSize}+ items).
-                Try lowering the threshold or adding more items to your Library.
+              <p className="text-slate-400 max-w-md mx-auto mb-4">
+                This works best when you have topics with {minClusterSize}+ saved ideas/insights.
               </p>
+              <div className="text-sm text-slate-500 max-w-lg mx-auto">
+                <p className="text-left px-6">
+                  💡 Try selecting &quot;New Ideas&quot; (3+ items) above, or keep using the app — as your Library grows, you&apos;ll have more beliefs worth questioning.
+                </p>
+              </div>
             </div>
           )}
 
@@ -316,7 +462,7 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
           {suggestions.length > 0 && (
             <div className="space-y-4">
               <div className="text-sm text-slate-400">
-                Found {suggestions.length} counter-perspective{suggestions.length !== 1 && "s"}
+                Found {suggestions.length} {suggestions.length === 1 ? "belief" : "beliefs"} worth questioning
               </div>
 
               {suggestions.map((suggestion) => (
@@ -332,15 +478,16 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
                   <div className="flex items-start justify-between gap-4 mb-3">
                     <div>
                       <div className="text-sm text-slate-400 mb-1">
-                        Counter to: &quot;{suggestion.clusterTitle}&quot; ({suggestion.clusterSize} items)
+                        Your belief: &quot;{suggestion.clusterTitle}&quot;
+                        <span className="text-slate-500 ml-1">({suggestion.clusterSize} items in Library)</span>
                       </div>
                       <p className="text-lg font-medium text-white">
-                        {suggestion.counterPerspective}
+                        🔄 What if... {suggestion.counterPerspective}
                       </p>
                     </div>
                     {suggestion.isSaved && (
                       <span className="text-xs bg-purple-600/30 text-purple-300 px-2 py-0.5 rounded">
-                        Saved
+                        ✓ Saved
                       </span>
                     )}
                   </div>
@@ -353,7 +500,7 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
                   {/* Suggested Angles */}
                   <div className="mb-4">
                     <div className="text-xs text-slate-500 font-medium mb-2">
-                      Angles to explore:
+                      Ways to explore this:
                     </div>
                     <ul className="space-y-1">
                       {suggestion.suggestedAngles.map((angle, idx) => (
@@ -361,7 +508,7 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
                           key={idx}
                           className="text-sm text-slate-300 flex items-start gap-2"
                         >
-                          <span className="text-slate-500">•</span>
+                          <span className="text-slate-500">→</span>
                           {angle}
                         </li>
                       ))}
@@ -370,9 +517,9 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
 
                   {/* Reflection Prompt */}
                   <div className="bg-slate-900/50 border border-slate-700/30 rounded-lg p-3 mb-4">
-                    <div className="text-xs text-slate-500 mb-1">💭 Reflection Prompt</div>
+                    <div className="text-xs text-slate-500 mb-1">💭 Question to sit with</div>
                     <p className="text-sm text-slate-300 italic">
-                      {suggestion.reflectionPrompt}
+                      &quot;{suggestion.reflectionPrompt}&quot;
                     </p>
                   </div>
 
@@ -382,17 +529,19 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
                       <button
                         onClick={() => handleKeepInMind(suggestion)}
                         disabled={actionInProgress === suggestion.id}
+                        title="Save this prompt to revisit later"
                         className="px-4 py-2 bg-purple-600/30 text-purple-300 text-sm rounded-lg border border-purple-500/30 hover:bg-purple-600/40 transition-colors disabled:opacity-50"
                       >
-                        {actionInProgress === suggestion.id ? "Saving..." : "🧠 Keep in Mind"}
+                        {actionInProgress === suggestion.id ? "Saving..." : "💾 Save for Later"}
                       </button>
                     )}
                     <button
                       onClick={() => handleDismiss(suggestion.id)}
                       disabled={actionInProgress === suggestion.id}
+                      title="Not interesting? Hide this suggestion."
                       className="px-4 py-2 bg-slate-700/30 text-slate-400 text-sm rounded-lg border border-slate-600/30 hover:bg-slate-700/50 transition-colors disabled:opacity-50"
                     >
-                      Dismiss
+                      {actionInProgress === suggestion.id ? "..." : "👋 Not Interesting"}
                     </button>
                   </div>
                 </div>
@@ -405,10 +554,10 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
       {/* Footer */}
       <div className="mt-8 text-xs text-slate-500 text-center">
         <p>
-          Counter-intuitive insights are generated by AI based on your Library themes.
+          🤖 These prompts are AI-generated based on patterns in your saved ideas and insights.
         </p>
         <p className="mt-1">
-          They&apos;re reflection prompts — not Library items. Your Library stays pure.
+          They&apos;re thinking tools — your Library only contains ideas from your actual conversations.
         </p>
       </div>
     </div>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ThemeExplorerTabs, getTabFromSearchParams, type ThemeTab } from "@/components/ThemeExplorerTabs";
+import { ThemeExplorerTabs, getTabFromSearchParams } from "@/components/ThemeExplorerTabs";
 import { UnexploredTab } from "@/components/UnexploredTab";
 import { CounterIntuitiveTab } from "@/components/CounterIntuitiveTab";
 
@@ -37,19 +37,19 @@ interface SynthesisData {
 type ItemTypeFilter = "all" | "idea" | "insight" | "use_case";
 
 const ITEM_TYPE_TABS: { id: ItemTypeFilter; label: string; icon: string; description: string }[] = [
-  { id: "all", label: "All Items", icon: "🎨", description: "All ideas, insights, and use cases" },
-  { id: "idea", label: "Ideas", icon: "💡", description: "Tools and things to build" },
-  { id: "insight", label: "Insights", icon: "✨", description: "Observations and learnings" },
-  { id: "use_case", label: "Use Cases", icon: "🔍", description: "Real examples and evidence" },
+  { id: "all", label: "Everything", icon: "🎨", description: "See patterns across all your saved items" },
+  { id: "idea", label: "Ideas", icon: "💡", description: "Tools, projects, and things to build" },
+  { id: "insight", label: "Insights", icon: "✨", description: "Lessons learned and observations" },
+  { id: "use_case", label: "Use Cases", icon: "🔍", description: "Real-world examples and evidence" },
 ];
 
-// Slider labels for user understanding
+// Slider labels for user understanding - layman-friendly
 const ZOOM_LABELS = [
-  { value: 0.5, label: "Very Broad", description: "See major patterns (few themes)" },
-  { value: 0.6, label: "Broad", description: "High-level themes" },
+  { value: 0.5, label: "Big Picture", description: "Just a few major themes" },
+  { value: 0.6, label: "Overview", description: "Broad categories" },
   { value: 0.7, label: "Balanced", description: "Natural groupings" },
-  { value: 0.8, label: "Specific", description: "Detailed themes" },
-  { value: 0.9, label: "Granular", description: "Fine-grained (many themes)" },
+  { value: 0.8, label: "Detailed", description: "More specific patterns" },
+  { value: 0.9, label: "Fine-Grained", description: "Many small themes" },
 ];
 
 function getZoomLabel(threshold: number): { label: string; description: string } {
@@ -152,6 +152,33 @@ function ThemesPage() {
     };
     loadConfig();
   }, []);
+  
+  // P4: Pre-fetch clusters for Counter-Intuitive tab (runs once on page load)
+  // This triggers clustering in background so it's cached when user switches tabs
+  useEffect(() => {
+    if (!configLoaded) return;
+    
+    let cancelled = false;
+    
+    // Fire-and-forget: prefetch clusters with max=0 (no LLM generation, just caching)
+    const prefetchClusters = async () => {
+      try {
+        // Call with max=0 to only trigger clustering (cached via P2), no LLM calls
+        await fetch(`/api/themes/counter-intuitive?minSize=${counterIntuitiveConfig.minClusterSize}&max=0`);
+        if (!cancelled) {
+          console.log("[P4] Clusters pre-fetched and cached");
+        }
+      } catch {
+        // Silent fail - this is just a performance optimization
+      }
+    };
+    
+    prefetchClusters();
+    
+    return () => {
+      cancelled = true;
+    };
+  }, [configLoaded, counterIntuitiveConfig.minClusterSize]);
 
   // Debounce threshold changes
   useEffect(() => {
@@ -258,10 +285,10 @@ function ThemesPage() {
                 </h1>
                 <p className="text-slate-400 text-sm">
                   {activeTab === "patterns" 
-                    ? "Discover patterns across your Library"
+                    ? "See what you've been thinking about most"
                     : activeTab === "unexplored"
-                      ? "Find topics missing from your Library"
-                      : "Explore counter-intuitive perspectives"}
+                      ? "Topics you chat about but haven't saved yet"
+                      : "What if the opposite is also true?"}
                 </p>
               </div>
             </div>
@@ -317,11 +344,11 @@ function ThemesPage() {
                     <span className="text-base font-semibold text-white">{zoomInfo.label}</span>
                     <span className="text-slate-400 ml-2 text-sm">— {zoomInfo.description}</span>
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-slate-400">
-                    <span>🌳 Forest</span>
+                  <div className="flex items-center gap-3 text-xs text-slate-400" title="Slide left to see fewer, broader themes. Slide right to see more, specific themes.">
+                    <span>📦 Fewer themes</span>
                     <span>←</span>
                     <span>→</span>
-                    <span>🌲 Trees</span>
+                    <span>📂 More themes</span>
                   </div>
                 </div>
                 
@@ -374,11 +401,11 @@ function ThemesPage() {
             <div className="lg:col-span-2 space-y-3">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-white">
-                  {loading ? "Recomputing..." : "Your Themes"}
+                  {loading ? "Finding patterns..." : "Your Patterns"}
                 </h2>
                 {data.stats && (
-                  <div className="text-sm text-slate-400">
-                    Avg {data.stats.avgItemsPerTheme.toFixed(1)} items/theme
+                  <div className="text-sm text-slate-400" title="Average number of items grouped into each pattern">
+                    ~{data.stats.avgItemsPerTheme.toFixed(1)} items per pattern
                   </div>
                 )}
               </div>
@@ -425,9 +452,10 @@ function ThemesPage() {
                     <div className="mt-2 ml-4 p-5 bg-slate-800/60 rounded-xl border border-slate-700/50">
                       {/* Synthesis Loading State */}
                       {synthesisLoading && (
-                        <div className="flex items-center gap-3 py-8">
+                        <div className="flex flex-col items-center gap-3 py-8">
                           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-400"></div>
-                          <span className="text-slate-300">Discovering patterns...</span>
+                          <span className="text-slate-300">Finding what connects these items...</span>
+                          <span className="text-xs text-slate-500">⏱️ Usually takes 10-20 seconds</span>
                         </div>
                       )}
                       
@@ -444,7 +472,7 @@ function ThemesPage() {
                           {/* AI Insights Header */}
                           <div className="flex items-center gap-2 text-indigo-300">
                             <span className="text-xl">✨</span>
-                            <span className="font-medium">Pattern Insights</span>
+                            <span className="font-medium">What Connects These Items</span>
                           </div>
                           
                           {/* Synthesis Narrative */}
@@ -460,7 +488,7 @@ function ThemesPage() {
                           <div className="pt-4 border-t border-slate-700/50">
                             <div className="flex items-center gap-2 mb-3 text-slate-400">
                               <span className="text-sm">📚</span>
-                              <span className="text-sm font-medium">Items in this theme ({theme.itemCount})</span>
+                              <span className="text-sm font-medium">Your items in this pattern ({theme.itemCount})</span>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                               {theme.items.map((item) => (
@@ -481,32 +509,43 @@ function ThemesPage() {
               ))}
               
               {data.themes.length === 0 && (
-                <div className="text-center py-12 text-slate-400">
-                  <p className="text-lg">No themes found at this similarity level</p>
-                  <p className="text-sm mt-2">Try adjusting the slider</p>
+                <div className="text-center py-16">
+                  <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-slate-800/30 to-slate-900/30 border border-slate-700/30 mb-6">
+                    <span className="text-4xl">🔭</span>
+                  </div>
+                  <h3 className="text-xl font-semibold text-white mb-2">
+                    No Patterns at This Zoom Level
+                  </h3>
+                  <p className="text-slate-400 max-w-md mx-auto mb-4">
+                    Try sliding toward &quot;Big Picture&quot; to see broader themes, or add more items to your Library.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    💡 Patterns emerge when you have related ideas saved in your Library
+                  </p>
                 </div>
               )}
             </div>
 
-            {/* Stats & Insights Panel */}
+              {/* Stats & Insights Panel */}
             <div className="space-y-4">
               <div className="glass-card p-6 rounded-xl">
                 <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                  <span className="text-xl">📊</span> Insights
+                  <span className="text-xl">📊</span> At a Glance
                 </h3>
                 
                 <div className="space-y-4">
                   <div className="bg-slate-800/50 rounded-lg p-4">
                     <div className="text-3xl font-bold text-white">{data.themeCount}</div>
-                    <div className="text-sm text-slate-400">Total Themes</div>
+                    <div className="text-sm text-slate-400">Patterns found</div>
                   </div>
                   
                   {data.stats && (
-                    <div className="bg-slate-800/50 rounded-lg p-4">
+                    <div className="bg-slate-800/50 rounded-lg p-4" title="Items that don't fit neatly into any theme — could be unique interests or emerging patterns">
                       <div className="text-3xl font-bold text-amber-400">
                         {data.stats.singleItemThemes}
                       </div>
-                      <div className="text-sm text-slate-400">Unique outliers</div>
+                      <div className="text-sm text-slate-400">One-off items</div>
+                      <div className="text-xs text-slate-500 mt-1">Unique ideas that stand alone</div>
                     </div>
                   )}
                 </div>
@@ -515,30 +554,33 @@ function ThemesPage() {
               {/* Reflection Prompts */}
               <div className="glass-card p-6 rounded-xl">
                 <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                  <span className="text-xl">💭</span> Reflect
+                  <span className="text-xl">💭</span> Questions to Ask Yourself
                 </h3>
                 <div className="space-y-3 text-sm text-slate-300">
                   <p className="italic">
-                    &quot;What patterns emerge when I zoom out?&quot;
+                    &quot;What am I thinking about the most?&quot;
                   </p>
                   <p className="italic">
-                    &quot;Are there themes I didn&apos;t expect?&quot;
+                    &quot;Are there surprises in these patterns?&quot;
                   </p>
                   <p className="italic">
-                    &quot;What&apos;s missing from my thinking?&quot;
+                    &quot;What themes should I explore more?&quot;
                   </p>
                 </div>
               </div>
 
               {/* Instructions */}
               <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/30 rounded-xl p-4 border border-indigo-700/30">
-                <h4 className="font-medium text-white mb-2">How to use</h4>
-                <ul className="text-sm text-slate-300 space-y-1">
-                  <li>→ Slide left to see broad themes</li>
-                  <li>→ Slide right for specific themes</li>
-                  <li>→ Click a theme for AI insights</li>
-                  <li>→ Themes are computed fresh each time</li>
+                <h4 className="font-medium text-white mb-2">💡 How It Works</h4>
+                <ul className="text-sm text-slate-300 space-y-2">
+                  <li>→ <strong>Slide left</strong> — See fewer, broader themes</li>
+                  <li>→ <strong>Slide right</strong> — See more, specific themes</li>
+                  <li>→ <strong>Click a theme</strong> — AI explains what connects these items</li>
+                  <li>→ <strong>Filter by type</strong> — Focus on Ideas, Insights, or Use Cases</li>
                 </ul>
+                <p className="text-xs text-slate-500 mt-3">
+                  Patterns are computed fresh each time based on semantic similarity.
+                </p>
               </div>
             </div>
           </div>

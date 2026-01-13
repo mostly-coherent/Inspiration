@@ -72,19 +72,20 @@ function groupItemsByThreshold(
   return themes;
 }
 
-// Abstract theme concepts for broad themes (lower threshold = more abstract)
-const ABSTRACT_THEME_CONCEPTS = [
-  "Technology & Innovation",
-  "Communication & Collaboration", 
-  "Problem Solving & Strategy",
-  "Growth & Learning",
-  "Design & User Experience",
-  "Data & Analytics",
-  "Systems & Architecture",
-  "Process & Workflow",
-  "Leadership & Management",
-  "Creativity & Ideas",
-];
+// Note: Abstract theme concepts were considered for broad themes (lower threshold = more abstract)
+// but are not currently used. Keeping as reference for future enhancement.
+// const ABSTRACT_THEME_CONCEPTS = [
+//   "Technology & Innovation",
+//   "Communication & Collaboration", 
+//   "Problem Solving & Strategy",
+//   "Growth & Learning",
+//   "Design & User Experience",
+//   "Data & Analytics",
+//   "Systems & Architecture",
+//   "Process & Workflow",
+//   "Leadership & Management",
+//   "Creativity & Ideas",
+// ];
 
 // Generate theme name from items - threshold affects abstraction level
 function generateThemeName(items: Item[], threshold: number): string {
@@ -225,7 +226,7 @@ export async function GET(request: Request) {
     // Check if any items have embeddings
     const itemsWithEmbeddings = items.filter(i => i.embedding && i.embedding.length > 0);
     
-    let themes: ThemePreview[] = [];
+    const themes: ThemePreview[] = [];
     
     if (itemsWithEmbeddings.length > 0) {
       // Use embedding-based grouping

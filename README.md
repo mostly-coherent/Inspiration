@@ -81,8 +81,7 @@ That's it. The **onboarding wizard** handles everything else:
 ## ✨ Features
 
 - **📚 Library System** — Accumulated ideas/insights with automatic deduplication and categorization
-- **🎯 Coverage Intelligence** — See which time periods are well-mined vs. gaps; suggested runs to fill them
-- **📊 Explore Coverage** — Visual chart of Memory terrain vs Library coverage
+- **🧭 Unexplored Territory** — Find topics you discuss frequently but haven't captured yet; one-click "Enrich Library"
 - **📄 Pagination** — Browse large libraries efficiently (50 items per page)
 - **💰 Cost Estimation** — See estimated API cost before running generation
 - **⚡ Optimized Harmonization** — pgvector RPC + parallel processing for 20-60x faster saves
@@ -101,7 +100,7 @@ That's it. The **onboarding wizard** handles everything else:
 4. **Synthesize** — Claude distills patterns into structured ideas or shareable insights
 5. **Accumulate** — Library grows over time—value compounds
 6. **Reflect** — Theme Explorer groups items dynamically for self-reflection
-7. **Automate** — Coverage Intelligence suggests runs to fill gaps in your Library
+7. **Discover** — Unexplored Territory shows topics to explore next; one-click enrichment
 
 ---
 
@@ -164,7 +163,7 @@ The innovation is **what** you're searching (your own AI coding conversations fo
 
 ## 🔮 What's Next
 
-**Coverage Intelligence is now live!** The app analyzes your Memory terrain and suggests runs to fill coverage gaps—you just click to execute. Combined with performance optimizations (50-80% cost reduction via topic filtering, 20-60x faster harmonization), the Library grows efficiently with minimal manual intervention.
+**Unexplored Territory is now live!** The app analyzes your Memory to find topics you discuss frequently but haven't captured yet. One click on "Enrich Library" auto-generates ideas and insights for that topic. Combined with performance optimizations (50-80% cost reduction via topic filtering, 20-60x faster harmonization), the Library grows efficiently with minimal manual intervention.
 
 **Longitudinal Intelligence (3/3 complete):** Theme Explorer is fully operational with three tabs:
 - **Patterns** — See what themes exist in your Library (zoom in/out)

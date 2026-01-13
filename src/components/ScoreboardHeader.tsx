@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, memo } from "react";
-import Link from "next/link";
 
 interface MemoryStats {
   localSize: string | null;
@@ -23,24 +22,16 @@ interface LibraryStats {
   byMode: Record<string, number>;
 }
 
-interface CoverageStats {
-  coverageScore: number;
-  gapCounts: { high: number; medium: number; low: number };
-  totalGaps: number;
-}
-
 interface ScoreboardHeaderProps {
   onSyncClick: () => void;
   isSyncing: boolean;
   syncStatus: string | null;
-  coverageStats?: CoverageStats | null;
 }
 
 export const ScoreboardHeader = memo(function ScoreboardHeader({
   onSyncClick,
   isSyncing,
   syncStatus,
-  coverageStats,
 }: ScoreboardHeaderProps) {
   const [memoryStats, setMemoryStats] = useState<MemoryStats>({
     localSize: null,
@@ -312,26 +303,6 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
               </div>
               <div className="text-xs text-slate-500">total items</div>
             </div>
-            
-            {/* Coverage Score (clickable) */}
-            {coverageStats && (
-              <Link 
-                href="/explore-coverage" 
-                className="pb-1 group hover:scale-105 transition-transform cursor-pointer"
-                title="Explore Coverage →"
-              >
-                <div className={`text-lg font-semibold ${
-                  coverageStats.coverageScore >= 80 ? "text-emerald-400" :
-                  coverageStats.coverageScore >= 50 ? "text-amber-400" :
-                  "text-red-400"
-                } group-hover:underline`}>
-                  {coverageStats.coverageScore}%
-                </div>
-                <div className="text-xs text-slate-500 group-hover:text-slate-400">
-                  coverage →
-                </div>
-              </Link>
-            )}
             
             {/* This Week Delta */}
             {libraryStats.thisWeek > 0 && (
