@@ -2233,3 +2233,52 @@ We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB**
 - PIVOT_LOG.md updated with 3 merged decision entries
 - BUILD_LOG.md updated with 2 merged progress entries
 - ARCHITECTURE.md updated with flow analysis content
+
+---
+
+## Progress - 2026-01-14 (Lenny's Podcast Indexing Completion)
+
+**Done:**
+- ✅ **Lenny's Podcast Indexing - 100% Complete**
+  - Indexed 269 episodes (44,371 chunks total)
+  - Pre-computed embeddings shipped with repo (~219MB)
+  - Zero-setup onboarding: new users get Lenny wisdom out-of-the-box
+  - All episodes include rich metadata (titles, YouTube URLs, timestamps)
+  - Semantic search tested and working
+  - Auto-syncs new episodes via git pull (continuous growth)
+
+**Stats:**
+- Episodes: 269/269 (100% coverage)
+- Chunks: 44,371 searchable segments
+- Words: 4M+ indexed
+- Size: 219MB embeddings + 28MB metadata
+- Format: GitHub (YAML frontmatter with YouTube URLs)
+- Quality: 99.993% (only 3 oversized chunks skipped)
+
+**Technical Details:**
+- Incremental indexing: Only re-indexes changed/new episodes
+- Checkpointing: Resumes from last checkpoint if interrupted
+- Embedding cache: Reuses computed embeddings to avoid redundant API calls
+- Skip logic: Handles oversized chunks gracefully (inserts zero vectors)
+
+**Verification:**
+- ✅ Episode count matches (269)
+- ✅ Chunk coverage complete (44,371)
+- ✅ No empty chunks
+- ✅ 95.6% word coverage
+- ✅ Correct embedding dimension (1536)
+- ✅ Semantic search tested & working
+
+**Files Modified:**
+- `engine/scripts/index_lenny_local.py` - Incremental indexing, checkpointing, skip logic
+- `engine/common/lenny_parser.py` - YAML frontmatter parsing, rich metadata extraction
+- `engine/common/lenny_search.py` - Local semantic search with NumPy
+- `data/lenny_embeddings.npz` - Pre-computed embeddings (committed to repo)
+- `data/lenny_metadata.json` - Episode and chunk metadata (committed to repo)
+
+**Evidence:**
+- Files committed: `a0bee0f` - Ship pre-computed Lenny embeddings
+- README updated: `3555efa` - Zero-setup messaging
+- Integration complete: Expert perspectives surface in Theme Explorer and Fast Start Theme Map
+
+<!-- Merged from LENNY_INDEXING_COMPLETION.md on 2026-01-14 -->

@@ -570,6 +570,7 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 **Lenny's Podcast Expert Integration (2026-01-13):**
 | ID | Improvement | Priority | Effort | Status |
 |----|-------------|----------|--------|--------|
+| LENNY-0 | **Fast Start Integration** — Show expert perspectives in Theme Map (themes, counter-intuitive, unexplored). OpenAI key optional unlock. | HIGH | MEDIUM | ✅ Done |
 | LENNY-1 | **YouTube timestamp deep-links** — Convert `00:15:30` → `?t=930` for exact moment links | HIGH | LOW | Pending |
 | LENNY-2 | **View count badge** — Show 🔥 for high-view-count episodes (>500K views) | MEDIUM | LOW | Pending |
 | LENNY-3 | **"More from this guest"** — When seeing a quote, show other episodes from that guest | MEDIUM | MEDIUM | Pending |
@@ -577,6 +578,36 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 | LENNY-5 | **RAG from Lenny during Generation** — Pull expert quotes into idea/insight generation | LOW | HIGH | Pending |
 | LENNY-6 | **"Related Experts" for each theme** — Show which guests have talked most about a topic | LOW | MEDIUM | Pending |
 | LENNY-7 | **Last synced timestamp** — Show when Lenny archive was last synced in UI | LOW | LOW | Pending |
+
+**Knowledge Graph Integration (v6-v7 Vision - 2026-01-14):**
+| ID | Feature | Priority | Effort | Status |
+|----|---------|----------|--------|--------|
+| KG-1 | **Entity Extraction** — Extract entities (tools, patterns, problems, concepts) from conversations using LLM | HIGH | HIGH | Planned |
+| KG-2 | **Relation Extraction** — Extract relationships (USED_FOR, CAUSES, ENABLES, PART_OF) between entities | HIGH | HIGH | Planned |
+| KG-3 | **Entity Explorer** — Browse all entities with frequency, first/last seen dates | MEDIUM | MEDIUM | Planned |
+| KG-4 | **Graph View in Theme Explorer** — Interactive visualization of entity connections | MEDIUM | HIGH | Planned |
+| KG-5 | **Evolution Timeline** — See how focus has shifted over months (entity frequency over time) | MEDIUM | MEDIUM | Planned |
+| KG-6 | **Pattern Alerts** — "You've implemented auth 4 times with the same edge case" | LOW | MEDIUM | Planned |
+| KG-7 | **Missing Link Detection** — "You discuss A and C frequently, but never B (which connects them)" | LOW | HIGH | Planned |
+| KG-8 | **Connect the Dots** — Select multiple ideas → see how they relate via graph paths | LOW | HIGH | Planned |
+
+**Vision:** Transform Inspiration from "find patterns in conversations" to "understand connections in your thinking"—enabling multi-hop reasoning, evolution tracking, and cross-project insights. Shift from "what's similar?" to "how does it connect?"
+
+**Technical Approach:**
+- PostgreSQL CTEs for graph queries initially (upgrade to Neo4j if needed at scale)
+- LLM-based extraction with structured output (Zod schemas)
+- Fuzzy deduplication for entity matching
+- User corrections interface for improving extraction quality
+
+**Key User Stories:**
+- Entity Explorer: See all tools, patterns, problems, concepts discussed (with frequency)
+- Graph View: Interactive visualization of how ideas connect
+- Evolution Timeline: See how focus has shifted over months
+- Pattern Alerts: "You've implemented auth 4 times with the same edge case"
+- Missing Link Detection: "You discuss caching and consistency, but never cache invalidation"
+- Connect the Dots: Select multiple ideas → see how they relate
+
+<!-- Merged from KNOWLEDGE_GRAPH_PLAN.md on 2026-01-14 -->
 
 **Coverage Intelligence (v5 Enhancements):**
 | ID | Improvement | Priority | Effort |
