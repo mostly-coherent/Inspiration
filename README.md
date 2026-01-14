@@ -47,7 +47,7 @@ You control your API keys, your optional cloud storage, what gets indexed.
 | **Theme Explorer** | See patterns in your thinking—3 tabs: Patterns, Unexplored, Counter-Intuitive |
 | **Ideas** | Surface recurring pain points worth building solutions for |
 | **Insights** | Extract learnings worth sharing (blogs, tweets, notes) |
-| **Seek** | "I want to build X"—find similar examples from your own history |
+| **Use Cases** | "I want to build X"—find similar examples from your own history |
 | **Expert Perspectives** | 280+ Lenny's Podcast episodes integrated into Theme Explorer |
 
 Before AI assistants, your problem-solving happened in your head. Now it's captured in Cursor/Claude Code conversations. But without structure, it's scattered. Inspiration turns that into something searchable and analyzable.
@@ -122,9 +122,10 @@ Cost estimates shown before each run. Performance optimizations reduce costs 50-
 ## Features
 
 - **Multi-Source** — Auto-detects Cursor and Claude Code, combines into unified Memory
+- **Your Thinking Dashboard** — Unified view showing raw → indexed → extracted transformation with "Patterns from AI conversations"
 - **Library** — Accumulated ideas/insights with automatic deduplication
 - **Unexplored Territory** — Find topics you discuss but haven't captured; one-click enrich
-- **Expert Perspectives** — 280+ Lenny's Podcast episodes indexed locally
+- **Expert Perspectives** — 280+ Lenny's Podcast episodes with zero-setup download and auto-sync
 - **Cost Estimation** — See estimated API cost before running
 - **Vector Memory** — Scale to 2GB+ with Supabase pgvector (optional)
 - **Time Presets** — Daily, Sprint (14d), Month, Quarter scans
@@ -137,9 +138,10 @@ Cost estimates shown before each run. Performance optimizations reduce costs 50-
 2. **Index** — Optionally sync to Vector DB for large histories
 3. **Search** — Semantic queries across months of conversations
 4. **Synthesize** — Claude extracts patterns into structured ideas/insights
-5. **Accumulate** — Library grows over time
+5. **Accumulate** — Library grows over time (shown as "extracted" in dashboard)
 6. **Reflect** — Theme Explorer groups items for review
 7. **Discover** — Unexplored Territory shows gaps to fill
+8. **Expert Wisdom** — Lenny's Podcast integration auto-downloads and syncs seamlessly
 
 ---
 
@@ -217,11 +219,12 @@ The novelty is **what** you're searching (your own AI conversations), not the un
 Your themes are now enriched with wisdom from 280+ expert episodes—product leaders, engineers, founders. When you explore a theme, see what **Claire Vo** (ChatPRD), **Dylan Field** (Figma), **Elena Verna** (Lovable, Miro) said about similar topics. Click through to YouTube timestamps.
 
 How it works:
-- **One-time auto-download:** ~250MB embeddings downloaded from GitHub Releases on first run
+- **Zero-setup onboarding:** One-click download (~250MB embeddings) from GitHub Releases—no indexing required
+- **Auto-clone:** Automatically clones the transcript repository if missing (no manual setup)
+- **Incremental sync:** Auto-syncs new episodes when you refresh Memory (pulls from [ChatPRD's archive](https://github.com/ChatPRD/lennys-podcast-transcripts))
 - **Requires:** Anthropic API key (Theme Map) + OpenAI API key (expert perspectives unlock)
 - 269 episodes, 44,371 searchable segments, all rich metadata (titles, YouTube URLs, timestamps)
 - Works with Fast Start (Anthropic key)—add OpenAI key to unlock expert perspectives
-- Auto-syncs new episodes when you refresh Memory (pulls from [ChatPRD's archive](https://github.com/ChatPRD/lennys-podcast-transcripts))
 - No embedding cost—everything pre-computed and downloaded once
 
 Theme Explorer tabs:
