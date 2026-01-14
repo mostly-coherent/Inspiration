@@ -76,3 +76,18 @@ data/lenny_embeddings.npz
 data/lenny_metadata.json
 # Indexing log (local only)
 data/lenny_index.log
+
+# Performance logs (user-specific run logs, grows unbounded over time)
+data/performance_logs/
+
+# User-generated data (specific to each user's usage)
+data/saved_reflections.json
+data/theme_map.json
+data/themes.json
+data/use_cases_output/
+
+# Engine debug output (failed parse artifacts)
+engine/data/output/
+
+# Archive folder (historical planning docs, not needed for app functionality)
+_archive/
