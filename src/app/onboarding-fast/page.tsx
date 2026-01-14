@@ -200,6 +200,7 @@ function FastOnboardingContent() {
         }
       } catch (e) {
         // Ignore - config not available
+        console.error("Failed to load config:", e);
       }
     };
     
@@ -291,6 +292,7 @@ function FastOnboardingContent() {
         return false;
       }
     } catch (e) {
+      console.error("Key validation failed:", e);
       setKeyValid(false);
       setError("Failed to validate key");
       return false;

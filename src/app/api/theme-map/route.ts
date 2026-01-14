@@ -105,6 +105,7 @@ export async function POST(request: Request) {
     try {
       body = await request.json() as Record<string, unknown>;
     } catch (parseError) {
+      console.error("Failed to parse request JSON:", parseError);
       return NextResponse.json(
         { success: false, error: "Invalid JSON in request body" },
         { status: 400 }

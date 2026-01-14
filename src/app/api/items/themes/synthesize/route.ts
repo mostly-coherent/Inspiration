@@ -70,6 +70,7 @@ async function loadSynthesisConfig(itemType: string = "all") {
     };
   } catch (error) {
     // Fallback to defaults
+    console.error("Failed to load synthesis config, using defaults:", error);
     return { 
       maxItemsToSynthesize: 15, 
       maxTokens: 800, 

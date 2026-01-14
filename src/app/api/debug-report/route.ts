@@ -184,6 +184,7 @@ export async function GET() {
         report.hasVectorDb = !!(config.vectordb?.url && config.vectordb?.anonKey);
         report.llmProvider = config.llm?.provider || null;
       } catch (e) {
+        console.error("Config file parse error:", e);
         report.recentErrors.push("Config file parse error");
       }
     }
@@ -204,6 +205,7 @@ export async function GET() {
         report.themeMapGeneratedAt = themeMap.savedAt || null;
         report.themeMapThemeCount = themeMap.data?.themes?.length || null;
       } catch (e) {
+        console.error("Theme map file parse error:", e);
         report.recentErrors.push("Theme map file parse error");
       }
     }
@@ -223,6 +225,7 @@ export async function GET() {
         }
       } catch (e) {
         // Ignore perf log errors
+        console.error("Performance log read error:", e);
       }
     }
     

@@ -105,6 +105,7 @@ export async function POST(request: NextRequest) {
           .reverse();
       } catch (error) {
         // Directory doesn't exist or can't read - no backups
+        console.error("Failed to read backup directory:", error);
         return NextResponse.json(
           { success: false, error: "No backup found to restore" },
           { status: 404 }
@@ -124,6 +125,7 @@ export async function POST(request: NextRequest) {
       try {
         defaultContent = fs.readFileSync(mostRecentBackup, "utf-8");
       } catch (error) {
+        console.error("Failed to read backup file:", error);
         return NextResponse.json(
           { success: false, error: "Failed to read backup file" },
           { status: 500 }

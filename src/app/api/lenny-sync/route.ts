@@ -58,6 +58,7 @@ export async function POST(): Promise<NextResponse<LennySyncResponse>> {
       });
     } catch (gitError) {
       // Try without specifying branch
+      console.error("Git pull with 'origin main' failed, trying without branch:", gitError);
       try {
         pullOutput = execSync("git pull", {
           cwd: lennyRepoPath,
