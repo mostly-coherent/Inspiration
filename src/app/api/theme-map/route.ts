@@ -30,11 +30,24 @@ interface ThemeMapTheme {
   }>;
 }
 
+interface CounterIntuitive {
+  title: string;
+  perspective: string;
+  reasoning: string;
+}
+
+interface UnexploredTerritory {
+  title: string;
+  why: string;
+}
+
 interface ThemeMapData {
   themes: ThemeMapTheme[];
-  unexplored_territory: string[];
+  counter_intuitive?: CounterIntuitive[];
+  unexplored_territory: (string | UnexploredTerritory)[];  // Support both legacy and new format
   generated_at: string;
   conversations_analyzed: number;
+  conversations_considered?: number;  // Total found before capping at 60
   time_window_days: number;
   tech_stack_detected?: string[];
   meta?: {
@@ -122,9 +135,11 @@ export async function POST(request: Request) {
     
     const themeMapData: ThemeMapData = {
       themes: body.themes as ThemeMapTheme[],
+      counter_intuitive: body.counter_intuitive as CounterIntuitive[] | undefined,
       unexplored_territory: (body.unexplored_territory as string[]) || [],
       generated_at: (body.generated_at as string) || new Date().toISOString(),
       conversations_analyzed: (body.conversations_analyzed as number) || 0,
+      conversations_considered: body.conversations_considered as number | undefined,
       time_window_days: (body.time_window_days as number) || 0,
       tech_stack_detected: body.tech_stack_detected as string[] | undefined,
       meta: body.meta as ThemeMapData["meta"],

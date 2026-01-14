@@ -16,19 +16,47 @@ interface ThemeEvidence {
   snippet: string;
 }
 
+interface ExpertQuote {
+  guestName: string;
+  speaker?: string;
+  content: string;
+  episodeTitle?: string;
+  youtubeUrl?: string;
+  timestamp?: string;
+  similarity?: number;
+}
+
 interface Theme {
   name: string;
   description: string;
   evidence: ThemeEvidence[];
+  expertPerspectives?: ExpertQuote[];
+}
+
+interface CounterIntuitive {
+  title: string;
+  perspective: string;
+  reasoning: string;
+  expertChallenge?: ExpertQuote;
+}
+
+interface UnexploredTerritory {
+  title: string;
+  why: string;
+  expertInsight?: ExpertQuote;
 }
 
 interface ThemeMapData {
   themes: Theme[];
-  unexplored_territory: string[];
+  counter_intuitive?: CounterIntuitive[];
+  unexplored_territory: (string | UnexploredTerritory)[];  // Support both legacy and new format
   generated_at: string;
   conversations_analyzed: number;
+  conversations_considered?: number;  // Total found before capping
   time_window_days: number;
   tech_stack_detected?: string[];
+  lennyAvailable?: boolean;
+  lennyUnlocked?: boolean;
   meta?: {
     llm_provider?: string;
     generation_time_seconds?: number;
@@ -125,9 +153,11 @@ export default function ThemeMapPage() {
                 snippet: e.snippet,
               })),
             })),
-            unexplored_territory: data.result.unexploredTerritory.map((u: { title: string }) => u.title),
+            counter_intuitive: data.result.counterIntuitive || [],
+            unexplored_territory: data.result.unexploredTerritory || [],
             generated_at: data.result.generatedAt,
             conversations_analyzed: data.result.analyzed.conversationsUsed,
+            conversations_considered: data.result.analyzed.conversationsConsidered,
             time_window_days: data.result.analyzed.days,
             meta: {
               llm_provider: provider,
@@ -259,7 +289,14 @@ export default function ThemeMapPage() {
           <div className="flex items-center gap-6 text-sm text-slate-400 bg-slate-800/30 rounded-lg px-4 py-3">
             <div className="flex items-center gap-2">
               <span>📊</span>
-              <span><strong className="text-white">{themeMap.conversations_analyzed}</strong> conversations analyzed</span>
+              <span>
+                <strong className="text-white">{themeMap.conversations_analyzed}</strong> conversations analyzed
+                {themeMap.conversations_considered && themeMap.conversations_considered > themeMap.conversations_analyzed && (
+                  <span className="text-slate-500 ml-1">
+                    (of {themeMap.conversations_considered} — capped for speed)
+                  </span>
+                )}
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <span>📅</span>
@@ -299,7 +336,7 @@ export default function ThemeMapPage() {
                     <div className="text-xs text-slate-500 mb-2">Evidence ({theme.evidence.length} conversations):</div>
                     {theme.evidence.slice(0, 3).map((ev, j) => (
                       <div key={j} className="text-sm text-slate-400 bg-slate-900/50 rounded p-2 mb-2">
-                        <div className="text-slate-300 italic">"{ev.snippet}"</div>
+                        <div className="text-slate-300 italic">&quot;{ev.snippet}&quot;</div>
                       </div>
                     ))}
                     {theme.evidence.length > 3 && (
@@ -307,23 +344,159 @@ export default function ThemeMapPage() {
                     )}
                   </div>
                 )}
+                
+                {/* Expert Perspectives from Lenny's Podcast */}
+                {theme.expertPerspectives && theme.expertPerspectives.length > 0 && (
+                  <div className="pl-9 pt-2 border-t border-amber-500/20">
+                    <div className="text-xs text-amber-400 mb-2 flex items-center gap-1">
+                      <span>🎙️</span> Expert Perspective
+                    </div>
+                    {theme.expertPerspectives.slice(0, 1).map((quote, j) => (
+                      <div key={j} className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
+                        <p className="text-slate-300 italic">&quot;{quote.content}&quot;</p>
+                        <div className="flex items-center justify-between mt-2 text-xs">
+                          <span className="text-amber-400 font-medium">— {quote.guestName}</span>
+                          {quote.youtubeUrl && quote.episodeTitle && (
+                            <a 
+                              href={quote.youtubeUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-slate-500 hover:text-amber-400 transition-colors"
+                            >
+                              📺 {quote.episodeTitle}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
+          </div>
+        )}
+        
+        {/* Lenny Unlock Teaser */}
+        {themeMap && themeMap.lennyAvailable && !themeMap.lennyUnlocked && (
+          <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-xl p-4">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🎙️</span>
+              <div>
+                <h3 className="font-semibold text-amber-300">Unlock Expert Perspectives</h3>
+                <p className="text-sm text-slate-400 mt-1">
+                  Add an OpenAI API key to see what 280+ industry experts (from Lenny&apos;s Podcast) 
+                  have said about your themes.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Counter-Intuitive */}
+        {themeMap && themeMap.counter_intuitive && themeMap.counter_intuitive.length > 0 && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+              <span>💭</span> Counter-Intuitive
+            </h2>
+            <div className="grid gap-3">
+              {themeMap.counter_intuitive.slice(0, 2).map((item, i) => (
+                <div key={i} className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-5 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl font-bold text-purple-400">{i + 1}</span>
+                    <div>
+                      <h3 className="font-semibold text-white text-lg">{item.title}</h3>
+                      <p className="text-purple-300 text-sm italic mt-1">{item.perspective}</p>
+                    </div>
+                  </div>
+                  <div className="pl-9">
+                    <div className="text-xs text-slate-500 mb-1">Why consider this:</div>
+                    <p className="text-sm text-slate-300">{item.reasoning}</p>
+                  </div>
+                  
+                  {/* Expert Challenge from Lenny's Podcast */}
+                  {item.expertChallenge && (
+                    <div className="pl-9 pt-2 border-t border-purple-500/20">
+                      <div className="text-xs text-amber-400 mb-2 flex items-center gap-1">
+                        <span>🎙️</span> Expert Challenge
+                      </div>
+                      <div className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
+                        <p className="text-slate-300 italic">&quot;{item.expertChallenge.content}&quot;</p>
+                        <div className="flex items-center justify-between mt-2 text-xs">
+                          <span className="text-amber-400 font-medium">— {item.expertChallenge.guestName}</span>
+                          {item.expertChallenge.youtubeUrl && item.expertChallenge.episodeTitle && (
+                            <a 
+                              href={item.expertChallenge.youtubeUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-slate-500 hover:text-amber-400 transition-colors"
+                            >
+                              📺 {item.expertChallenge.episodeTitle}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
         {/* Unexplored Territory */}
         {themeMap && themeMap.unexplored_territory.length > 0 && (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <h2 className="text-lg font-semibold text-white flex items-center gap-2">
               <span>🔭</span> Unexplored Territory
             </h2>
             <div className="grid gap-3">
-              {themeMap.unexplored_territory.map((item, i) => (
-                <div key={i} className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
-                  <h3 className="font-medium text-amber-300">{item}</h3>
-                </div>
-              ))}
+              {themeMap.unexplored_territory.map((item, i) => {
+                // Support both legacy (string) and new format (object)
+                const title = typeof item === 'string' ? item : item.title;
+                const why = typeof item === 'string' ? null : item.why;
+                const expertInsight = typeof item === 'string' ? null : item.expertInsight;
+                return (
+                  <div key={i} className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-5 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <span className="text-2xl font-bold text-amber-400">{i + 1}</span>
+                      <div>
+                        <h3 className="font-semibold text-white text-lg">{title}</h3>
+                      </div>
+                    </div>
+                    {why && (
+                      <div className="pl-9">
+                        <div className="text-xs text-slate-500 mb-1">Why this matters:</div>
+                        <p className="text-sm text-slate-300">{why}</p>
+                      </div>
+                    )}
+                    
+                    {/* Expert Insight from Lenny's Podcast */}
+                    {expertInsight && (
+                      <div className="pl-9 pt-2 border-t border-amber-500/20">
+                        <div className="text-xs text-amber-400 mb-2 flex items-center gap-1">
+                          <span>🎙️</span> Expert Insight
+                        </div>
+                        <div className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
+                          <p className="text-slate-300 italic">&quot;{expertInsight.content}&quot;</p>
+                          <div className="flex items-center justify-between mt-2 text-xs">
+                            <span className="text-amber-400 font-medium">— {expertInsight.guestName}</span>
+                            {expertInsight.youtubeUrl && expertInsight.episodeTitle && (
+                              <a 
+                                href={expertInsight.youtubeUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-slate-500 hover:text-amber-400 transition-colors"
+                              >
+                                📺 {expertInsight.episodeTitle}
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

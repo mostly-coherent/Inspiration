@@ -840,12 +840,13 @@ def estimate_db_metrics(db_path: Path | None = None) -> dict:
         
         total_conversations = composer_count + chat_count
         
-        # Sample recent entries to estimate date range
-        # Get timestamps from a sample of conversations
+        # Sample entries across the full date range to estimate span
+        # Use RANDOM() to get a representative sample, not just recent ones
         cursor.execute("""
             SELECT value FROM cursorDiskKV 
             WHERE key LIKE 'composerData:%' OR key LIKE 'chatData:%'
-            LIMIT 100
+            ORDER BY RANDOM()
+            LIMIT 200
         """)
         sample_rows = cursor.fetchall()
         
@@ -905,14 +906,39 @@ def estimate_db_metrics(db_path: Path | None = None) -> dict:
             confidence = "low"
             explanation = "Could not extract timestamps from conversations"
         
+        # Also count Claude Code sessions if available
+        claude_code_count = 0
+        claude_code_size_mb = 0
+        try:
+            from .source_detector import get_claude_code_path
+            claude_path = get_claude_code_path()
+            if claude_path and claude_path.exists():
+                # Count JSONL session files
+                session_files = list(claude_path.rglob("*.jsonl"))
+                claude_code_count = len(session_files)
+                # Calculate size
+                claude_code_size_mb = sum(f.stat().st_size for f in session_files) / (1024 * 1024)
+        except Exception:
+            pass  # Claude Code detection is optional
+        
+        # Combine totals
+        combined_total = total_conversations + claude_code_count
+        combined_size = size_mb + claude_code_size_mb
+        
+        # Update explanation to include both sources
+        if claude_code_count > 0:
+            explanation = f"Based on {total_conversations} Cursor + {claude_code_count} Claude Code conversations over {int(days_span)} days"
+        
         return {
-            "size_mb": round(size_mb, 1),
-            "estimated_conversations_total": total_conversations,
+            "size_mb": round(combined_size, 1),
+            "estimated_conversations_total": combined_total,
             "estimated_conversations_per_day": round(convos_per_day, 1),
             "suggested_days": suggested_days,
             "confidence": confidence,
             "explanation": explanation,
             "db_path": str(db_path),
+            "cursor_conversations": total_conversations,
+            "claude_code_conversations": claude_code_count,
         }
         
     except sqlite3.Error as e:

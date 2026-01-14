@@ -1,0 +1,127 @@
+{
+  "data": {
+    "themes": [
+      {
+        "name": "AI-Assisted Development Workflow Optimization",
+        "description": "Continuous refinement of how to work effectively with AI coding assistants, from prompt engineering to code review processes.",
+        "evidence": [
+          {
+            "conversation_id": "conversation_13",
+            "snippet": "If you look at our chat history, I have always relied on you (Composer-1) to check on other LLMs/Coding Agents' code - check for issues, bugs, syntax, race condition, missing integration, etc."
+          },
+          {
+            "conversation_id": "conversation_2",
+            "snippet": "Where is @Helpful Agents/Layman-Explanation.md stored now? If i am not wrong it's in User Rules, Cursor Settings. I force AI to explain its code changes in layman's terms (7-point format) before accepting them"
+          },
+          {
+            "conversation_id": "conversation_7",
+            "snippet": "should I state a strong preference for Cursor AI (whichever LLM) to go ahead and run terminal commands on my behalf, rather than I have to copy & paste commands"
+          }
+        ]
+      },
+      {
+        "name": "Inspiration App Development & Debugging",
+        "description": "Iterative development of a personal insights extraction app that processes AI chat history to generate actionable insights.",
+        "evidence": [
+          {
+            "conversation_id": "conversation_4",
+            "snippet": "it's a horrible user experience to wait for 10 minutes for 14 day of insights to be generated, at 95%+ progress in harmonizing to bank everything is lost with this message: ❌ Generation Failed"
+          },
+          {
+            "conversation_id": "conversation_16",
+            "snippet": "Check the code for issues from the moment user hit Generate Insights all the way till Item is added to Library. Identify issues don't fix yet. List out issues"
+          },
+          {
+            "conversation_id": "conversation_8",
+            "snippet": "Two of the biggest pain points to accelerate time-to-value for this app is: 1) Reliance on Raw Chat history to be uploaded to Vector DB (may take a long time, many many minutes!)"
+          }
+        ]
+      },
+      {
+        "name": "Production Code Analysis & Cloning",
+        "description": "Systematic study and replication of Adobe's production systems to understand enterprise-scale architecture and patterns.",
+        "evidence": [
+          {
+            "conversation_id": "conversation_2",
+            "snippet": "compare @Catalog vs. @Production_Clones/offer-onboarding-agent"
+          },
+          {
+            "conversation_id": "conversation_6",
+            "snippet": "Go through @Authzn_Metering , then help me with this question: Why does this Operation : Firefly Image Gen4 (firefly:clio_v4_diffusion) has 3 rate cards"
+          },
+          {
+            "conversation_id": "conversation_34",
+            "snippet": "go through @Production_Clones/unified-checkout-v3 . How can I rebuild this a PM-managed prototype that looks exactly like what Adobe has in production?"
+          }
+        ]
+      },
+      {
+        "name": "Personal Brand & LinkedIn Content Strategy",
+        "description": "Systematic approach to building professional presence through structured content creation and engagement analysis.",
+        "evidence": [
+          {
+            "conversation_id": "conversation_1",
+            "snippet": "@MyPrivatePrompts/Social_Post_Workflow.md on @MyPrivateProfileBuilding/LinkedIn_Postings/LinkedIn_Post_Draft_2026-01-07.md make this snappy, short, inviting"
+          },
+          {
+            "conversation_id": "conversation_41",
+            "snippet": "Given my postings (@MyPrivateProfileBuilding/LinkedIn_Postings ) versus this: @MyPrivateProfileBuilding/OtherBuilder_Postings/Post1.md which drove 4x more engagement (comments, likes, repost), what are the key differences?"
+          },
+          {
+            "conversation_id": "conversation_20",
+            "snippet": "my social posts are building my personal brand as a PM who can code, who understands the nuances of working with AI"
+          }
+        ]
+      },
+      {
+        "name": "Multi-Workspace Organization & Sync",
+        "description": "Managing multiple development workspaces with different purposes while keeping configurations and prompts synchronized.",
+        "evidence": [
+          {
+            "conversation_id": "conversation_27",
+            "snippet": "Prefer TailwindCSS for personal apps in Personal Builder Lab workspace Prefer Adobe Spectrum (use React Spectrum (S2)) MCP for apps in Project Understanding workspace (work prototypes)"
+          },
+          {
+            "conversation_id": "conversation_26",
+            "snippet": "Cleanup-folder.md on both workspaces should be the same (align to @Helpful Agents/Cleanup-folder.md )"
+          },
+          {
+            "conversation_id": "conversation_35",
+            "snippet": "Over the couse of the past 2 weeks (during Christmas and New Year holiday), I have spent considerably more time in this workspace (Personal Builder Lab) to mature how things are organized"
+          }
+        ]
+      }
+    ],
+    "counter_intuitive": [
+      {
+        "title": "Production Code Cloning for Learning",
+        "perspective": "What if studying production code actually slows down original architectural thinking?",
+        "reasoning": "While cloning Adobe's production systems provides concrete examples, it might anchor thinking to existing patterns rather than fostering innovative approaches to similar problems. The heavy focus on replicating existing solutions could limit exploration of alternative architectures."
+      },
+      {
+        "title": "Multi-App Development Strategy",
+        "perspective": "What if building fewer apps with deeper iteration would accelerate learning more than building many apps?",
+        "reasoning": "The pattern shows rapid creation of multiple apps (Inspiration, Catalog, S2_Chat, voice apps, etc.) but many seem to hit similar debugging/completion challenges. Focusing intensively on perfecting 1-2 apps might yield deeper insights into full-stack development patterns."
+      }
+    ],
+    "unexplored_territory": [
+      {
+        "title": "Testing & Quality Assurance Strategies",
+        "why": "Given the extensive app development and frequent debugging sessions, there's minimal discussion of automated testing, test-driven development, or systematic QA approaches. This could be why many apps encounter similar types of runtime errors and user experience issues."
+      },
+      {
+        "title": "Performance Monitoring & Observability",
+        "why": "With multiple apps processing large datasets (chat history, vector databases) and experiencing timeout/performance issues, the absence of performance monitoring, logging strategies, or observability tooling discussions suggests a reactive rather than proactive approach to system reliability."
+      }
+    ],
+    "generated_at": "2026-01-14T00:07:38.128941",
+    "conversations_analyzed": 60,
+    "conversations_considered": 80,
+    "time_window_days": 12,
+    "meta": {
+      "llm_provider": "anthropic"
+    }
+  },
+  "savedAt": "2026-01-14T08:07:38.276Z",
+  "version": "1.0"
+}

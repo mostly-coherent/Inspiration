@@ -26,6 +26,7 @@ interface LennyStats {
   indexed: boolean;
   episodeCount: number;
   chunkCount: number;
+  embeddingsSizeMB: number | null;
 }
 
 type LennySyncStatus = "idle" | "syncing" | "success" | "error";
@@ -59,18 +60,20 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     indexed: false,
     episodeCount: 0,
     chunkCount: 0,
+    embeddingsSizeMB: null,
   });
   const [lennySyncStatus, setLennySyncStatus] = useState<LennySyncStatus>("idle");
   const [lennySyncMessage, setLennySyncMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const lennySyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isMountedRef = useRef(true);
 
   // Fetch Memory stats
   const fetchMemoryStats = useCallback(async () => {
     try {
       const res = await fetch("/api/brain-stats");
       const data = await res.json();
-      if (data.success) {
+      if (data.success && isMountedRef.current) {
         setMemoryStats({
           localSize: data.localSize,
           vectorSize: data.vectorSize,
@@ -89,7 +92,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     try {
       const res = await fetch("/api/items?view=items");
       const data = await res.json();
-      if (data.success) {
+      if (data.success && isMountedRef.current) {
         // Calculate items added this week
         const oneWeekAgo = new Date();
         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
@@ -115,7 +118,9 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     try {
       const res = await fetch("/api/brain-stats/sources");
       const data = await res.json();
-      setSourceBreakdown(data);
+      if (isMountedRef.current) {
+        setSourceBreakdown(data);
+      }
     } catch (e) {
       console.error("Failed to fetch source breakdown:", e);
     }
@@ -126,11 +131,12 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     try {
       const res = await fetch("/api/lenny-stats");
       const data = await res.json();
-      if (data.success) {
+      if (data.success && isMountedRef.current) {
         setLennyStats({
           indexed: data.indexed,
           episodeCount: data.episodeCount,
           chunkCount: data.chunkCount,
+          embeddingsSizeMB: data.embeddingsSizeMB || null,
         });
       }
     } catch (e) {
@@ -140,7 +146,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
 
   // Sync Lenny archive (git pull + re-index if needed)
   const syncLennyArchive = useCallback(async () => {
-    if (lennySyncStatus === "syncing") return;
+    if (lennySyncStatus === "syncing" || !isMountedRef.current) return;
     
     setLennySyncStatus("syncing");
     setLennySyncMessage("Checking for new episodes...");
@@ -148,6 +154,8 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     try {
       const res = await fetch("/api/lenny-sync", { method: "POST" });
       const data = await res.json();
+      
+      if (!isMountedRef.current) return;
       
       if (data.success) {
         if (data.action === "up_to_date") {
@@ -171,6 +179,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
         setLennySyncStatus("error");
       }
     } catch (e) {
+      if (!isMountedRef.current) return;
       console.error("Lenny sync error:", e);
       setLennySyncMessage("⚠️ Sync failed");
       setLennySyncStatus("error");
@@ -181,25 +190,34 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
       clearTimeout(lennySyncTimeoutRef.current);
     }
     lennySyncTimeoutRef.current = setTimeout(() => {
-      setLennySyncMessage(null);
-      setLennySyncStatus("idle");
+      if (isMountedRef.current) {
+        setLennySyncMessage(null);
+        setLennySyncStatus("idle");
+      }
       lennySyncTimeoutRef.current = null;
     }, 5000);
   }, [lennySyncStatus, fetchLennyStats]);
 
   // Fetch all stats on mount
   useEffect(() => {
+    isMountedRef.current = true;
     const fetchAll = async () => {
       setIsLoading(true);
       await Promise.all([fetchMemoryStats(), fetchLibraryStats(), fetchSourceBreakdown(), fetchLennyStats()]);
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     };
     fetchAll();
+    
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [fetchMemoryStats, fetchLibraryStats, fetchSourceBreakdown, fetchLennyStats]);
 
   // Refresh library stats after sync completes + auto-sync Lenny
   useEffect(() => {
-    if (syncStatus?.startsWith("✓")) {
+    if (syncStatus?.startsWith("✓") && isMountedRef.current) {
       fetchLibraryStats();
       fetchMemoryStats();
       fetchSourceBreakdown();
@@ -213,6 +231,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
+      isMountedRef.current = false;
       if (lennySyncTimeoutRef.current) {
         clearTimeout(lennySyncTimeoutRef.current);
       }
@@ -222,255 +241,250 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
   const isCloudMode = syncStatus === "☁️ Cloud Mode (Read-only)";
 
   return (
-    <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="w-full">
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      {/* MEMORY CARD — The Source of Inspiration */}
-      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-slate-800/60 to-slate-900/80 border border-slate-700/50 rounded-2xl p-5">
-        {/* Subtle glow */}
-        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl" />
-        
-        <div className="relative z-10 space-y-3">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">🧠</span>
-              <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
-                Memory
-              </h2>
-            </div>
-            
-            {/* Sync Button */}
-            <button
-              onClick={onSyncClick}
-              disabled={isSyncing}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                isSyncing
-                  ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait"
-                  : isCloudMode
-                  ? "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
-                  : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30"
-              }`}
-              title={
-                isCloudMode
-                  ? "Running in cloud. Cannot sync from local disk."
-                  : "Sync Memory with latest Cursor history"
-              }
-            >
-              <span className={isSyncing ? "animate-spin" : ""}>
-                {isCloudMode ? "☁️" : "🔄"}
-              </span>
-              {isSyncing ? "Syncing..." : isCloudMode ? "Cloud" : "Sync"}
-            </button>
-          </div>
-
-          {/* Size Transformation: Raw → Memory → Library */}
-          <div className="flex items-center gap-2">
-            {(memoryStats.localSize || memoryStats.vectorSize) ? (
-              <>
-                {/* Raw chats size */}
-                <div className="text-center min-w-[60px]">
-                  <div className="text-xl font-bold text-slate-400">
-                    {memoryStats.localSize || "—"}
-                  </div>
-                  <div className="text-[10px] text-slate-500">raw chats</div>
-                </div>
-                
-                {/* Arrow: Raw → Memory */}
-                <div className="flex flex-col items-center px-1">
-                  <span className="text-emerald-500 text-sm">→</span>
-                </div>
-                
-                {/* Memory (indexed) size */}
-                <div className="text-center min-w-[60px]">
-                  <div className="text-xl font-bold text-emerald-400">
-                    {memoryStats.vectorSize || "—"}
-                  </div>
-                  <div className="text-[10px] text-slate-500">memory</div>
-                </div>
-                
-                {/* Arrow: Memory → Library */}
-                <div className="flex flex-col items-center px-1">
-                  <span className="text-indigo-400 text-sm">→</span>
-                </div>
-                
-                {/* Library (distilled) size */}
-                <div className="text-center min-w-[60px]">
-                  <div className="text-xl font-bold text-indigo-400">
-                    {memoryStats.librarySize || "—"}
-                  </div>
-                  <div className="text-[10px] text-slate-500">library</div>
-                </div>
-              </>
-            ) : (
-              <div className="text-slate-500 text-sm">Loading...</div>
-            )}
-          </div>
-          
-          {/* Distillation ratio label */}
-          {memoryStats.localSize && memoryStats.librarySize && (
-            <div className="text-[10px] text-slate-500 text-center">
-              📊 Distillation: {memoryStats.localSize} → {memoryStats.librarySize}
-            </div>
-          )}
-
-          {/* Date Coverage & Sync Status */}
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            {memoryStats.earliestDate && memoryStats.latestDate && (
-              <div className="flex items-center gap-1 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
-                <span>📅</span>
-                <span>{memoryStats.earliestDate}</span>
-                <span className="text-slate-600">→</span>
-                <span>{memoryStats.latestDate}</span>
-              </div>
-            )}
-
-            {/* Source Breakdown */}
-            {sourceBreakdown && (sourceBreakdown.cursor > 0 || sourceBreakdown.claudeCode > 0) && (
-              <div className="flex items-center gap-1.5 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
-                {sourceBreakdown.cursor > 0 && (
-                  <>
-                    <span className="text-blue-400">Cursor</span>
-                    <span className="font-medium text-slate-300">{sourceBreakdown.cursor.toLocaleString()}</span>
-                  </>
-                )}
-                {sourceBreakdown.cursor > 0 && sourceBreakdown.claudeCode > 0 && (
-                  <span className="text-slate-600">|</span>
-                )}
-                {sourceBreakdown.claudeCode > 0 && (
-                  <>
-                    <span className="text-purple-400">Claude Code</span>
-                    <span className="font-medium text-slate-300">{sourceBreakdown.claudeCode.toLocaleString()}</span>
-                  </>
-                )}
-              </div>
-            )}
-
-            {syncStatus && !isCloudMode && (
-              <span className={`px-2 py-1 rounded-full ${
-                syncStatus.startsWith("✓")
-                  ? "bg-emerald-500/10 text-emerald-400"
-                  : "bg-amber-500/10 text-amber-400"
-              }`}>
-                {syncStatus}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      {/* LIBRARY CARD — Growing Repository */}
+      {/* UNIFIED INSPIRATION PANEL                                         */}
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       <div className="relative overflow-hidden bg-gradient-to-br from-slate-800/60 to-slate-900/80 border border-slate-700/50 rounded-2xl p-5">
-        {/* Subtle glow */}
-        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl" />
+        {/* Subtle gradient glow */}
+        <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-bl from-emerald-500/5 via-indigo-500/5 to-transparent rounded-full blur-3xl" />
         
-        <div className="relative z-10 space-y-3">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">📚</span>
-              <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
-                Library
-              </h2>
-            </div>
-            
-            {/* View All Link */}
-            <a
-              href="#library-section"
-              className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-              onClick={(e) => {
-                e.preventDefault();
-                document.getElementById("library-section")?.scrollIntoView({ behavior: "smooth" });
-              }}
-            >
-              Browse →
-            </a>
-          </div>
-
-          {/* Main Stats */}
-          <div className="flex items-end gap-4">
-            {/* Total Items - Big Number */}
-            <div>
-              <div className="text-4xl font-bold text-white">
-                {isLoading ? "—" : libraryStats.totalItems}
-              </div>
-              <div className="text-xs text-slate-500">total items</div>
-            </div>
-            
-            {/* This Week Delta */}
-            {libraryStats.thisWeek > 0 && (
-              <div className="pb-1">
-                <div className="text-lg font-semibold text-emerald-400">
-                  +{libraryStats.thisWeek}
+        <div className="relative z-10 space-y-4">
+          {/* ─────────────────────────────────────────────────────────────── */}
+          {/* YOUR THINKING — Memory + Library unified                       */}
+          {/* ─────────────────────────────────────────────────────────────── */}
+          <div className="space-y-3">
+            {/* Header with Sync */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🧠</span>
+                  <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+                    Your Thinking
+                  </h2>
                 </div>
-                <div className="text-xs text-slate-500">this week</div>
+                <p className="text-xs text-slate-500 ml-8">
+                  Patterns from AI conversations
+                </p>
               </div>
-            )}
-          </div>
-
-          {/* Secondary Stats */}
-          <div className="flex flex-wrap gap-3 text-xs">
-            {libraryStats.totalCategories > 0 && (
-              <div className="flex items-center gap-1 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
-                <span>🏷️</span>
-                <span>{libraryStats.totalCategories} themes</span>
-              </div>
-            )}
-            
-            {/* Mode Breakdown */}
-            {Object.keys(libraryStats.byMode).length > 0 && (
-              <div className="flex items-center gap-2 text-slate-500">
-                {Object.entries(libraryStats.byMode).map(([mode, count]) => (
-                  <span key={mode} className="capitalize">
-                    {mode}: {count}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Lenny Expert Archive */}
-            {lennyStats.indexed && lennyStats.episodeCount > 0 && (
-              <div className="flex items-center gap-1.5">
-                <div 
-                  className="flex items-center gap-1 text-amber-400 bg-amber-500/10 px-2 py-1 rounded-full"
-                  title={`${lennyStats.chunkCount.toLocaleString()} searchable segments from Lenny's Podcast`}
-                >
-                  <span>🎙️</span>
-                  <span>{lennyStats.episodeCount} expert episodes</span>
-                </div>
-                
-                {/* Lenny Sync Button */}
-                <button
-                  onClick={syncLennyArchive}
-                  disabled={lennySyncStatus === "syncing"}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs transition-all ${
-                    lennySyncStatus === "syncing"
-                      ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait"
-                      : "bg-slate-700/50 text-slate-400 hover:bg-slate-700/80 hover:text-amber-400"
-                  }`}
-                  title="Sync Lenny archive (git pull + re-index)"
-                >
-                  <span className={lennySyncStatus === "syncing" ? "animate-spin" : ""}>
-                    🔄
-                  </span>
-                </button>
-                
-                {/* Lenny Sync Status */}
-                {lennySyncMessage && (
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    lennySyncMessage.startsWith("✓")
+              
+              <div className="flex items-center gap-2">
+                {/* Sync Status */}
+                {syncStatus && !isCloudMode && (
+                  <span className={`text-xs px-2 py-1 rounded-full ${
+                    syncStatus.startsWith("✓")
                       ? "bg-emerald-500/10 text-emerald-400"
-                      : lennySyncMessage.startsWith("☁️")
-                      ? "bg-blue-500/10 text-blue-400"
                       : "bg-amber-500/10 text-amber-400"
                   }`}>
-                    {lennySyncMessage}
+                    {syncStatus}
                   </span>
                 )}
+                
+                {/* Sync Button */}
+                <button
+                  onClick={onSyncClick}
+                  disabled={isSyncing}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                    isSyncing
+                      ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait"
+                      : isCloudMode
+                      ? "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
+                      : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30"
+                  }`}
+                  title={
+                    isCloudMode
+                      ? "Running in cloud. Cannot sync from local disk."
+                      : "Sync Memory with latest Cursor history"
+                  }
+                >
+                  <span className={isSyncing ? "animate-spin" : ""}>
+                    {isCloudMode ? "☁️" : "🔄"}
+                  </span>
+                  {isSyncing ? "Syncing..." : isCloudMode ? "Cloud" : "Sync"}
+                </button>
               </div>
-            )}
+            </div>
+
+            {/* Main Content Row */}
+            <div className="flex flex-wrap items-center gap-6">
+              {/* Size Transformation: Raw → Indexed → Library */}
+              <div className="flex items-center gap-2">
+                {(memoryStats.localSize || memoryStats.vectorSize) ? (
+                  <>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-slate-400">
+                        {memoryStats.localSize || "—"}
+                      </div>
+                      <div className="text-[10px] text-slate-500">raw</div>
+                    </div>
+                    <span className="text-slate-600">→</span>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-emerald-400">
+                        {memoryStats.vectorSize || "—"}
+                      </div>
+                      <div className="text-[10px] text-slate-500">indexed</div>
+                    </div>
+                    <span className="text-slate-600">→</span>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-indigo-400">
+                        {memoryStats.librarySize || "—"}
+                      </div>
+                      <div className="text-[10px] text-slate-500">extracted</div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-slate-500 text-sm">Loading...</div>
+                )}
+              </div>
+
+              {/* Divider */}
+              <div className="hidden md:block w-px h-8 bg-slate-700/50" />
+
+              {/* Library Stats */}
+              <div className="flex items-end gap-3">
+                <div>
+                  <div className="text-2xl font-bold text-white">
+                    {isLoading ? "—" : libraryStats.totalItems}
+                  </div>
+                  <div className="text-[10px] text-slate-500">items</div>
+                </div>
+                {libraryStats.totalCategories > 0 && (
+                  <div>
+                    <div className="text-lg font-semibold text-indigo-400">
+                      {libraryStats.totalCategories}
+                    </div>
+                    <div className="text-[10px] text-slate-500">themes</div>
+                  </div>
+                )}
+                {libraryStats.thisWeek > 0 && (
+                  <div>
+                    <div className="text-lg font-semibold text-emerald-400">
+                      +{libraryStats.thisWeek}
+                    </div>
+                    <div className="text-[10px] text-slate-500">this week</div>
+                  </div>
+                )}
+                
+                {/* View All link */}
+                <a
+                  href="#library-section"
+                  className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors ml-2 self-center"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    document.getElementById("library-section")?.scrollIntoView({ behavior: "smooth" });
+                  }}
+                >
+                  View All →
+                </a>
+              </div>
+            </div>
+
+            {/* Metadata Row */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              {/* Date Coverage */}
+              {memoryStats.earliestDate && memoryStats.latestDate && (
+                <div className="flex items-center gap-1 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
+                  <span>📅</span>
+                  <span>{memoryStats.earliestDate}</span>
+                  <span className="text-slate-600">→</span>
+                  <span>{memoryStats.latestDate}</span>
+                </div>
+              )}
+
+              {/* Source Breakdown */}
+              {sourceBreakdown && (sourceBreakdown.cursor > 0 || sourceBreakdown.claudeCode > 0) && (
+                <div className="flex items-center gap-1.5 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
+                  {sourceBreakdown.cursor > 0 && (
+                    <>
+                      <span className="text-blue-400">Cursor</span>
+                      <span className="font-medium text-slate-300">{sourceBreakdown.cursor.toLocaleString()}</span>
+                    </>
+                  )}
+                  {sourceBreakdown.cursor > 0 && sourceBreakdown.claudeCode > 0 && (
+                    <span className="text-slate-600">|</span>
+                  )}
+                  {sourceBreakdown.claudeCode > 0 && (
+                    <>
+                      <span className="text-purple-400">Claude Code</span>
+                      <span className="font-medium text-slate-300">{sourceBreakdown.claudeCode.toLocaleString()}</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ─────────────────────────────────────────────────────────────── */}
+          {/* WISDOM FROM LENNY'S — Always visible, shows indexing status   */}
+          {/* ─────────────────────────────────────────────────────────────── */}
+          <div className="border-t border-slate-700/50" />
+          
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🎙️</span>
+                <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+                  Wisdom from Lenny&apos;s
+                </h2>
+              </div>
+              
+              {/* Stats */}
+              <div className="flex items-center gap-3">
+                {lennyStats.indexed && lennyStats.episodeCount > 0 ? (
+                  <>
+                    <div 
+                      className="flex items-center gap-1.5 text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full"
+                      title={`${lennyStats.chunkCount.toLocaleString()} searchable segments`}
+                    >
+                      <span className="font-semibold">{lennyStats.episodeCount}</span>
+                      <span className="text-amber-300/70 text-xs">episodes</span>
+                    </div>
+                    {lennyStats.embeddingsSizeMB && (
+                      <div className="flex items-center gap-1.5 text-slate-400 bg-slate-800/50 px-2.5 py-1 rounded-full">
+                        <span className="font-medium text-slate-300">{lennyStats.embeddingsSizeMB} MB</span>
+                        <span className="text-slate-500 text-xs">indexed</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-slate-500 bg-slate-800/50 px-2.5 py-1 rounded-full">
+                    <span className="text-xs">Not indexed yet</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              {/* Lenny Sync Status */}
+              {lennySyncMessage && (
+                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  lennySyncMessage.startsWith("✓")
+                    ? "bg-emerald-500/10 text-emerald-400"
+                    : lennySyncMessage.startsWith("☁️")
+                    ? "bg-blue-500/10 text-blue-400"
+                    : "bg-amber-500/10 text-amber-400"
+                }`}>
+                  {lennySyncMessage}
+                </span>
+              )}
+              
+              {/* Lenny Sync Button */}
+              <button
+                onClick={syncLennyArchive}
+                disabled={lennySyncStatus === "syncing"}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-all ${
+                  lennySyncStatus === "syncing"
+                    ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait"
+                    : "bg-slate-700/50 text-slate-400 hover:bg-slate-700/80 hover:text-amber-400"
+                }`}
+                title="Sync Lenny archive (git pull + re-index)"
+              >
+                <span className={lennySyncStatus === "syncing" ? "animate-spin" : ""}>
+                  🔄
+                </span>
+                <span>Sync</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

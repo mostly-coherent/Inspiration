@@ -67,7 +67,8 @@ test-results/
 data/items_bank.json
 data/items_bank_backup_*.json
 
-# Lenny Podcast Archive (cloned from GitHub, not our content)
+# Lenny Podcast Archive
+# Raw transcripts (cloned from GitHub) - not needed, we ship pre-computed embeddings
 data/lenny-transcripts/
-data/lenny_embeddings.npz
-data/lenny_metadata.json
+# NOTE: lenny_embeddings.npz and lenny_metadata.json are COMMITTED
+# so new users get expert perspectives immediately (zero setup, zero cost)

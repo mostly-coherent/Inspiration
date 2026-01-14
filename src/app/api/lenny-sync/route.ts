@@ -4,7 +4,9 @@ import path from "path";
 import fs from "fs";
 import { getPythonPath } from "@/lib/pythonPath";
 
-export const maxDuration = 120; // 2 minutes for git pull + quick index check
+// 2 minutes timeout: sufficient for git pull + incremental indexing of 2-3 new episodes
+// (typical weekly growth: ~150-300 chunks = ~30-60 seconds API time)
+export const maxDuration = 120;
 
 // Detect cloud environment
 function isCloudEnvironment(): boolean {
@@ -117,7 +119,8 @@ export async function POST(): Promise<NextResponse<LennySyncResponse>> {
           stderr += data.toString();
         });
 
-        // Timeout after 90 seconds
+        // Timeout after 90 seconds (sufficient for 2-3 new episodes/week)
+        // Typical weekly sync: ~150-300 chunks = ~30-60 seconds API time
         const timeout = setTimeout(() => {
           if (!resolved) {
             resolved = true;

@@ -27,6 +27,102 @@ from common.cursor_db import (
 )
 from common.llm import call_llm
 from common.cost_estimator import estimate_cost, format_cost_display
+from common.lenny_search import search_lenny_archive, is_lenny_indexed
+from common.semantic_search import is_openai_configured
+
+
+def search_lenny_for_theme(theme_title: str, theme_summary: str, top_k: int = 2) -> list[dict]:
+    """
+    Search Lenny's archive for expert perspectives on a theme.
+    
+    Returns list of quote dicts with guest_name, content, youtube_url, etc.
+    """
+    if not is_lenny_indexed():
+        return []
+    
+    if not is_openai_configured():
+        return []
+    
+    try:
+        # Search with theme title + summary for better context
+        query = f"{theme_title}: {theme_summary}"
+        results = search_lenny_archive(query, top_k=top_k, min_similarity=0.3)
+        
+        return [
+            {
+                "guestName": r.guest_name,
+                "speaker": r.speaker,
+                "content": r.content[:400] + "..." if len(r.content) > 400 else r.content,
+                "episodeTitle": r.episode_title,
+                "youtubeUrl": r.youtube_url,
+                "timestamp": r.timestamp,
+                "similarity": round(r.similarity, 3),
+            }
+            for r in results
+        ]
+    except Exception as e:
+        print(f"⚠️  Lenny search failed for '{theme_title}': {e}", file=sys.stderr)
+        return []
+
+
+def enhance_themes_with_lenny(theme_map: dict) -> dict:
+    """
+    Enhance theme map with expert perspectives from Lenny's podcast.
+    
+    Adds 'expertPerspectives' to each theme, counter-intuitive item, and unexplored territory.
+    """
+    if not is_lenny_indexed():
+        print("ℹ️  Lenny archive not indexed, skipping expert perspectives", file=sys.stderr)
+        theme_map["lennyAvailable"] = False
+        return theme_map
+    
+    if not is_openai_configured():
+        print("ℹ️  OpenAI not configured, skipping expert perspectives (need embedding for search)", file=sys.stderr)
+        theme_map["lennyAvailable"] = True
+        theme_map["lennyUnlocked"] = False
+        return theme_map
+    
+    print("🎙️ Searching Lenny's archive for expert perspectives...", file=sys.stderr)
+    theme_map["lennyAvailable"] = True
+    theme_map["lennyUnlocked"] = True
+    
+    # Enhance themes
+    for theme in theme_map.get("themes", []):
+        quotes = search_lenny_for_theme(
+            theme.get("title", ""),
+            theme.get("summary", ""),
+            top_k=2
+        )
+        theme["expertPerspectives"] = quotes
+        if quotes:
+            print(f"   ✓ {theme.get('title', 'Theme')}: {len(quotes)} expert quotes", file=sys.stderr)
+    
+    # Enhance counter-intuitive items
+    for item in theme_map.get("counterIntuitive", []):
+        quotes = search_lenny_for_theme(
+            item.get("title", ""),
+            item.get("perspective", ""),
+            top_k=1
+        )
+        item["expertChallenge"] = quotes[0] if quotes else None
+        if quotes:
+            print(f"   ✓ Counter-intuitive '{item.get('title', '')}': expert challenge found", file=sys.stderr)
+    
+    # Enhance unexplored territory items
+    for item in theme_map.get("unexploredTerritory", []):
+        quotes = search_lenny_for_theme(
+            item.get("title", ""),
+            item.get("why", ""),
+            top_k=1
+        )
+        item["expertInsight"] = quotes[0] if quotes else None
+        if quotes:
+            print(f"   ✓ Unexplored '{item.get('title', '')}': expert insight found", file=sys.stderr)
+    
+    expert_count = sum(len(t.get("expertPerspectives", [])) for t in theme_map.get("themes", []))
+    print(f"✅ Added {expert_count} expert perspectives from Lenny's podcast", file=sys.stderr)
+    
+    return theme_map
 
 
 def create_conversation_cards(conversations: list[dict], max_cards: int = 60) -> list[dict]:
@@ -163,6 +259,7 @@ def generate_theme_map(
                 "conversationsUsed": 0,
             },
             "themes": [],
+            "counterIntuitive": [],
             "unexploredTerritory": [],
         }
     
@@ -188,7 +285,13 @@ Based on these conversations, identify:
    - For each theme: provide a clear name, description, and why it matters
    - Include 2-3 specific conversation references as evidence
 
-2. **Unexplored territory** - 1-2 topics that are notably ABSENT but might be relevant
+2. **Counter-intuitive perspectives** - 2 assumptions worth questioning
+   - Challenge a pattern you see: "What if the opposite is true?"
+   - Example: If they're building many apps → "What if focusing on fewer apps would accelerate learning?"
+   - Example: If they're cloning production code → "What if studying production code slows original thinking?"
+   - Make it thought-provoking but grounded in their actual patterns
+
+3. **Unexplored territory** - 1-2 topics that are notably ABSENT but might be relevant
    - Be context-aware: if they're building web apps, are they missing security or testing?
    - If they're doing AI work, are they missing observability or evals?
    - Don't suggest generic topics - make it specific to their apparent stack/focus
@@ -212,6 +315,13 @@ Respond in this exact JSON format:
       ]
     }}
   ],
+  "counterIntuitive": [
+    {{
+      "title": "Theme/Pattern Name",
+      "perspective": "What if [opposite perspective]?",
+      "reasoning": "Brief explanation of why this counter-perspective might be worth considering"
+    }}
+  ],
   "unexploredTerritory": [
     {{
       "title": "Missing Topic",
@@ -224,6 +334,7 @@ Important:
 - Use ONLY information from the provided conversations
 - Evidence must reference actual conversations from the list
 - Keep summaries concise but insightful
+- Counter-intuitive perspectives should challenge assumptions visible in the patterns
 - Make unexplored territory suggestions specific to their apparent tech stack
 """
 
@@ -248,6 +359,7 @@ Important:
                 "conversationsUsed": len(cards),
             },
             "themes": [],
+            "counterIntuitive": [],
             "unexploredTerritory": [],
         }
     
@@ -273,6 +385,7 @@ Important:
                 "conversationsUsed": len(cards),
             },
             "themes": [],
+            "counterIntuitive": [],
             "unexploredTerritory": [],
         }
     
@@ -286,10 +399,14 @@ Important:
             "conversationsUsed": len(cards),
         },
         "themes": theme_data.get("themes", []),
+        "counterIntuitive": theme_data.get("counterIntuitive", []),
         "unexploredTerritory": theme_data.get("unexploredTerritory", []),
     }
     
     print(f"✅ Generated Theme Map with {len(theme_map['themes'])} themes", file=sys.stderr)
+    
+    # Enhance with Lenny's expert perspectives (if available)
+    theme_map = enhance_themes_with_lenny(theme_map)
     
     return theme_map
 

@@ -8,7 +8,7 @@
       "modes": [
         {
           "id": "idea",
-          "name": "Idea",
+          "name": "Ideas",
           "description": "Prototype & tool ideas worth building",
           "icon": "💡",
           "color": "inspiration-ideas",
@@ -31,7 +31,7 @@
         },
         {
           "id": "insight",
-          "name": "Insight",
+          "name": "Insights",
           "description": "Writings to share learnings",
           "icon": "✨",
           "color": "inspiration-insights",
@@ -58,7 +58,7 @@
       "modes": [
         {
           "id": "use_case",
-          "name": "Use Case",
+          "name": "Use Cases",
           "description": "Find chat history evidence for use cases",
           "icon": "🔍",
           "color": "inspiration-seek",

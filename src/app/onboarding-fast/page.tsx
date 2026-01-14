@@ -23,6 +23,8 @@ interface DbMetrics {
   confidence: "high" | "medium" | "low";
   explanation: string;
   db_path: string | null;
+  cursor_conversations?: number;
+  claude_code_conversations?: number;
 }
 
 interface ThemeEvidence {
@@ -33,17 +35,39 @@ interface ThemeEvidence {
   snippet: string;
 }
 
+interface ExpertQuote {
+  guestName: string;
+  speaker?: string;
+  timestamp?: string;
+  content: string;
+  similarity?: number;
+  episodeFilename?: string;
+  episodeTitle?: string;
+  youtubeUrl?: string;
+  videoId?: string;
+  duration?: string;
+}
+
 interface Theme {
   id: string;
   title: string;
   summary: string;
   whyItMatters: string[];
   evidence: ThemeEvidence[];
+  expertPerspectives?: ExpertQuote[];
 }
 
 interface UnexploredTerritory {
   title: string;
   why: string;
+  expertInsight?: ExpertQuote;
+}
+
+interface CounterIntuitive {
+  title: string;
+  perspective: string;
+  reasoning: string;
+  expertChallenge?: ExpertQuote;
 }
 
 interface ThemeMapResult {
@@ -55,7 +79,10 @@ interface ThemeMapResult {
     conversationsUsed: number;
   };
   themes: Theme[];
+  counterIntuitive?: CounterIntuitive[];
   unexploredTerritory: UnexploredTerritory[];
+  lennyAvailable?: boolean;
+  lennyUnlocked?: boolean;
   error?: string;
 }
 
@@ -119,6 +146,10 @@ function FastOnboardingContent() {
   const [validatingKey, setValidatingKey] = useState(false);
   const [keyValid, setKeyValid] = useState<boolean | null>(null);
   
+  // Optional OpenAI key for Lenny's expert perspectives
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [openaiKeyFromEnv, setOpenaiKeyFromEnv] = useState(false);
+  
   // Theme generation state
   const [generating, setGenerating] = useState(false);
   const [themeMap, setThemeMap] = useState<ThemeMapResult | null>(null);
@@ -179,23 +210,37 @@ function FastOnboardingContent() {
   useEffect(() => {
     const checkConfig = async () => {
       try {
-        const res = await fetch("/api/config");
-        if (!res.ok) {
-          // Config not available - ignore
-          return;
-        }
-        const data = await res.json();
-        
-        if (data.success && data.config) {
-          // Check if keys exist in config (means they're in .env.local)
-          if (data.config.llm?.provider) {
-            setKeyFromEnv(true);
-            setSelectedProvider(data.config.llm.provider);
+        // First check if Anthropic key exists in environment
+        const envRes = await fetch("/api/config/env");
+        if (envRes.ok) {
+          try {
+            const envData = await envRes.json();
+            if (envData.configured?.anthropic) {
+              // Anthropic key is in environment - trust it and enable proceed
+              setKeyFromEnv(true);
+              setSelectedProvider("anthropic");
+              setKeyValid(true);
+              setError(null);
+            }
+            // Also check for OpenAI key (optional, for Lenny's expert perspectives)
+            if (envData.configured?.openai) {
+              setOpenaiKeyFromEnv(true);
+            }
+          } catch (parseError) {
+            console.error("Failed to parse env config response:", parseError);
+            // Continue - will prompt user for key if needed
           }
-          
-          // Check if Vector DB is configured
-          if (data.config.vectordb?.url && data.config.vectordb?.anonKey) {
-            setHasVectorDb(true);
+        }
+        
+        // Then check config for Vector DB status
+        const res = await fetch("/api/config");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.config) {
+            // Check if Vector DB is configured
+            if (data.config.vectordb?.url && data.config.vectordb?.anonKey) {
+              setHasVectorDb(true);
+            }
           }
         }
       } catch (e) {
@@ -308,30 +353,46 @@ function FastOnboardingContent() {
       return;
     }
     
-    // Validate first
-    const isValid = await validateKey();
-    if (!isValid && !keyFromEnv) return;
+    // Validate first (always required, even for env keys)
+    if (keyValid !== true) {
+      const isValid = await validateKey();
+      if (!isValid) return;
+    }
     
-    // Save key to .env.local
     try {
-      const envVarName = selectedProvider === "anthropic" 
-        ? "ANTHROPIC_API_KEY" 
-        : selectedProvider === "openai" 
-          ? "OPENAI_API_KEY" 
-          : "OPENROUTER_API_KEY";
+      // Build keys to save
+      const keysToSave: Record<string, string> = {};
       
-      const res = await fetch("/api/config/env", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [envVarName]: apiKey }),
-      });
-      
-      if (!res.ok) {
-        throw new Error("Failed to save API key");
+      // Save Anthropic key if user typed one (not from env)
+      if (!keyFromEnv && apiKey) {
+        const envVarName = selectedProvider === "anthropic" 
+          ? "ANTHROPIC_API_KEY" 
+          : selectedProvider === "openai" 
+            ? "OPENAI_API_KEY" 
+            : "OPENROUTER_API_KEY";
+        keysToSave[envVarName] = apiKey;
       }
       
-      // Save minimal config
-      await fetch("/api/config", {
+      // Save OpenAI key if user typed one (optional, for Lenny's expert perspectives)
+      if (!openaiKeyFromEnv && openaiKey) {
+        keysToSave["OPENAI_API_KEY"] = openaiKey;
+      }
+      
+      // Save all keys in one request
+      if (Object.keys(keysToSave).length > 0) {
+        const res = await fetch("/api/config/env", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(keysToSave),
+        });
+        
+        if (!res.ok) {
+          throw new Error("Failed to save API key");
+        }
+      }
+      
+      // Save minimal config (always, to mark fast start complete)
+      const configRes = await fetch("/api/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -344,11 +405,15 @@ function FastOnboardingContent() {
         }),
       });
       
+      if (!configRes.ok) {
+        throw new Error("Failed to save config");
+      }
+      
       setStep("generate");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
     }
-  }, [apiKey, keyFromEnv, selectedProvider, validateKey, isPreviewMode]);
+  }, [apiKey, keyFromEnv, keyValid, selectedProvider, validateKey, isPreviewMode, openaiKey, openaiKeyFromEnv]);
 
   // Generate Theme Map
   const generateThemeMap = useCallback(async () => {
@@ -406,6 +471,18 @@ function FastOnboardingContent() {
                 snippet: "I'm getting this error: TypeError...",
               },
             ],
+          },
+        ],
+        counterIntuitive: [
+          {
+            title: "Building Multiple Apps",
+            perspective: "What if focusing on fewer apps would accelerate learning?",
+            reasoning: "You're building Inspiration, Catalog, and S2_Chat simultaneously. While breadth is valuable, depth in one domain might unlock insights faster.",
+          },
+          {
+            title: "Production Clones",
+            perspective: "What if studying production code slows your original thinking?",
+            reasoning: "You clone production repos to learn, but this might bias you toward existing patterns rather than discovering novel approaches.",
           },
         ],
         unexploredTerritory: [
@@ -467,6 +544,7 @@ function FastOnboardingContent() {
               unexplored_territory: data.result.unexploredTerritory.map((u: UnexploredTerritory) => u.title),
               generated_at: data.result.generatedAt,
               conversations_analyzed: data.result.analyzed.conversationsUsed,
+              conversations_considered: data.result.analyzed.conversationsConsidered,
               time_window_days: data.result.analyzed.days,
               meta: {
                 llm_provider: selectedProvider,
@@ -596,7 +674,9 @@ function FastOnboardingContent() {
                     <span className="text-3xl">🧠</span>
                     <div>
                       <div className="font-semibold text-white text-lg">
-                        Found {dbMetrics.size_mb.toFixed(0)} MB of chat history
+                        Found {dbMetrics.size_mb >= 1000 
+                          ? `${(dbMetrics.size_mb / 1024).toFixed(1)} GB` 
+                          : `${dbMetrics.size_mb.toFixed(0)} MB`} of chat history
                       </div>
                       <div className="text-sm text-slate-400">
                         ~{dbMetrics.estimated_conversations_total} conversations • {dbMetrics.explanation}
@@ -610,7 +690,12 @@ function FastOnboardingContent() {
                       Analyze conversations from the last:
                     </label>
                     <div className="flex gap-2">
-                      {[7, 14, 30, 60].map((days) => (
+                      {[
+                        { days: 7, label: "1 week" },
+                        { days: 14, label: "2 weeks" },
+                        { days: 28, label: "4 weeks" },
+                        { days: 42, label: "6 weeks" },
+                      ].map(({ days, label }) => (
                         <button
                           key={days}
                           onClick={() => setSelectedDays(days)}
@@ -620,7 +705,7 @@ function FastOnboardingContent() {
                               : "bg-slate-700/50 text-slate-300 hover:bg-slate-700"
                           }`}
                         >
-                          {days} days
+                          {label}
                         </button>
                       ))}
                     </div>
@@ -714,7 +799,7 @@ function FastOnboardingContent() {
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="text-indigo-400">→</span>
-                  <span><strong>Unexplored territory</strong> — Topics you might be missing</span>
+                  <span><strong>Counter-intuitive</strong> — Assumptions worth questioning</span>
                 </li>
               </ul>
             </div>
@@ -746,7 +831,7 @@ function FastOnboardingContent() {
               </p>
             </div>
 
-            {error && (
+            {error && !keyFromEnv && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400 text-sm">
                 {error}
               </div>
@@ -759,44 +844,11 @@ function FastOnboardingContent() {
               </div>
             )}
 
-            {/* Provider selection */}
-            <div className="space-y-3">
-              <label className="block text-sm font-medium text-slate-300">
-                Select Provider
-              </label>
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { id: "anthropic" as const, name: "Anthropic", icon: "🅰️" },
-                  { id: "openai" as const, name: "OpenAI", icon: "🤖" },
-                  { id: "openrouter" as const, name: "OpenRouter", icon: "🔀" },
-                ].map((provider) => (
-                  <button
-                    key={provider.id}
-                    onClick={() => {
-                      setSelectedProvider(provider.id);
-                      setApiKey("");
-                      setKeyValid(null);
-                    }}
-                    className={`p-4 rounded-xl border transition-all ${
-                      selectedProvider === provider.id
-                        ? "bg-indigo-600/20 border-indigo-500"
-                        : "bg-slate-800/50 border-slate-700 hover:border-slate-600"
-                    }`}
-                  >
-                    <div className="text-2xl mb-1">{provider.icon}</div>
-                    <div className="text-sm font-medium text-white">{provider.name}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* API Key input */}
+            {/* API Key input - Anthropic only for Fast Start */}
             {!keyFromEnv && (
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-slate-300">
-                  {selectedProvider === "anthropic" && "Anthropic API Key"}
-                  {selectedProvider === "openai" && "OpenAI API Key"}
-                  {selectedProvider === "openrouter" && "OpenRouter API Key"}
+                  Anthropic API Key
                   <span className="text-red-400 ml-1">*</span>
                 </label>
                 <div className="relative">
@@ -807,11 +859,7 @@ function FastOnboardingContent() {
                       setApiKey(e.target.value);
                       setKeyValid(null);
                     }}
-                    placeholder={
-                      selectedProvider === "anthropic" ? "sk-ant-..." :
-                      selectedProvider === "openai" ? "sk-..." :
-                      "sk-or-..."
-                    }
+                    placeholder="sk-ant-..."
                     autoComplete="off"
                     className={`w-full px-4 py-3 pr-10 bg-slate-800/50 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                       keyValid === true
@@ -829,24 +877,53 @@ function FastOnboardingContent() {
                 </div>
                 <p className="text-xs text-slate-500">
                   Get one at{" "}
-                  {selectedProvider === "anthropic" && (
-                    <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">
-                      console.anthropic.com
-                    </a>
-                  )}
-                  {selectedProvider === "openai" && (
-                    <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">
-                      platform.openai.com
-                    </a>
-                  )}
-                  {selectedProvider === "openrouter" && (
-                    <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">
-                      openrouter.ai
-                    </a>
-                  )}
+                  <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">
+                    console.anthropic.com
+                  </a>
+                </p>
+                <p className="text-xs text-slate-500 flex items-center gap-1">
+                  <span>🔒</span>
+                  <span>Saved locally to <code className="text-slate-400">.env.local</code> — never uploaded or shared</span>
                 </p>
               </div>
             )}
+
+            {/* Optional OpenAI Key for Lenny's Expert Perspectives */}
+            <div className="space-y-2 p-4 bg-gradient-to-r from-amber-500/5 to-orange-500/5 border border-amber-500/20 rounded-lg">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🎙️</span>
+                <label className="text-sm font-medium text-amber-300">
+                  OpenAI API Key
+                  <span className="text-slate-500 font-normal ml-2">(optional)</span>
+                </label>
+              </div>
+              <p className="text-xs text-slate-400 mb-2">
+                Unlock expert perspectives from <strong className="text-amber-400">280+ Lenny&apos;s Podcast episodes</strong>. 
+                See what industry leaders have said about your themes.
+              </p>
+              {openaiKeyFromEnv ? (
+                <div className="text-xs text-emerald-400 flex items-center gap-1">
+                  <span>✓</span> OpenAI key found — expert perspectives enabled
+                </div>
+              ) : (
+                <div className="relative">
+                  <input
+                    type="password"
+                    value={openaiKey}
+                    onChange={(e) => setOpenaiKey(e.target.value)}
+                    placeholder="sk-..."
+                    autoComplete="off"
+                    className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                  />
+                </div>
+              )}
+              <p className="text-xs text-slate-500">
+                Get one at{" "}
+                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:underline">
+                  platform.openai.com
+                </a>
+              </p>
+            </div>
 
             {/* Cost Summary */}
             {costEstimate && (
@@ -859,7 +936,7 @@ function FastOnboardingContent() {
                       : costEstimate.estimatedCostUSD.toFixed(2)}</strong>
                   </div>
                   <div className="text-xs text-slate-500">
-                    {selectedDays} days • {costEstimate.conversationCount} conversations • {selectedProvider}
+                    {selectedDays} days • {costEstimate.conversationCount} conversations • Claude
                   </div>
                 </div>
               </div>
@@ -875,7 +952,7 @@ function FastOnboardingContent() {
               </button>
               <button
                 onClick={saveKeyAndProceed}
-                disabled={validatingKey || (!keyFromEnv && !apiKey)}
+                disabled={validatingKey || keyValid !== true}
                 className="flex-[2] py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all flex items-center justify-center gap-2"
               >
                 {validatingKey ? (
@@ -945,6 +1022,11 @@ function FastOnboardingContent() {
                   <h1 className="text-3xl font-bold text-white">Your Theme Map</h1>
                   <p className="text-slate-400">
                     Analyzed {themeMap.analyzed.conversationsUsed} conversations from the last {themeMap.analyzed.days} days
+                    {themeMap.analyzed.conversationsConsidered > themeMap.analyzed.conversationsUsed && (
+                      <span className="text-slate-500 ml-1">
+                        (of {themeMap.analyzed.conversationsConsidered} — capped for speed)
+                      </span>
+                    )}
                   </p>
                 </div>
 
@@ -985,7 +1067,34 @@ function FastOnboardingContent() {
                               <div className="text-xs text-slate-500 mb-1">
                                 {ev.date} • {ev.chatType}
                               </div>
-                              <div className="text-slate-300 italic">"{ev.snippet}"</div>
+                              <div className="text-slate-300 italic">&quot;{ev.snippet}&quot;</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {/* Expert Perspectives from Lenny's Podcast */}
+                      {theme.expertPerspectives && theme.expertPerspectives.length > 0 && (
+                        <div className="pl-9 pt-2 border-t border-amber-500/20">
+                          <div className="text-xs text-amber-400 mb-2 flex items-center gap-1">
+                            <span>🎙️</span> Expert Perspective
+                          </div>
+                          {theme.expertPerspectives.slice(0, 1).map((quote, j) => (
+                            <div key={j} className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
+                              <p className="text-slate-300 italic">&quot;{quote.content}&quot;</p>
+                              <div className="flex items-center justify-between mt-2 text-xs">
+                                <span className="text-amber-400 font-medium">— {quote.guestName}</span>
+                                {quote.youtubeUrl && quote.episodeTitle && (
+                                  <a 
+                                    href={quote.youtubeUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-slate-500 hover:text-amber-400 transition-colors"
+                                  >
+                                    📺 {quote.episodeTitle}
+                                  </a>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -993,17 +1102,115 @@ function FastOnboardingContent() {
                     </div>
                   ))}
                 </div>
+                
+                {/* Lenny Unlock Teaser */}
+                {themeMap.lennyAvailable && !themeMap.lennyUnlocked && (
+                  <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-xl p-4">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">🎙️</span>
+                      <div>
+                        <h3 className="font-semibold text-amber-300">Unlock Expert Perspectives</h3>
+                        <p className="text-sm text-slate-400 mt-1">
+                          Add an OpenAI API key to see what 280+ industry experts (from Lenny&apos;s Podcast) 
+                          have said about your themes.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Counter-Intuitive */}
+                {themeMap.counterIntuitive && themeMap.counterIntuitive.length > 0 && (
+                  <div className="space-y-4">
+                    <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                      <span>💭</span> Counter-Intuitive
+                    </h2>
+                    {themeMap.counterIntuitive.slice(0, 2).map((item, i) => (
+                      <div key={i} className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-5 space-y-3">
+                        <div className="flex items-start gap-3">
+                          <span className="text-2xl font-bold text-purple-400">{i + 1}</span>
+                          <div>
+                            <h3 className="font-semibold text-white text-lg">{item.title}</h3>
+                            <p className="text-purple-300 text-sm italic mt-1">{item.perspective}</p>
+                          </div>
+                        </div>
+                        <div className="pl-9">
+                          <div className="text-xs text-slate-500 mb-1">Why consider this:</div>
+                          <p className="text-sm text-slate-300">{item.reasoning}</p>
+                        </div>
+                        
+                        {/* Expert Challenge from Lenny's Podcast */}
+                        {item.expertChallenge && (
+                          <div className="pl-9 pt-2 border-t border-purple-500/20">
+                            <div className="text-xs text-amber-400 mb-2 flex items-center gap-1">
+                              <span>🎙️</span> Expert Challenge
+                            </div>
+                            <div className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
+                              <p className="text-slate-300 italic">&quot;{item.expertChallenge.content}&quot;</p>
+                              <div className="flex items-center justify-between mt-2 text-xs">
+                                <span className="text-amber-400 font-medium">— {item.expertChallenge.guestName}</span>
+                                {item.expertChallenge.youtubeUrl && item.expertChallenge.episodeTitle && (
+                                  <a 
+                                    href={item.expertChallenge.youtubeUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-slate-500 hover:text-amber-400 transition-colors"
+                                  >
+                                    📺 {item.expertChallenge.episodeTitle}
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Unexplored Territory */}
                 {themeMap.unexploredTerritory.length > 0 && (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <h2 className="text-lg font-semibold text-white flex items-center gap-2">
                       <span>🔭</span> Unexplored Territory
                     </h2>
                     {themeMap.unexploredTerritory.map((item, i) => (
-                      <div key={i} className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
-                        <h3 className="font-medium text-amber-300">{item.title}</h3>
-                        <p className="text-sm text-slate-400 mt-1">{item.why}</p>
+                      <div key={i} className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-5 space-y-3">
+                        <div className="flex items-start gap-3">
+                          <span className="text-2xl font-bold text-amber-400">{i + 1}</span>
+                          <div>
+                            <h3 className="font-semibold text-white text-lg">{item.title}</h3>
+                          </div>
+                        </div>
+                        <div className="pl-9">
+                          <div className="text-xs text-slate-500 mb-1">Why this matters:</div>
+                          <p className="text-sm text-slate-300">{item.why}</p>
+                        </div>
+                        
+                        {/* Expert Insight from Lenny's Podcast */}
+                        {item.expertInsight && (
+                          <div className="pl-9 pt-2 border-t border-amber-500/20">
+                            <div className="text-xs text-amber-400 mb-2 flex items-center gap-1">
+                              <span>🎙️</span> Expert Insight
+                            </div>
+                            <div className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
+                              <p className="text-slate-300 italic">&quot;{item.expertInsight.content}&quot;</p>
+                              <div className="flex items-center justify-between mt-2 text-xs">
+                                <span className="text-amber-400 font-medium">— {item.expertInsight.guestName}</span>
+                                {item.expertInsight.youtubeUrl && item.expertInsight.episodeTitle && (
+                                  <a 
+                                    href={item.expertInsight.youtubeUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-slate-500 hover:text-amber-400 transition-colors"
+                                  >
+                                    📺 {item.expertInsight.episodeTitle}
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

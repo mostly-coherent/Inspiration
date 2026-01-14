@@ -321,6 +321,31 @@ def search_messages(
     return matches
 
 
+# Module-level cache to avoid reloading 295MB JSON on every batch
+_EMBEDDING_CACHE: dict | None = None
+_EMBEDDING_CACHE_LOADED = False
+
+
+def _get_embedding_cache() -> dict:
+    """Load embedding cache once and reuse (avoids 295MB JSON parse per batch)."""
+    global _EMBEDDING_CACHE, _EMBEDDING_CACHE_LOADED
+    if _EMBEDDING_CACHE_LOADED:
+        return _EMBEDDING_CACHE or {}
+    
+    cache_path = get_embedding_cache_path()
+    if cache_path.exists():
+        try:
+            with open(cache_path) as f:
+                _EMBEDDING_CACHE = json.load(f)
+            print(f"[Cache] Loaded {len(_EMBEDDING_CACHE):,} embeddings from cache", file=__import__('sys').stderr)
+        except (json.JSONDecodeError, IOError):
+            _EMBEDDING_CACHE = {}
+    else:
+        _EMBEDDING_CACHE = {}
+    _EMBEDDING_CACHE_LOADED = True
+    return _EMBEDDING_CACHE
+
+
 def batch_get_embeddings(texts: list[str], use_cache: bool = True, allow_fallback: bool = True) -> list[list[float]]:
     """
     Get embeddings for multiple texts efficiently (batched API call).
@@ -352,14 +377,8 @@ def batch_get_embeddings(texts: list[str], use_cache: bool = True, allow_fallbac
     if not non_empty_texts:
         return [[0.0] * EMBEDDING_DIM] * len(texts)
     
-    cache_path = get_embedding_cache_path()
-    cache = {}
-    if use_cache and cache_path.exists():
-        try:
-            with open(cache_path) as f:
-                cache = json.load(f)
-        except (json.JSONDecodeError, IOError):
-            pass
+    # Use module-level cache (loaded once, not per batch)
+    cache = _get_embedding_cache() if use_cache else {}
     
     # Check cache for each text
     indices_to_fetch = []
@@ -400,6 +419,7 @@ def batch_get_embeddings(texts: list[str], use_cache: bool = True, allow_fallbac
                 # Save updated cache
                 if use_cache:
                     try:
+                        cache_path = get_embedding_cache_path()
                         cache_path.parent.mkdir(parents=True, exist_ok=True)
                         with open(cache_path, "w") as f:
                             json.dump(cache, f)

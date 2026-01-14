@@ -38,13 +38,18 @@ See PLAN.md for detailed use case descriptions.
 │                            │                    ▲                           │
 │                            ▼                    │ (Sync)                    │
 │                      ┌──────────────┐     ┌──────────────┐                  │
-│                      │  Idea Bank   │     │  Cursor DB   │                  │
-│                      │ Insight Bank │     │  (SQLite)    │                  │
+│                      │  Items Bank  │     │  Cursor DB   │                  │
+│                      │  (Library)   │     │  (SQLite)    │                  │
 │                      └──────────────┘     └──────────────┘                  │
-│                                           ┌──────────────┐                  │
-│                                           │ Claude Code  │                  │
-│                                           │   (JSONL)    │                  │
-│                                           └──────────────┘                  │
+│                            │              ┌──────────────┐                  │
+│                            │              │ Claude Code  │                  │
+│                            │              │   (JSONL)    │                  │
+│                            │              └──────────────┘                  │
+│                            ▼                                                │
+│                      ┌──────────────┐                                       │
+│                      │Lenny Archive │ (Pre-computed embeddings)             │
+│                      │ (280+ eps)   │ NPZ + JSON, local search              │
+│                      └──────────────┘                                       │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -308,11 +313,187 @@ Supports optional source filtering for targeted queries.
 - **API:** `/api/sync` → Parses multi-source output
 - **Format:** `"Cursor: X indexed, Y skipped | Claude Code: A indexed, B skipped"`
 
+### Fast Start Integration (Updated 2026-01-14)
+
+**Combined Metrics in `estimate_db_metrics()`:**
+- Cursor DB: SQLite query counts `composerData:*` and `chatData:*` entries
+- Claude Code: Counts JSONL session files in `~/.claude/projects/`
+- Combined total shown in onboarding: "1,089 Cursor + 38 Claude Code conversations"
+
+**Date Span Calculation Fix:**
+- Uses `ORDER BY RANDOM() LIMIT 200` for representative sampling
+- Ensures date range reflects oldest to newest conversations (not just recent)
+- Example: "177 days" instead of incorrectly showing "73 days"
+
+**Size Display:**
+- Combined size from both sources
+- Auto-converts to GB when > 1000MB: "3.4 GB" instead of "3396 MB"
+
 ### Backward Compatibility
 
 - Existing messages without `source` field → Default to `source='cursor'`
 - Migration SQL is idempotent (safe to run multiple times)
 - No breaking changes to existing APIs
+
+---
+
+## Lenny's Podcast Integration Architecture
+
+### Overview
+
+280+ expert podcast episodes from Lenny's Podcast, pre-indexed and searchable. Provides expert validation for user's themes in the Theme Explorer.
+
+**Key Design Decision:** Pre-computed embeddings are **committed to the repo** (~74MB) so new users get expert perspectives immediately with zero setup and zero API cost.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    LENNY'S PODCAST INTEGRATION                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐    │
+│  │ GitHub Repo      │     │ Transcript       │     │ Local Indexer    │    │
+│  │ (ChatPRD/lennys) │────▶│ Parser           │────▶│ (Embeddings)     │    │
+│  │                  │     │                  │     │                  │    │
+│  │ 280+ episodes    │     │ YAML frontmatter │     │ OpenAI API       │    │
+│  │ Rich metadata    │     │ Speaker chunks   │     │ text-embedding   │    │
+│  └──────────────────┘     └──────────────────┘     └──────────────────┘    │
+│           │                                               │                │
+│           │  git pull                                     ▼                │
+│           ▼                                      ┌──────────────────┐      │
+│  ┌──────────────────┐                            │ lenny_embeddings │      │
+│  │ data/lenny-      │                            │ .npz (~74MB)     │      │
+│  │ transcripts/     │                            │ (COMMITTED)      │      │
+│  │ (GITIGNORED)     │                            └──────────────────┘      │
+│  └──────────────────┘                            ┌──────────────────┐      │
+│                                                  │ lenny_metadata   │      │
+│                                                  │ .json (~5MB)     │      │
+│                                                  │ (COMMITTED)      │      │
+│                                                  └────────┬─────────┘      │
+│                                                           │                │
+│           ┌───────────────────────────────────────────────┘                │
+│           ▼                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                        SEARCH FLOW                                   │  │
+│  │                                                                      │  │
+│  │  Theme Explorer    /api/expert-       lenny_search.py    NumPy       │  │
+│  │  (Patterns Tab) ──▶ perspectives ──▶ search_lenny_    ──▶ cosine     │  │
+│  │  (Counter Tab)     GET ?theme=X      archive()            similarity │  │
+│  │                                                                      │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Storage Strategy
+
+| File | Size | Git Status | Purpose |
+|------|------|------------|---------|
+| `data/lenny-transcripts/` | ~25MB | **GITIGNORED** | Raw transcript source (cloned repo) |
+| `data/lenny_embeddings.npz` | ~74MB | **COMMITTED** | Pre-computed embeddings for instant search |
+| `data/lenny_metadata.json` | ~5MB | **COMMITTED** | Episode metadata + chunk content (lossless) |
+
+**Why Commit Embeddings?**
+- Zero setup for new users (clone → run → works)
+- No OpenAI API cost for first-time indexing ($0.20+)
+- Instant "time to value" — expert perspectives appear immediately
+- Trade-off: +79MB repo size (acceptable for UX benefit)
+
+### Data Schema
+
+**Episode Metadata:**
+```json
+{
+  "id": "brian-chesky",
+  "filename": "brian-chesky/transcript.md",
+  "guest_name": "Brian Chesky",
+  "title": "Brian Chesky on Designing a 10-Star Experience",
+  "youtube_url": "https://youtube.com/watch?v=...",
+  "video_id": "...",
+  "description": "...",
+  "duration": "1:23:45",
+  "duration_seconds": 5025,
+  "view_count": 500000,
+  "word_count": 15000,
+  "chunk_count": 45,
+  "format": "github"
+}
+```
+
+**Chunk Metadata:**
+```json
+{
+  "idx": 0,
+  "episode_id": "brian-chesky",
+  "speaker": "Brian Chesky",
+  "timestamp": "00:05:30",
+  "content": "The actual quote text...",
+  "word_count": 250
+}
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `engine/common/lenny_parser.py` | Parse transcripts (YAML frontmatter + markdown), split into chunks |
+| `engine/common/lenny_search.py` | NumPy-based cosine similarity search over embeddings |
+| `engine/scripts/index_lenny_local.py` | Re-index if transcripts updated (incremental via file hashing) |
+| `src/app/api/lenny-stats/route.ts` | GET stats (episode count, chunk count, indexed date) |
+| `src/app/api/lenny-sync/route.ts` | POST to git pull + re-index |
+| `src/app/api/expert-perspectives/route.ts` | GET search results for a theme |
+
+### Sync Flow
+
+**Automatic (on Memory refresh):**
+```
+User clicks "Refresh Memory"
+    ↓
+ScoreboardHeader.tsx → POST /api/sync (Memory sync)
+    ↓
+After Memory sync completes:
+    ↓
+Auto-trigger: POST /api/lenny-sync
+    ↓
+1. Check if running in cloud (skip if Vercel)
+2. git pull origin main (data/lenny-transcripts/)
+3. If new files detected:
+   a. Run index_lenny_local.py
+   b. Update lenny_embeddings.npz
+   c. Update lenny_metadata.json
+4. Clear embedding cache
+    ↓
+UI shows: "✓ Synced 5 new episodes"
+```
+
+**Manual (sync button):**
+- Click 🔄 button next to "280 expert episodes" in Scoreboard
+- Same flow as above
+
+### Search Performance
+
+| Operation | Time | Cost |
+|-----------|------|------|
+| Load embeddings (first call) | ~200ms | $0 |
+| Load embeddings (cached) | ~5ms | $0 |
+| Embed query | ~100ms | ~$0.0001 |
+| NumPy cosine similarity (44K vectors) | ~20ms | $0 |
+| **Total search time** | **~300ms** | **~$0.0001** |
+
+### UI Integration
+
+**Theme Explorer — Patterns Tab:**
+- When viewing a theme's synthesis, "Expert Perspectives" section shows
+- Fetches: `GET /api/expert-perspectives?theme={theme_description}&topK=3`
+- Displays: Quote, guest name, episode title, YouTube link
+
+**Theme Explorer — Counter-Intuitive Tab:**
+- For each counter-intuitive suggestion, fetches expert challenges
+- Shows quotes from experts who have discussed similar contrarian ideas
+
+**ScoreboardHeader:**
+- Shows "🎙️ 280 expert episodes" badge
+- Sync button for manual Lenny archive update
+- Status message after sync ("✓ Up to date" or "✓ Synced N episodes")
 
 ---
 
@@ -359,14 +540,18 @@ inspiration/
 ├── engine/                     # Python generation engine
 │   ├── generate.py             # Unified content generation CLI (insights/ideas/use_case modes)
 │   ├── seek.py                 # Seek (Use Case) CLI (uses unified synthesis pipeline)
+│   ├── generate_themes.py      # Theme Map generation (Fast Start)
 │   ├── common/                 # Shared Python utilities
 │   │   ├── cursor_db.py        # Cursor DB extraction (SQLite + Bubble logic)
+│   │   ├── claude_code_db.py   # Claude Code extraction (JSONL parsing)
+│   │   ├── source_detector.py  # Auto-detect available chat sources
+│   │   ├── lenny_parser.py     # Parse Lenny transcripts (YAML + markdown)
+│   │   ├── lenny_search.py     # NumPy-based Lenny archive search
 │   │   ├── vector_db.py        # Supabase pgvector integration
 │   │   ├── llm.py              # Anthropic + OpenAI wrapper
 │   │   ├── config.py           # User config loader
 │   │   ├── items_bank.py       # Unified ItemsBank harmonization
 │   │   ├── items_bank_supabase.py # Supabase-backed ItemsBank
-│   │   ├── coverage.py         # Coverage Intelligence analysis (NEW)
 │   │   ├── prompt_compression.py # Per-conversation compression
 │   │   ├── semantic_search.py  # Embedding generation & vector similarity
 │   │   └── progress_markers.py # Progress streaming & performance logging
@@ -375,17 +560,25 @@ inspiration/
 │   │   ├── sync_messages.py    # Incremental Vector DB sync
 │   │   ├── init_vector_db.sql  # Supabase schema setup
 │   │   └── clear_bank.py       # Clear ItemsBank utility
+│   ├── scripts/                # Utility scripts
+│   │   ├── index_all_messages.py # One-time Vector DB indexer
+│   │   ├── sync_messages.py      # Incremental Vector DB sync
+│   │   ├── index_lenny_local.py  # Lenny archive indexer (embeddings)
+│   │   └── init_vector_db.sql    # Supabase schema setup
 │   └── prompts/                # LLM prompt templates
 │       ├── base_synthesize.md  # Shared prompt base (common rules)
 │       ├── insights_synthesize.md # Insights-specific prompt
 │       ├── ideas_synthesize.md    # Ideas-specific prompt
-│       ├── use_case_synthesize.md # Use case synthesis prompt (NEW)
+│       ├── use_case_synthesize.md # Use case synthesis prompt
 │       └── judge.md            # Reranking judge prompt
-└── data/                       # User data (gitignored)
-    ├── config.json             # User configuration
-    ├── idea_bank.json          # Structured idea storage
-    ├── insight_bank.json       # Structured insight storage
-    └── vector_db_sync_state.json # Sync state tracking
+└── data/                       # User data
+    ├── config.json             # User configuration (gitignored)
+    ├── items_bank.json         # Unified Library storage (gitignored)
+    ├── themes.json             # Theme/Mode configuration (gitignored)
+    ├── vector_db_sync_state.json # Sync state tracking (gitignored)
+    ├── lenny_embeddings.npz    # Pre-computed Lenny embeddings (COMMITTED ~74MB)
+    ├── lenny_metadata.json     # Lenny episode/chunk metadata (COMMITTED ~5MB)
+    └── lenny-transcripts/      # Cloned Lenny repo (gitignored)
 ```
 
 ---
@@ -643,48 +836,6 @@ page.tsx (Orchestrator)
 - **State**: `memoryStats`, `libraryStats`, `isSyncing`
 - **API**: `/api/brain-stats`, `/api/items`, `/api/sync`
 
-**8. Coverage Intelligence Context** (`coverage/page.tsx`, `CoverageDashboard`)
-- **Purpose**: Automate Library growth by analyzing Memory terrain vs. Library coverage
-- **Boundaries**: Analyze coverage → Identify gaps → Suggest runs → Execute runs → Track completion
-- **State**: `memoryDensity`, `libraryCoverage`, `coverageGaps`, `suggestedRuns`, `coverageScore`
-- **API**: `/api/coverage/analyze`, `/api/coverage/runs`, `/api/coverage/runs/execute`
-
-**Core Concepts:**
-- **Memory Terrain**: Conversation density by week (from `get_memory_density_by_week()` RPC)
-- **Library Coverage**: Items with `source_start_date`/`source_end_date` spanning each week
-- **Coverage Gap**: Week with high conversation count but low/no Library items
-- **Coverage Run**: Queued generation job targeting a specific date range
-
-**Data Flow:**
-```
-/coverage page loads
-    ↓
-GET /api/coverage/analyze
-    ↓
-Python: coverage.py → get_memory_density_from_db()
-                    → get_library_coverage_from_db()
-                    → analyze_coverage() → gaps
-                    → suggest_runs_from_gaps()
-    ↓
-Frontend displays:
-    ├─→ Coverage Score (0-100%)
-    ├─→ Memory Terrain vs Library Coverage chart
-    └─→ Suggested Runs (with "Run Now" buttons)
-    
-User clicks "Run Now"
-    ↓
-POST /api/coverage/runs/execute
-    ↓
-Python: generate.py --mode ideas/insights
-        --date-range start:end
-        --item-count N
-        --source-run-id {runId}
-    ↓
-Items generated with source_start_date/source_end_date
-    ↓
-Coverage run marked completed
-```
-
 ---
 
 ### v3 UI Architecture (Library-Centric Layout)
@@ -901,7 +1052,7 @@ import type { ToolType } from "@/lib/types";
 
 ### API & Data Layer Architecture
 
-**API Client Organization (Updated 2026-01-10):**
+**API Client Organization (Updated 2026-01-14):**
 ```
 src/app/api/
 ├── generate/route.ts          # Content generation endpoint
@@ -923,20 +1074,30 @@ src/app/api/
 │       ├── route.ts           # Theme listing
 │       ├── preview/route.ts   # Theme preview
 │       └── synthesize/route.ts # LLM synthesis
-├── brain-stats/route.ts       # Memory stats endpoint
+├── brain-stats/               # Memory stats
+│   ├── route.ts               # Memory stats endpoint
+│   └── sources/route.ts       # Per-source breakdown (Cursor vs Claude Code)
 ├── brain-diagnostics/route.ts # Diagnostics endpoint
 ├── generate-themes/route.ts   # Fast Start Theme Map generation
 ├── theme-map/route.ts         # Theme Map persistence (GET/POST/DELETE)
 ├── debug-report/route.ts      # Diagnostic report for troubleshooting
-├── coverage/                  # Coverage Intelligence
-│   ├── analyze/route.ts       # Analyze coverage gaps
-│   ├── runs/route.ts          # Coverage runs CRUD
-│   └── runs/execute/route.ts  # Execute coverage run
 ├── chat-history/route.ts      # Chat history endpoint
 ├── harmonize/route.ts         # Item harmonization
 ├── modes/route.ts             # Mode management
 ├── prompts/route.ts           # Prompt templates
-├── themes/route.ts            # Themes config
+├── synthesis-prompts/route.ts # Synthesis prompt templates
+├── themes/                    # Themes config & features
+│   ├── route.ts               # Themes config CRUD
+│   ├── counter-intuitive/     # Counter-intuitive suggestions
+│   │   ├── route.ts           # Get suggestions
+│   │   └── save/route.ts      # Save reflections
+│   └── unexplored/route.ts    # Unexplored territory detection
+├── unexplored/                # Unexplored topic management
+│   ├── dismiss/route.ts       # Dismiss unexplored topic
+│   └── enrich/route.ts        # Enrich unexplored topic
+├── lenny-stats/route.ts       # Lenny archive statistics (NEW)
+├── lenny-sync/route.ts        # Lenny git pull + re-index (NEW)
+├── expert-perspectives/route.ts # Search Lenny for expert quotes (NEW)
 ├── login/route.ts             # Authentication
 ├── logout/route.ts            # Logout
 └── test-supabase/route.ts     # DB connection test
@@ -1243,6 +1404,9 @@ User        UI          API            Python Engine      Supabase (PgVector)
 | **Sync Strategy** | Incremental | Only sync new messages to save API costs and time |
 | **UI Framework** | Next.js 15 | Modern, React Server Components |
 | **Engine** | Python | Rich ecosystem for DB/AI tasks |
+| **Lenny Embeddings** | Local NumPy (.npz) | 12K vectors easily handled locally; no cloud cost; works offline |
+| **Lenny Embeddings Git** | Committed to repo | Zero-setup for new users; instant "time to value"; acceptable +79MB |
+| **Multi-Source** | Cursor + Claude Code | Users may use both tools; unified Memory merges both sources |
 
 ---
 
@@ -1418,7 +1582,7 @@ Generation Request
 - Easier to maintain and extend
 - Use cases become reusable assets in bank
 
-**Last Updated:** 2026-01-11 (Progress Tracking & Transparency Architecture)
+**Last Updated:** 2026-01-14 (Lenny's Podcast Integration Architecture, Multi-Source improvements)
 
 ---
 
@@ -1685,16 +1849,6 @@ CREATE FUNCTION search_similar_library_items(
   match_count int DEFAULT 5,
   similarity_threshold float DEFAULT 0.85
 ) RETURNS TABLE (id text, title text, similarity float)
-```
-
-**`get_memory_density_by_week()`** - Memory terrain analysis:
-```sql
-RETURNS TABLE (week_start date, week_end date, conversation_count int, message_count int)
-```
-
-**`get_library_coverage_by_week_and_type()`** - Coverage by item type:
-```sql
-RETURNS TABLE (week_start date, week_end date, item_type text, item_count int)
 ```
 
 ### Files Involved

@@ -217,9 +217,10 @@ The novelty is **what** you're searching (your own AI conversations), not the un
 Your themes are now enriched with wisdom from 280+ expert episodes—product leaders, engineers, founders. When you explore a theme, see what **Claire Vo** (ChatPRD), **Dylan Field** (Figma), **Elena Verna** (Lovable, Miro) said about similar topics. Click through to YouTube timestamps.
 
 How it works:
-- **Zero setup required:** Pre-computed embeddings (~219MB) are included in the repo. Just clone and run!
-- 269 episodes, 44,371 searchable segments, all rich metadata (titles, YouTube URLs, timestamps)
-- Works immediately with Fast Start (Anthropic key only) or Full Setup (+ OpenAI for embeddings)
+- **Pre-computed embeddings included:** ~219MB embeddings ship with the repo (no re-indexing needed)
+- **Requires:** Anthropic API key (Theme Map) + OpenAI API key (expert perspectives unlock)
+- 280+ episodes, 44,371 searchable segments, all rich metadata (titles, YouTube URLs, timestamps)
+- Works with Fast Start (Anthropic key)—add OpenAI key to unlock expert perspectives
 - Auto-syncs new episodes when you refresh Memory (pulls from [ChatPRD's archive](https://github.com/ChatPRD/lennys-podcast-transcripts))
 - No embedding cost on first run—everything pre-computed
 

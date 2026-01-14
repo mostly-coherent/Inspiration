@@ -28,10 +28,31 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 - **Theme Explorer (LIB-8)** — Pattern discovery via dynamic similarity grouping (forest → trees zoom), AI synthesis per theme
 - **Unexplored Territory (LIB-10)** — Find topics discussed in Memory but missing from Library
 - **Counter-Intuitive (LIB-11)** — LLM-generated reflection prompts for "good opposite" perspectives
-- **Coverage Intelligence (v5)** — Automated gap detection and suggested generation runs
-- **Explore Coverage** — Visual chart of Memory terrain vs Library coverage
+- **Expert Perspectives (Lenny's Podcast)** — 280+ expert episodes integrated into Theme Explorer (Patterns + Counter-Intuitive tabs)
 
 **Longitudinal Intelligence Status (v4 Phase 3):** 3/3 complete — Theme Explorer with Patterns, Unexplored, and Counter-Intuitive tabs operational.
+
+### Lenny's Podcast Integration
+
+**What:** 280+ expert podcast episodes from Lenny's Podcast, pre-indexed and searchable.
+
+**Key Design Decision:** Pre-computed embeddings are **committed to the repo** (not gitignored) so new users get expert perspectives immediately with zero setup and zero cost.
+
+| File | Size | Purpose |
+|------|------|---------|
+| `data/lenny_embeddings.npz` | ~74MB | Pre-computed embeddings (COMMITTED) |
+| `data/lenny_metadata.json` | ~5MB | Episode metadata + chunk content (COMMITTED) |
+| `data/lenny-transcripts/` | ~25MB | Raw transcripts (GITIGNORED - source repo) |
+
+**Key Files:**
+- `engine/common/lenny_parser.py` — Parse transcripts (YAML frontmatter + markdown)
+- `engine/common/lenny_search.py` — Local semantic search over embeddings
+- `engine/scripts/index_lenny_local.py` — Re-index if transcripts updated
+- `src/app/api/lenny-stats/route.ts` — Stats API
+- `src/app/api/lenny-sync/route.ts` — Git pull + re-index API
+- `src/app/api/expert-perspectives/route.ts` — Search API for Theme Explorer
+
+**Sync Flow:** When user clicks "Refresh Memory", Lenny archive auto-syncs via `git pull` and re-indexes if new episodes detected.
 
 ### New User Onboarding
 
@@ -47,7 +68,7 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 | Step | What Happens | Time |
 |------|-------------|------|
 | 1. Welcome | Auto-detect Cursor DB, show size + density | ~3s |
-| 2. API Key | Paste one key (Anthropic/OpenAI/OpenRouter) | ~10s |
+| 2. API Key | Paste Anthropic API key | ~10s |
 | 3. Generate | Create Theme Map from local SQLite | ~60s |
 | **Done!** | See top 5 themes + unexplored territory | 🎉 |
 
@@ -153,37 +174,9 @@ npm run dev
 2.  **Initialize DB:** Run `engine/scripts/init_vector_db.sql` in Supabase SQL Editor.
 3.  **Index History:** Run `python3 engine/scripts/index_all_messages.py` (one-time).
 4.  **Sync:** Run `python3 engine/scripts/sync_messages.py` periodically.
-5.  **Coverage Tables (v5):** Run `engine/scripts/add_coverage_tables.sql` for Coverage Intelligence.
-6.  **Harmonization Optimization:** Run `engine/scripts/optimize_harmonization.sql` + `python3 engine/scripts/backfill_library_embeddings.py`.
+5.  **Harmonization Optimization:** Run `engine/scripts/optimize_harmonization.sql` + `python3 engine/scripts/backfill_library_embeddings.py`.
 
 ---
-
-## Coverage Intelligence (v5)
-
-**Purpose:** Automate Library growth by analyzing Memory terrain vs Library coverage.
-
-**Key Concepts:**
-- **Memory Terrain:** Conversation density by week (how much raw material exists)
-- **Library Coverage:** Which time periods have items derived from them
-- **Coverage Gap:** High chat density + low Library items = opportunity
-- **Coverage Score:** 0-100% measure of how well Library tracks Memory
-
-**Pages:**
-- `/` — Main page shows coverage score + 4 suggested runs inline
-- `/explore-coverage` — Full visualization chart + all suggested runs
-
-**CLI for Coverage Runs:**
-```bash
-# Generate ideas for specific date range (with topic filter)
-python3 engine/generate.py --mode ideas \
-  --start-date 2026-01-01 --end-date 2026-01-07 \
-  --item-count 10 --source-tracking
-
-# Disable topic filter to regenerate even covered topics
-python3 engine/generate.py --mode insights \
-  --start-date 2026-01-01 --end-date 2026-01-07 \
-  --source-tracking --no-topic-filter
-```
 
 **Performance Optimizations (IMP-15/16/17):**
 - pgvector RPC for server-side similarity search (275x fewer API calls)
@@ -196,31 +189,26 @@ python3 engine/generate.py --mode insights \
 
 | File | Purpose |
 |------|---------|
-| `src/app/page.tsx` | Main UI — redirects to onboarding if new user, integrated Coverage suggestions |
+| `src/app/page.tsx` | Main UI — redirects to onboarding if new user |
 | `src/app/onboarding/page.tsx` | 3-step onboarding wizard (Welcome → API Keys → Sync) |
 | `src/app/themes/page.tsx` | Theme Explorer (LIB-8/10/11) — Patterns, Unexplored Territory, Counter-Intuitive tabs |
 | `src/components/UnexploredTab.tsx` | Unexplored Territory tab — find Memory topics missing from Library |
 | `src/components/CounterIntuitiveTab.tsx` | Counter-Intuitive tab — LLM reflection prompts |
 | `engine/common/unexplored_territory.py` | Unexplored detection algorithm (Memory vs Library clustering) |
 | `engine/common/counter_intuitive.py` | Counter-perspective LLM generation |
-| `src/app/explore-coverage/page.tsx` | Coverage visualization — chart + suggested runs (v5) |
 | `src/app/settings/page.tsx` | Settings wizard (workspaces, VectorDB, voice, LLM, mode settings) |
-| `src/app/api/coverage/analyze/route.ts` | Coverage analysis API (v5) |
 | `src/app/api/generate/route.ts` | Generation API with topic filter support |
 | `src/app/api/generate-stream/route.ts` | Streaming generation with real-time progress markers |
 | `src/app/api/seek-stream/route.ts` | Streaming seek with real-time progress markers |
 | `src/app/api/performance/route.ts` | Performance analytics API (run logs, bottleneck analysis) |
-| `src/components/ScoreboardHeader.tsx` | Memory + Library stats header with coverage score (v3+v5) |
+| `src/components/ScoreboardHeader.tsx` | Memory + Library stats header (v3) |
 | `src/components/ProgressPanel.tsx` | Real-time progress display with phases, cost, warnings |
 | `src/lib/errorExplainer.ts` | Classify errors into layman-friendly explanations |
-| `src/components/CoverageSuggestions.tsx` | Suggested runs display on main page (v5) |
-| `src/components/CoverageVisualization.tsx` | Bar chart of terrain vs coverage (v5) |
 | `src/components/LibraryView.tsx` | Full-width library browser with detail panel (v3.1) |
 | `engine/generate.py` | Unified generation CLI with topic filter integration |
 | `engine/common/cursor_db.py` | Core DB extraction (Mac/Windows only, handles "Bubble" architecture) |
 | `engine/common/vector_db.py` | Supabase interface for storage & search (server-side RPC) |
 | `engine/common/items_bank_supabase.py` | Supabase-backed ItemsBank with batch operations |
-| `engine/common/coverage.py` | Coverage Intelligence analysis engine (v5) |
 | `engine/common/topic_filter.py` | Pre-generation topic filtering (IMP-17) |
 | `engine/common/semantic_search.py` | Embedding generation & vector similarity |
 | `engine/common/progress_markers.py` | Progress streaming markers & performance logging |
@@ -352,10 +340,9 @@ python3 engine/generate.py --mode insights \
 ## Environment Variables
 
 ```bash
-# LLM Provider (choose one or more)
-ANTHROPIC_API_KEY=sk-ant-...      # For Anthropic Claude
-OPENAI_API_KEY=sk-...              # For OpenAI GPT or embeddings
-OPENROUTER_API_KEY=sk-or-...       # For OpenRouter (500+ models)
+# LLM Provider
+ANTHROPIC_API_KEY=sk-ant-...      # Required: For Claude (generation, synthesis)
+OPENAI_API_KEY=sk-...              # Required for Full Setup: Embeddings, semantic search
 
 # Required for Vector DB
 SUPABASE_URL=...
