@@ -33,6 +33,20 @@ interface CounterIntuitiveSuggestion {
   dismissed: boolean;
 }
 
+interface ExpertChallenge {
+  guestName: string;
+  speaker: string;
+  timestamp: string;
+  content: string;
+  similarity: number;
+  episodeFilename: string;
+  // Rich metadata (v2, from GitHub format)
+  episodeTitle?: string;
+  youtubeUrl?: string;
+  videoId?: string;
+  duration?: string;
+}
+
 interface SavedReflection {
   id: string;
   clusterTitle: string;
@@ -103,6 +117,10 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false); // P5: Track background refresh
   
+  // Expert challenges state (per suggestion)
+  const [expertChallenges, setExpertChallenges] = useState<Record<string, ExpertChallenge[]>>({});
+  const [expertLoading, setExpertLoading] = useState<Record<string, boolean>>({});
+  
   // Check if feature is enabled
   const isEnabled = config?.enabled !== false; // Default to true if config not provided
 
@@ -168,10 +186,46 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
     }
   }, []);
 
+  // Fetch expert challenge for a specific suggestion
+  const fetchExpertChallenge = useCallback(async (suggestionId: string, clusterTitle: string) => {
+    // Skip if already loaded or loading
+    if (expertChallenges[suggestionId] || expertLoading[suggestionId]) return;
+    
+    setExpertLoading(prev => ({ ...prev, [suggestionId]: true }));
+    
+    try {
+      // Search for contrarian perspectives on this topic
+      const searchQuery = `contrarian view ${clusterTitle} challenge assumption`;
+      const response = await fetch(
+        `/api/expert-perspectives?theme=${encodeURIComponent(searchQuery)}&topK=1&minSimilarity=0.3`
+      );
+      const data = await response.json();
+      
+      if (data.success && data.quotes && data.quotes.length > 0) {
+        setExpertChallenges(prev => ({ ...prev, [suggestionId]: data.quotes }));
+      } else {
+        setExpertChallenges(prev => ({ ...prev, [suggestionId]: [] }));
+      }
+    } catch {
+      setExpertChallenges(prev => ({ ...prev, [suggestionId]: [] }));
+    } finally {
+      setExpertLoading(prev => ({ ...prev, [suggestionId]: false }));
+    }
+  }, [expertChallenges, expertLoading]);
+
   useEffect(() => {
     fetchSuggestions();
     fetchSavedReflections();
   }, [fetchSuggestions, fetchSavedReflections]);
+
+  // Fetch expert challenges for all visible suggestions
+  useEffect(() => {
+    if (suggestions.length > 0 && !showSaved) {
+      suggestions.forEach(suggestion => {
+        fetchExpertChallenge(suggestion.id, suggestion.clusterTitle);
+      });
+    }
+  }, [suggestions, showSaved, fetchExpertChallenge]);
 
   const handleKeepInMind = async (suggestion: CounterIntuitiveSuggestion) => {
     setActionInProgress(suggestion.id);
@@ -522,6 +576,57 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
                       &quot;{suggestion.reflectionPrompt}&quot;
                     </p>
                   </div>
+
+                  {/* Expert Challenge from Lenny's Podcast */}
+                  {expertLoading[suggestion.id] && (
+                    <div className="bg-amber-900/10 border border-amber-700/20 rounded-lg p-3 mb-4">
+                      <div className="flex items-center gap-2 text-xs text-amber-400">
+                        <span className="animate-pulse">🎙️</span>
+                        <span>Finding expert perspective...</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {expertChallenges[suggestion.id] && expertChallenges[suggestion.id].length > 0 && (
+                    <div className="bg-amber-900/20 border border-amber-700/30 rounded-lg p-4 mb-4">
+                      <div className="flex items-center gap-2 mb-3 text-amber-400">
+                        <span className="text-lg">🎙️</span>
+                        <span className="text-xs font-medium">Expert Challenge</span>
+                        <span className="text-xs text-slate-500">from Lenny&apos;s Podcast</span>
+                      </div>
+                      {expertChallenges[suggestion.id].map((quote, idx) => (
+                        <div key={idx}>
+                          <p className="text-slate-200 text-sm leading-relaxed italic mb-2">
+                            &quot;{quote.content.length > 350 ? quote.content.slice(0, 350) + '...' : quote.content}&quot;
+                          </p>
+                          <div className="flex flex-col gap-1.5 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="text-amber-300 font-medium">— {quote.guestName}</span>
+                              <span className="text-slate-500">{Math.round(quote.similarity * 100)}% relevant</span>
+                            </div>
+                            {/* Episode title + YouTube link */}
+                            {quote.episodeTitle && (
+                              <div className="flex items-center gap-2 text-slate-400">
+                                <span className="truncate max-w-[280px]" title={quote.episodeTitle}>
+                                  📺 {quote.episodeTitle}
+                                </span>
+                                {quote.youtubeUrl && (
+                                  <a 
+                                    href={quote.youtubeUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-amber-400 hover:text-amber-300 hover:underline flex-shrink-0"
+                                  >
+                                    Watch →
+                                  </a>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Actions */}
                   <div className="flex gap-2">

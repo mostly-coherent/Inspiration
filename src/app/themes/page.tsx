@@ -40,6 +40,25 @@ interface SynthesisData {
   itemCount: number;
 }
 
+interface ExpertQuote {
+  guestName: string;
+  speaker: string;
+  timestamp: string;
+  content: string;
+  similarity: number;
+  episodeFilename: string;
+  // Rich metadata (v2, from GitHub format)
+  episodeTitle?: string;
+  youtubeUrl?: string;
+  videoId?: string;
+  duration?: string;
+}
+
+interface ExpertPerspectivesData {
+  quotes: ExpertQuote[];
+  indexed: boolean;
+}
+
 // Item type filter options
 type ItemTypeFilter = "all" | "idea" | "insight" | "use_case";
 
@@ -99,6 +118,10 @@ function ThemesPage() {
   const [synthesis, setSynthesis] = useState<SynthesisData | null>(null);
   const [synthesisLoading, setSynthesisLoading] = useState(false);
   const [synthesisError, setSynthesisError] = useState<string | null>(null);
+  
+  // Expert perspectives state
+  const [expertPerspectives, setExpertPerspectives] = useState<ExpertPerspectivesData | null>(null);
+  const [expertLoading, setExpertLoading] = useState(false);
   
   // One-off items expansion state
   const [oneOffExpanded, setOneOffExpanded] = useState(false);
@@ -255,6 +278,29 @@ function ThemesPage() {
     }
   }, [itemTypeFilter]);
 
+  // Fetch expert perspectives when a theme is selected
+  const fetchExpertPerspectives = useCallback(async (themeName: string) => {
+    setExpertLoading(true);
+    setExpertPerspectives(null);
+    
+    try {
+      const response = await fetch(`/api/expert-perspectives?theme=${encodeURIComponent(themeName)}&topK=3&minSimilarity=0.35`);
+      const json = await response.json();
+      
+      if (json.success) {
+        setExpertPerspectives({
+          quotes: json.quotes || [],
+          indexed: json.indexed ?? false,
+        });
+      }
+    } catch (err) {
+      console.error("Failed to fetch expert perspectives:", err);
+      setExpertPerspectives({ quotes: [], indexed: false });
+    } finally {
+      setExpertLoading(false);
+    }
+  }, []);
+
   // Handle theme selection
   const handleThemeClick = (theme: ThemePreview) => {
     if (selectedTheme?.id === theme.id) {
@@ -262,10 +308,12 @@ function ThemesPage() {
       setSelectedTheme(null);
       setSynthesis(null);
       setSynthesisError(null);
+      setExpertPerspectives(null);
     } else {
-      // Select and fetch synthesis
+      // Select and fetch synthesis + expert perspectives
       setSelectedTheme(theme);
       fetchSynthesis(theme);
+      fetchExpertPerspectives(theme.name);
     }
   };
 
@@ -495,6 +543,71 @@ function ThemesPage() {
                             ))}
                           </div>
                           
+                          {/* Expert Perspectives from Lenny's Podcast */}
+                          {expertPerspectives && expertPerspectives.indexed && expertPerspectives.quotes.length > 0 && (
+                            <div className="pt-4 border-t border-slate-700/50">
+                              <div className="flex items-center gap-2 mb-3 text-amber-400">
+                                <span className="text-lg">🎙️</span>
+                                <span className="text-sm font-medium">Expert Perspectives</span>
+                                <span className="text-xs text-slate-500">from Lenny&apos;s Podcast</span>
+                              </div>
+                              <div className="space-y-3">
+                                {expertPerspectives.quotes.map((quote, idx) => (
+                                  <div 
+                                    key={idx}
+                                    className="bg-amber-900/20 border border-amber-700/30 rounded-lg p-4"
+                                  >
+                                    <p className="text-slate-200 text-sm leading-relaxed italic mb-3">
+                                      &quot;{quote.content.length > 400 ? quote.content.slice(0, 400) + '...' : quote.content}&quot;
+                                    </p>
+                                    <div className="flex flex-col gap-2 text-xs">
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2 text-amber-300">
+                                          <span className="font-medium">— {quote.guestName}</span>
+                                          {quote.speaker !== quote.guestName && (
+                                            <span className="text-slate-500">({quote.speaker})</span>
+                                          )}
+                                        </div>
+                                        <span className="text-slate-500" title="Relevance score">
+                                          {Math.round(quote.similarity * 100)}% match
+                                        </span>
+                                      </div>
+                                      {/* Episode title + YouTube link */}
+                                      {quote.episodeTitle && (
+                                        <div className="flex items-center gap-2 text-slate-400">
+                                          <span className="truncate max-w-[300px]" title={quote.episodeTitle}>
+                                            📺 {quote.episodeTitle}
+                                          </span>
+                                          {quote.youtubeUrl && (
+                                            <a 
+                                              href={quote.youtubeUrl}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="text-amber-400 hover:text-amber-300 hover:underline flex-shrink-0"
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              Watch →
+                                            </a>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Expert Loading State */}
+                          {expertLoading && (
+                            <div className="pt-4 border-t border-slate-700/50">
+                              <div className="flex items-center gap-2 text-amber-400">
+                                <span className="animate-pulse">🎙️</span>
+                                <span className="text-sm text-slate-400">Finding expert perspectives...</span>
+                              </div>
+                            </div>
+                          )}
+
                           {/* Provenance: Item Titles */}
                           <div className="pt-4 border-t border-slate-700/50">
                             <div className="flex items-center gap-2 mb-3 text-slate-400">

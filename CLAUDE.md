@@ -35,16 +35,36 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 
 ### New User Onboarding
 
-| Step | What Happens | Required? |
-|------|-------------|-----------|
-| **1. Welcome** | Detect chat DB size, explain value prop | — |
-| **2. API Keys** | Anthropic key required; Supabase optional for < 500MB | ✅ Anthropic |
-| **3. Sync** | Index chat history to Vector DB (if Supabase configured) | Auto |
-| **4. Theme Explorer** | First "aha moment" — see patterns in current Library (LIB-8) | — |
+**Two Paths:**
 
-**Testing Onboarding:** Visit `/onboarding?preview=true` to test without resetting data.
+| Path | Steps | Time | What You Need |
+|------|-------|------|---------------|
+| **⚡ Fast Start** | Welcome → API Key → Theme Map | ~90 seconds | 1 LLM key |
+| **🔧 Full Setup** | Welcome → API Keys → Sync → Theme Explorer | ~2 minutes | LLM + OpenAI + Supabase |
+
+**Fast Start Flow** (`/onboarding-fast`):
+
+| Step | What Happens | Time |
+|------|-------------|------|
+| 1. Welcome | Auto-detect Cursor DB, show size + density | ~3s |
+| 2. API Key | Paste one key (Anthropic/OpenAI/OpenRouter) | ~10s |
+| 3. Generate | Create Theme Map from local SQLite | ~60s |
+| **Done!** | See top 5 themes + unexplored territory | 🎉 |
+
+**Key Files:**
+- `src/app/onboarding-fast/page.tsx` — Fast Start UI
+- `src/app/theme-map/page.tsx` — Theme Map viewer (accessible from main app)
+- `src/app/api/generate-themes/route.ts` — Theme Map generation API
+- `src/app/api/theme-map/route.ts` — Theme Map persistence API
+- `engine/generate_themes.py` — Python CLI for theme generation
+- `engine/common/cursor_db.py` → `get_high_signal_conversations_sqlite_fast()` — Fast SQLite extraction
+
+**Testing Onboarding:** 
+- Fast Start: `/onboarding-fast?preview=true`
+- Full Setup: `/onboarding?preview=true`
 
 **Supabase Requirement Thresholds:**
+- **Fast Start:** No Supabase needed (reads local SQLite directly)
 - < 50MB: Optional (local search works)
 - 50-500MB: Recommended
 - \> 500MB: Required (local too slow)

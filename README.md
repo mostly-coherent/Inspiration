@@ -7,8 +7,9 @@
 
 ![Type](https://img.shields.io/badge/Type-Tool-purple)
 ![Status](https://img.shields.io/badge/Status-Active-green)
-![Stack](https://img.shields.io/badge/Stack-Next.js%2015%20%7C%20Python%20%7C%20Claude%20%7C%20Supabase-orange)
+![Stack](https://img.shields.io/badge/Stack-Next.js%2015%20%7C%20Python%20%7C%20Claude-orange)
 ![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-blue)
+![Fast Start](https://img.shields.io/badge/Fast%20Start-~90%20seconds-brightgreen)
 
 <img src="public/screenshots/homepage.png" alt="Inspiration - Main Interface" width="800">
 
@@ -54,6 +55,7 @@ If you just want to ship code fast and don't care about longitudinal self-knowle
 | **💡 Ideas** | Surface recurring pain points worth building solutions for | Pattern recognition: Which of your 20 ideas keeps coming up in different contexts? |
 | **✨ Insights** | Extract learnings worth sharing (blogs, tweets, research sparks) | Knowledge synthesis: What have you learned that's worth teaching others? |
 | **🔍 Seek** | "I want to build X"—find similar examples from your own history | Self-search: Mine your past conversations for evidence and context |
+| **🎙️ Expert Wisdom** | A growing 280+ expert episodes from Lenny's Podcast integrated into Theme Explorer | Validation: See how industry experts think about the same themes you're exploring |
 
 **The shift to agentic coding means your conversation history is now a record of your thinking process.**
 
@@ -81,40 +83,47 @@ This isn't just about generating ideas—it's about **understanding your own int
 
 ---
 
-## 🚀 Quick Start (2 minutes)
+## 🚀 Quick Start (~90 seconds)
 
 ```bash
 # Clone & install
 git clone https://github.com/mostly-coherent/Inspiration.git
 cd Inspiration
-npm install
-pip install -r engine/requirements.txt
-
-# Run
+npm run bootstrap   # One command: checks prereqs + installs deps
 npm run dev
 ```
 
-**→ Open http://localhost:3000**
+**→ Open http://localhost:3000/onboarding-fast**
 
-That's it. The **onboarding wizard** handles everything else:
+The **Fast Start** gets you to your first insights in ~90 seconds:
 
-| Step | What Happens | You Need |
-|------|-------------|----------|
-| 1. Welcome | Detects your chat history size | Nothing |
-| 2. API Keys | Enter your keys (validated before saving) | See below |
-| 3. Sync | Indexes your chats (< 1 min for most users) | Nothing |
-| **Done!** | → Theme Explorer shows patterns in your thinking | 🎉 |
+| Step | What Happens | Time |
+|------|-------------|------|
+| 1. Auto-detect | Finds your Cursor DB, shows size + density | ~3s |
+| 2. API Key | Paste one key (Anthropic/OpenAI/OpenRouter) | ~10s |
+| 3. Generate | Creates your Theme Map from local SQLite | ~60s |
+| **Done!** | See top 5 themes + unexplored territory | 🎉 |
+
+**No Supabase required.** Fast Start reads directly from your local Cursor database.
+
+### Two Paths
+
+| Path | For Who | What You Need |
+|------|---------|---------------|
+| **⚡ Fast Start** | First-time users, quick exploration | 1 LLM key (Anthropic/OpenAI/OpenRouter) |
+| **🔧 Full Setup** | Power users, large histories (500MB+) | LLM key + OpenAI (embeddings) + Supabase |
 
 ### API Keys
 
-| Key | Required? | What It Enables |
-|-----|-----------|-----------------|
-| **Anthropic** | ✅ Yes | Generation, theme synthesis |
-| **OpenAI** | Optional | Deduplication, semantic search, library sync |
-| **Supabase** | Optional | Scale to 500MB+ history with instant search |
+| Key | Fast Start | Full Setup | What It Enables |
+|-----|------------|------------|-----------------|
+| **Anthropic** | ✅ or | ✅ Yes | Theme synthesis, generation |
+| **OpenAI** | ✅ or | ✅ Yes | Embeddings, dedup, semantic search |
+| **OpenRouter** | ✅ | Optional | 500+ models from 60+ providers |
+| **Supabase** | ❌ Not needed | Optional | Scale to 2GB+ history with instant search |
 
-> **Minimal setup:** Just Anthropic key → basic generation works immediately.  
-> **Full power:** Add OpenAI key → deduplication and smarter Library management.
+> **Fast Start:** One key → Theme Map in 90 seconds. No Vector DB.  
+> **Full Setup:** All keys → Full Library, semantic search, generation modes.
 
 ### 💰 Typical Costs
 
@@ -134,6 +143,7 @@ That's it. The **onboarding wizard** handles everything else:
 
 - **📚 Library System** — Accumulated ideas/insights with automatic deduplication and categorization
 - **🧭 Unexplored Territory** — Find topics you discuss frequently but haven't captured yet; one-click "Enrich Library"
+- **🎙️ Expert Wisdom (NEW!)** — 280+ episodes from Lenny's Podcast indexed locally; see expert perspectives on your themes
 - **📄 Pagination** — Browse large libraries efficiently (50 items per page)
 - **💰 Cost Estimation** — See estimated API cost before running generation
 - **⚡ Optimized Harmonization** — pgvector RPC + parallel processing for 20-60x faster saves
@@ -247,12 +257,18 @@ The innovation is **what** you're searching (your own AI coding conversations fo
 
 ## 🔮 What's Next
 
-**Unexplored Territory is now live!** The app analyzes your Memory to find topics you discuss frequently but haven't captured yet. One click on "Enrich Library" auto-generates ideas and insights for that topic. Combined with performance optimizations (50-80% cost reduction via topic filtering, 20-60x faster harmonization), the Library grows efficiently with minimal manual intervention.
+**🎙️ NEW: Lenny's Podcast Integration!** Your themes are now enriched with wisdom from a growing 280+ expert episodes—top product leaders, engineers, and founders who've built iconic products. When you explore a theme, see what experts like **Claire Vo** (ChatPRD), **Graham Weaver** (Alpine Investors), **Dylan Field** (Figma), **Elena Verna** (Amplitude, Miro), and **Sander Schulhoff** (Learn Prompting) have said about similar topics. Click through to YouTube timestamps for the exact moment.
+
+**How it works:**
+- 44,000+ searchable transcript segments indexed locally (~74MB embeddings)
+- Auto-syncs new episodes when you refresh Memory (pulls from [ChatPRD's archive](https://github.com/ChatPRD/lennys-podcast-transcripts), curated by [Claire Vo](https://github.com/cvolawless))
+- Expert perspectives surface in **Patterns** and **Counter-Intuitive** tabs
+- No extra API cost—runs entirely on local embeddings
 
 **Longitudinal Intelligence (3/3 complete):** Theme Explorer is fully operational with three tabs:
-- **Patterns** — See what themes exist in your Library (zoom in/out)
+- **Patterns** — See what themes exist in your Library + expert validation
 - **Unexplored** — Find topics you discuss frequently but haven't extracted yet
-- **Counter-Intuitive** — LLM-generated reflection prompts to challenge your assumptions
+- **Counter-Intuitive** — LLM-generated reflection prompts + expert contrarian takes
 
 ---
 

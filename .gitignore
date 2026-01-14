@@ -66,3 +66,8 @@ test-results/
 # Canonical docs (README.md, CLAUDE.md, Plan.md, BUILD_LOG.md, PIVOTS.md, ARCHITECTURE.md) are tracked
 data/items_bank.json
 data/items_bank_backup_*.json
+
+# Lenny Podcast Archive (cloned from GitHub, not our content)
+data/lenny-transcripts/
+data/lenny_embeddings.npz
+data/lenny_metadata.json

@@ -324,6 +324,9 @@ inspiration/
 │   ├── app/                    # Next.js 15 App Router
 │   │   ├── page.tsx            # Main page (orchestrates components)
 │   │   ├── layout.tsx          # Root layout (ErrorBoundary, skip links)
+│   │   ├── onboarding/page.tsx # Full setup wizard (API Keys + Sync)
+│   │   ├── onboarding-fast/page.tsx # Fast Start wizard (~90s Theme Map)
+│   │   ├── theme-map/page.tsx  # Theme Map viewer (accessible from header)
 │   │   ├── settings/page.tsx   # Settings wizard
 │   │   ├── api/                # API routes (server-side)
 │   │   │   ├── generate/       # Calls Python engine
@@ -562,6 +565,8 @@ page.tsx (Orchestrator)
 | `MarkdownContent` | Render markdown | `content` |
 | `ExpectedOutput` | Cost/time estimate | Config props |
 | `AnalysisCoverage` | Analysis scope display | Stats props |
+| `DebugReportButton` | Copy diagnostic info | `variant`, `className` |
+| `DebugReportSection` | Troubleshooting section | None |
 
 **Configuration Components:**
 
@@ -618,11 +623,19 @@ page.tsx (Orchestrator)
 - **State**: `config`, `activeTab`, form states
 - **API**: `/api/config`, `/api/modes`, `/api/prompts`
 
-**6. Onboarding Context** (`onboarding/page.tsx`)
-- **Purpose**: New user setup wizard
-- **Boundaries**: Welcome → API Keys → Sync → Complete
-- **State**: `step`, `apiKeys`, `syncStatus`
-- **API**: `/api/config/env`, `/api/config`, `/api/sync`
+**6. Onboarding Context** (`onboarding/page.tsx`, `onboarding-fast/page.tsx`)
+- **Purpose**: New user setup wizard (two paths: Fast Start ~90s, Full Setup ~2min)
+- **Boundaries**: 
+  - Fast Start: Welcome → API Key → Generate Theme Map
+  - Full Setup: Welcome → API Keys → Sync → Complete
+- **State**: `step`, `apiKeys`, `syncStatus`, `themeMap`, `dbMetrics`
+- **API**: `/api/config/env`, `/api/config`, `/api/sync`, `/api/generate-themes`, `/api/theme-map`
+
+**6b. Theme Map Context** (`theme-map/page.tsx`)
+- **Purpose**: View and regenerate saved Theme Map (accessible from main app header)
+- **Boundaries**: Display themes → Regenerate → Navigate to full app
+- **State**: `themeMap`, `savedAt`, `regenerating`
+- **API**: `/api/theme-map`, `/api/generate-themes`, `/api/config`
 
 **7. Scoreboard Context** (`ScoreboardHeader`)
 - **Purpose**: Always-visible Memory + Library status
@@ -912,6 +925,9 @@ src/app/api/
 │       └── synthesize/route.ts # LLM synthesis
 ├── brain-stats/route.ts       # Memory stats endpoint
 ├── brain-diagnostics/route.ts # Diagnostics endpoint
+├── generate-themes/route.ts   # Fast Start Theme Map generation
+├── theme-map/route.ts         # Theme Map persistence (GET/POST/DELETE)
+├── debug-report/route.ts      # Diagnostic report for troubleshooting
 ├── coverage/                  # Coverage Intelligence
 │   ├── analyze/route.ts       # Analyze coverage gaps
 │   ├── runs/route.ts          # Coverage runs CRUD

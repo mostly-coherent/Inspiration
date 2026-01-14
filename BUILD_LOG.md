@@ -6,6 +6,168 @@
 
 ---
 
+## Progress - 2026-01-14 (FAST-2: Cost Estimation — COMPLETE)
+
+**Done:**
+- ✅ **Phase 0: Cost Calculation Logic (Python)**
+  - Created `engine/common/cost_estimator.py` with pricing data
+  - Pricing for Anthropic (Claude Sonnet 4, Haiku, Opus), OpenAI (GPT-4o, GPT-4o-mini), OpenRouter
+  - Token estimation: ~600 chars/card × conversation count → input tokens
+  - Added `--estimate-cost` flag to `generate_themes.py` CLI
+  - File: `engine/common/cost_estimator.py`, `engine/generate_themes.py`
+
+- ✅ **Phase 1: API Integration**
+  - Updated `/api/generate-themes` GET to support `?estimateCost=true&days=N&provider=X`
+  - Returns both `dbMetrics` and `costEstimate` when estimating
+  - File: `src/app/api/generate-themes/route.ts`
+
+- ✅ **Phase 2: Frontend Display**
+  - Added cost estimate display in onboarding-fast welcome screen
+  - Shows "💰 Estimated cost: ~$0.XX" with provider and conversation count
+  - "Details" button expands to show token breakdown
+  - Cost summary also shown in API key step before "Generate" button
+  - File: `src/app/onboarding-fast/page.tsx`
+
+- ✅ **Phase 3: Pricing Maintenance**
+  - Created `engine/scripts/check_pricing.py` for quarterly verification
+  - All pricing sources documented with URLs in `cost_estimator.py`
+  - Next review: 2026-04-13 (quarterly)
+  - File: `engine/scripts/check_pricing.py`
+
+- ✅ **Phase 4: Testing & Validation**
+  - API tests: Verified Anthropic ($0.06) and OpenAI ($0.05) estimates
+  - E2E tests: Added 3 new tests (03b, 08b, 08c) — all pass
+  - 14/14 Fast Start tests pass (1 flaky, passed on retry)
+  - File: `e2e/fast-start.spec.ts`
+
+**Pricing Verified (2026-01-14):**
+- Anthropic Claude Sonnet 4: $3/MTok input, $15/MTok output
+- OpenAI GPT-4o: $2.50/MTok input, $10/MTok output
+
+**Evidence:**
+- CLI test: `python3 engine/generate_themes.py --estimate-cost --days 14 --provider anthropic`
+- API test: `curl "http://localhost:3000/api/generate-themes?estimateCost=true&days=14&provider=anthropic"`
+- E2E tests: `npx playwright test e2e/fast-start.spec.ts` — 14 passed
+
+---
+
+## Progress - 2026-01-13 (FAST-2: Cost Estimation Build Plan)
+
+**Done:**
+- ✅ **FAST-2 Build Plan Created**
+  - Detailed 5-phase implementation plan for cost estimation
+  - Pricing data table (Anthropic, OpenAI, OpenRouter)
+  - Token estimation logic (conversations → tokens → cost)
+  - API contract design for `/api/generate-themes?estimateCost=true`
+  - Frontend mockup for cost display in Step 3
+  - E2E testing strategy
+  - File: `COST_ESTIMATION_BUILD_PLAN.md`
+
+- ✅ **Backlog Priority Updated**
+  - FAST-2 (Cost Estimation) → Tier 1 (Build First) 🔥🔥🔥
+  - FAST-3 (Share Theme Map) → Tier 1 (Build After FAST-2) 🔥🔥
+  - FAST-1 (Ollama Support) → Tier 2 (After Validation) 🔥
+  - **Rationale:** First impression matters. Target users (builders/coders) can easily get API keys. Quality > offline convenience.
+  - File: `PLAN.md`
+
+**Next:** ~~Implement FAST-2~~ → COMPLETE
+
+**Evidence:**
+- Build Plan: `COST_ESTIMATION_BUILD_PLAN.md`
+- Updated: `PLAN.md` (Fast Start Enhancements section)
+
+---
+
+## Progress - 2026-01-13 (Fast Start: Launch Prep Complete)
+
+**Done:**
+- ✅ **Task 3.3: User Testing Preparation**
+  - Created recruitment message for Discord/Twitter/DMs
+  - Created pre-test checklist and testing script
+  - Defined observation points and debrief questions
+  - Created feedback tracking table
+  - File: `LAUNCH_PREP.md`
+
+- ✅ **Task 4.1: Demo Video Script**
+  - 90-second script with 7 scenes
+  - Includes visual cues and voiceover text
+  - Recording tips (preview mode, clean profile, music)
+  - File: `LAUNCH_PREP.md`
+
+- ✅ **Task 4.2: Launch Checklist Verification**
+  - Verified all core functionality works
+  - Verified all error handling paths
+  - Verified documentation is complete
+  - Created launch channels and success metrics
+  - File: `LAUNCH_PREP.md`
+
+**Status:** 🎉 **FAST START BUILD PLAN COMPLETE**
+- All 17 tasks from `FAST_START_BUILD_PLAN.md` completed
+- E2E tests: 9 passed, 1 flaky (passes on retry)
+- Performance: DB estimation 1.5s, extraction 4.6s
+- Ready for user testing and launch
+
+---
+
+## Progress - 2026-01-13 (Fast Start: Phase 3 & 4 Tasks)
+
+**Done:**
+- ✅ **Task 1.4: CTA Behavior Design (locked/unlocked)**
+  - Added `hasVectorDb` state to track Vector DB configuration
+  - CTAs now show locked/unlocked states based on Vector DB status
+  - Locked CTAs show 🔒 icon + "Requires full setup" message
+  - Unlocked CTAs are primary buttons that work immediately
+  - Helpful explanation card when Vector DB not configured
+  - File: `src/app/onboarding-fast/page.tsx`
+
+- ✅ **Task 1.5: Theme Map Persistence + Error Handling**
+  - Created `/api/theme-map/route.ts` for persistence (GET/POST/DELETE)
+  - Theme Map saved to `data/theme_map.json` with metadata
+  - Created `/theme-map` page for viewing saved Theme Map
+  - Added 🗺️ icon in main app header to access Theme Map
+  - User-friendly error messages for common failures
+  - File: `src/app/api/theme-map/route.ts`, `src/app/theme-map/page.tsx`, `src/app/page.tsx`
+
+- ✅ **Task 2.1: Update README for Fast Start Flow**
+  - Added "Fast Start" badge (~90 seconds)
+  - New Quick Start section with `npm run bootstrap` command
+  - Two-path table: Fast Start vs Full Setup
+  - Reframed Supabase as optional power user feature
+  - File: `README.md`
+
+- ✅ **Task 2.2: Update CLAUDE.md and ARCHITECTURE.md**
+  - Documented dual onboarding paths (Fast Start vs Full Setup)
+  - Added new API routes and components to architecture
+  - Updated directory structure with new files
+  - File: `CLAUDE.md`, `ARCHITECTURE.md`
+
+- ✅ **Task 3.2: Performance Validation**
+  - Created `scripts/benchmark-fast-start.sh` for timing tests
+  - DB estimation: 1.5s (target: < 5s) ✅
+  - Conversation extraction: 4.6s for 80 convos (target: < 15s) ✅
+  - Total estimated flow: ~90s ✅
+  - File: `scripts/benchmark-fast-start.sh`
+
+- ✅ **Task 4.3: Debug Report Telemetry**
+  - Created `/api/debug-report/route.ts` for diagnostic info
+  - Created `DebugReportButton.tsx` component (button + section variants)
+  - Added to Settings page for easy access
+  - Report includes: system info, DB status, config status, Theme Map status
+  - Zero PII/UGC included (no chat content, API keys, or paths)
+  - File: `src/app/api/debug-report/route.ts`, `src/components/DebugReportButton.tsx`, `src/app/settings/page.tsx`
+
+**Performance Results (3.3GB database):**
+- DB size estimation: 1.5s
+- High-signal extraction (80 convos): 4.6s
+- Total messages extracted: 5,185
+
+**Evidence:**
+- E2E tests: 9 passed, 1 flaky (passes on retry)
+- Benchmark script: `scripts/benchmark-fast-start.sh`
+- Build plan: `FAST_START_BUILD_PLAN.md`
+
+---
+
 ## Progress - 2026-01-13 (Unexplored Territory: Enrich Library)
 
 **Done:**

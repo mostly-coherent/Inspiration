@@ -730,6 +730,381 @@ def get_conversations_for_range(
     return conversations
 
 
+# =============================================================================
+# FAST START: Local-only functions (no Vector DB required)
+# =============================================================================
+
+def _open_db_safe(db_path: Path) -> sqlite3.Connection:
+    """
+    Open SQLite database with file lock handling (Windows compatibility).
+    
+    If the database is locked (e.g., Cursor is open), copies to a temp file first.
+    
+    Args:
+        db_path: Path to the SQLite database
+        
+    Returns:
+        sqlite3.Connection object
+        
+    Raises:
+        sqlite3.Error: If database cannot be opened
+    """
+    import shutil
+    import tempfile
+    
+    try:
+        # Try read-only mode first
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        # Test the connection
+        conn.execute("SELECT 1")
+        return conn
+    except sqlite3.OperationalError as e:
+        if "database is locked" in str(e).lower() or "unable to open" in str(e).lower():
+            # File is locked - copy to temp and read from there
+            print(f"⚠️  Database locked, using copy...", file=sys.stderr)
+            temp_dir = tempfile.mkdtemp()
+            temp_path = Path(temp_dir) / "state_copy.vscdb"
+            shutil.copy2(db_path, temp_path)
+            conn = sqlite3.connect(f"file:{temp_path}?mode=ro", uri=True)
+            # Store temp path for cleanup (caller should handle)
+            conn._temp_path = temp_path  # type: ignore
+            conn._temp_dir = temp_dir  # type: ignore
+            return conn
+        raise
+
+
+def _close_db_safe(conn: sqlite3.Connection) -> None:
+    """Close database connection and clean up temp files if any."""
+    import shutil
+    
+    conn.close()
+    
+    # Clean up temp files if we used the copy fallback
+    if hasattr(conn, '_temp_dir'):
+        try:
+            shutil.rmtree(conn._temp_dir)  # type: ignore
+        except (OSError, IOError):
+            pass
+
+
+def estimate_db_metrics(db_path: Path | None = None) -> dict:
+    """
+    Estimate database metrics for Fast Start onboarding.
+    
+    Returns metrics about the Cursor database to help suggest
+    an appropriate time window for Theme Map generation.
+    
+    Args:
+        db_path: Optional path to database (auto-detects if not provided)
+        
+    Returns:
+        {
+            "size_mb": float,
+            "estimated_conversations_total": int,
+            "estimated_conversations_per_day": float,
+            "suggested_days": int,
+            "confidence": "high" | "medium" | "low",
+            "explanation": str,
+            "db_path": str,
+        }
+    """
+    if db_path is None:
+        try:
+            db_path = get_cursor_db_path()
+        except (FileNotFoundError, RuntimeError) as e:
+            return {
+                "size_mb": 0,
+                "estimated_conversations_total": 0,
+                "estimated_conversations_per_day": 0,
+                "suggested_days": 14,
+                "confidence": "low",
+                "explanation": str(e),
+                "db_path": None,
+            }
+    
+    # Get file size
+    size_bytes = db_path.stat().st_size
+    size_mb = size_bytes / (1024 * 1024)
+    
+    # Sample recent conversations to estimate density
+    try:
+        conn = _open_db_safe(db_path)
+        cursor = conn.cursor()
+        
+        # Count total composer entries
+        cursor.execute("SELECT COUNT(*) FROM cursorDiskKV WHERE key LIKE 'composerData:%'")
+        composer_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM cursorDiskKV WHERE key LIKE 'chatData:%'")
+        chat_count = cursor.fetchone()[0]
+        
+        total_conversations = composer_count + chat_count
+        
+        # Sample recent entries to estimate date range
+        # Get timestamps from a sample of conversations
+        cursor.execute("""
+            SELECT value FROM cursorDiskKV 
+            WHERE key LIKE 'composerData:%' OR key LIKE 'chatData:%'
+            LIMIT 100
+        """)
+        sample_rows = cursor.fetchall()
+        
+        _close_db_safe(conn)
+        
+        # Parse timestamps from sample
+        timestamps = []
+        for (value,) in sample_rows:
+            if not value:
+                continue
+            try:
+                if isinstance(value, bytes):
+                    value = value.decode('utf-8')
+                data = json.loads(value)
+                
+                # Try various timestamp fields
+                ts = (
+                    data.get("lastUpdatedAt") or 
+                    data.get("createdAt") or 
+                    data.get("timestamp") or 0
+                )
+                if ts > 0:
+                    timestamps.append(ts)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue
+        
+        # Calculate date range and density
+        if timestamps:
+            min_ts = min(timestamps)
+            max_ts = max(timestamps)
+            days_span = max(1, (max_ts - min_ts) / (1000 * 60 * 60 * 24))
+            
+            # Estimate conversations per day based on sample
+            convos_per_day = total_conversations / days_span if days_span > 0 else 0
+            
+            # Suggest days to get ~40-120 conversations
+            target_convos = 80  # Middle of 40-120 range
+            if convos_per_day > 0:
+                suggested_days = int(target_convos / convos_per_day)
+                suggested_days = max(7, min(180, suggested_days))  # Clamp 7-180
+            else:
+                suggested_days = 14
+            
+            # Determine confidence
+            if len(timestamps) >= 50 and total_conversations >= 100:
+                confidence = "high"
+                explanation = f"Based on {total_conversations} conversations over {int(days_span)} days"
+            elif len(timestamps) >= 20:
+                confidence = "medium"
+                explanation = f"Based on sample of {len(timestamps)} conversations"
+            else:
+                confidence = "low"
+                explanation = "Limited data available for estimation"
+        else:
+            convos_per_day = 0
+            suggested_days = 14
+            confidence = "low"
+            explanation = "Could not extract timestamps from conversations"
+        
+        return {
+            "size_mb": round(size_mb, 1),
+            "estimated_conversations_total": total_conversations,
+            "estimated_conversations_per_day": round(convos_per_day, 1),
+            "suggested_days": suggested_days,
+            "confidence": confidence,
+            "explanation": explanation,
+            "db_path": str(db_path),
+        }
+        
+    except sqlite3.Error as e:
+        return {
+            "size_mb": round(size_mb, 1),
+            "estimated_conversations_total": 0,
+            "estimated_conversations_per_day": 0,
+            "suggested_days": 14,
+            "confidence": "low",
+            "explanation": f"Database error: {e}",
+            "db_path": str(db_path),
+        }
+
+
+def get_high_signal_conversations_sqlite_fast(
+    days_back: int = 14,
+    max_conversations: int = 80,
+    db_path: Path | None = None,
+) -> list[dict]:
+    """
+    Fast extraction of high-signal conversations directly from SQLite.
+    
+    NO Vector DB required. Uses heuristics to select the most valuable
+    conversations for Theme Map generation.
+    
+    Heuristics for "high signal":
+    - Message count (more back-and-forth = richer context)
+    - Contains code blocks or error traces
+    - Recent activity within the time window
+    - Alternating user/assistant messages (actual conversation, not monologue)
+    
+    Args:
+        days_back: Number of days to look back (default 14)
+        max_conversations: Maximum conversations to return (default 80)
+        db_path: Optional path to database (auto-detects if not provided)
+        
+    Returns:
+        List of conversation dicts matching existing format:
+        [
+            {
+                "chat_id": str,
+                "chat_type": "composer" | "chat",
+                "workspace": str,
+                "messages": [{"type": str, "text": str, "timestamp": int}, ...],
+                "signal_score": float,  # Added for debugging
+            },
+            ...
+        ]
+    """
+    if db_path is None:
+        db_path = get_cursor_db_path()
+    
+    # Calculate time window
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days_back)
+    start_ts = int(start_date.timestamp() * 1000)
+    end_ts = int(end_date.timestamp() * 1000)
+    
+    workspace_mapping = get_workspace_mapping()
+    
+    conversations = []
+    
+    try:
+        conn = _open_db_safe(db_path)
+        cursor = conn.cursor()
+        
+        # Get all composer and chat entries
+        cursor.execute("""
+            SELECT key, value FROM cursorDiskKV 
+            WHERE key LIKE 'composerData:%' OR key LIKE 'chatData:%'
+        """)
+        rows = cursor.fetchall()
+        
+        for key, value in rows:
+            if not value:
+                continue
+            
+            try:
+                if isinstance(value, bytes):
+                    value = value.decode('utf-8')
+                data = json.loads(value)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue
+            
+            # Determine chat type and ID
+            chat_type = "composer" if key.startswith("composerData:") else "chat"
+            chat_id = key.split(":", 1)[1] if ":" in key else "unknown"
+            
+            # Get workspace
+            workspace_hash = (
+                data.get("workspaceHash") or 
+                data.get("workspace") or 
+                data.get("workspaceId")
+            )
+            if not workspace_hash and isinstance(data.get("context"), dict):
+                workspace_hash = data["context"].get("workspaceHash") or data["context"].get("workspace")
+            
+            workspace_path = workspace_mapping.get(workspace_hash, "Unknown") if workspace_hash else "Unknown"
+            
+            # Check if conversation is within time window
+            last_updated = data.get("lastUpdatedAt") or data.get("createdAt") or 0
+            if last_updated < start_ts:
+                continue  # Too old
+            
+            # Extract messages
+            composer_id = chat_id if chat_type == "composer" else None
+            messages = extract_messages_from_chat_data(
+                data, 
+                start_ts, 
+                end_ts,
+                composer_id=composer_id,
+                db_path=db_path
+            )
+            
+            if not messages:
+                continue
+            
+            # Calculate signal score
+            signal_score = _calculate_signal_score(messages)
+            
+            conversations.append({
+                "chat_id": chat_id,
+                "chat_type": chat_type,
+                "workspace": workspace_path,
+                "messages": messages,
+                "signal_score": signal_score,
+            })
+        
+        _close_db_safe(conn)
+        
+    except sqlite3.Error as e:
+        print(f"⚠️  Database error: {e}", file=sys.stderr)
+        return []
+    
+    # Sort by signal score (highest first) and limit
+    conversations.sort(key=lambda c: c["signal_score"], reverse=True)
+    
+    return conversations[:max_conversations]
+
+
+def _calculate_signal_score(messages: list[dict]) -> float:
+    """
+    Calculate a "signal score" for a conversation.
+    
+    Higher score = more valuable for theme extraction.
+    
+    Factors:
+    - Message count (more = better, diminishing returns)
+    - Back-and-forth density (alternating user/assistant)
+    - Contains code blocks (```), error traces, or technical content
+    - Message length (longer = more context)
+    """
+    if not messages:
+        return 0.0
+    
+    score = 0.0
+    
+    # Factor 1: Message count (log scale to avoid huge conversations dominating)
+    msg_count = len(messages)
+    score += min(10, msg_count * 0.5)  # Max 10 points from message count
+    
+    # Factor 2: Back-and-forth density
+    alternations = 0
+    for i in range(1, len(messages)):
+        if messages[i]["type"] != messages[i-1]["type"]:
+            alternations += 1
+    
+    if msg_count > 1:
+        alternation_ratio = alternations / (msg_count - 1)
+        score += alternation_ratio * 5  # Max 5 points from alternation
+    
+    # Factor 3: Technical content indicators
+    full_text = " ".join(m["text"] for m in messages)
+    
+    # Code blocks
+    code_blocks = full_text.count("```")
+    score += min(5, code_blocks * 0.5)  # Max 5 points from code
+    
+    # Error indicators
+    error_keywords = ["error", "exception", "failed", "traceback", "TypeError", "ValueError"]
+    error_count = sum(1 for kw in error_keywords if kw.lower() in full_text.lower())
+    score += min(3, error_count * 0.5)  # Max 3 points from errors
+    
+    # Factor 4: Total text length (log scale)
+    total_chars = len(full_text)
+    if total_chars > 0:
+        import math
+        score += min(5, math.log10(total_chars))  # Max ~5 points from length
+    
+    return round(score, 2)
+
+
 def format_conversations_for_prompt(conversations: list[dict]) -> str:
     """
     Format conversations into a readable string for LLM prompts.

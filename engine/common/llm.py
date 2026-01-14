@@ -693,3 +693,40 @@ def create_llm(config: dict | None = None) -> LLMProvider:
         use_cheaper_judge=config.get("useCheaperJudge", True),
     )
 
+
+def call_llm(
+    prompt: str,
+    *,
+    provider: Literal["anthropic", "openai", "openrouter"] = "anthropic",
+    model: str | None = None,
+    temperature: float = 0.4,
+    max_tokens: int = 4000,
+    system_prompt: str | None = None,
+) -> str:
+    """
+    Simple helper function to call an LLM.
+    
+    Convenience wrapper around LLMProvider for one-off calls.
+    
+    Args:
+        prompt: User prompt
+        provider: LLM provider ("anthropic", "openai", "openrouter")
+        model: Optional model override
+        temperature: Sampling temperature
+        max_tokens: Maximum tokens to generate
+        system_prompt: Optional system prompt
+        
+    Returns:
+        Generated text
+        
+    Raises:
+        RuntimeError: If LLM call fails
+    """
+    llm = LLMProvider(provider=provider, model=model)
+    return llm.generate(
+        prompt,
+        system_prompt=system_prompt,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+

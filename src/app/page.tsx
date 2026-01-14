@@ -791,6 +791,14 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-2">
             <a 
+              href="/theme-map" 
+              className="p-2 text-slate-400 hover:text-indigo-400 transition-colors"
+              title="View Theme Map"
+              aria-label="View Theme Map"
+            >
+              <span className="text-lg">🗺️</span>
+            </a>
+            <a 
               href="/settings" 
               className="p-2 text-slate-400 hover:text-amber-400 transition-colors"
               title="Settings"

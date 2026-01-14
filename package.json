@@ -15,6 +15,7 @@
     "test:unit": "vitest",
     "test:unit:ui": "vitest --ui",
     "test:unit:coverage": "vitest --coverage",
+    "bootstrap": "bash scripts/bootstrap.sh",
     "postinstall": "command -v pip3 >/dev/null 2>&1 && pip3 install -r engine/requirements.txt || echo 'Skipping pip install (Python not available - expected on Vercel)'"
   },
   "dependencies": {

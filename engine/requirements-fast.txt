@@ -1,0 +1,12 @@
+# Inspiration Engine - Fast Start Dependencies
+# Minimal deps for Theme Map generation (no heavy ML libs)
+
+# LLM Providers
+anthropic>=0.40.0
+openai>=1.0.0
+
+# Prompt Compression (lightweight)
+tiktoken>=0.5.0
+
+# Note: numpy and supabase are NOT required for Fast Start
+# They are only needed for full Vector DB indexing (optional)

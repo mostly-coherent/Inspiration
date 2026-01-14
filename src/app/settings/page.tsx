@@ -14,6 +14,7 @@ import {
   LLMSettingsSection,
 } from "@/components/settings";
 import { ThemeSynthesisSection } from "@/components/config/ThemeSynthesisSection";
+import { DebugReportSection } from "@/components/DebugReportButton";
 
 interface AppConfig {
   version: number;
@@ -491,6 +492,11 @@ export default function SettingsPage() {
             <code className="text-amber-400">OPENROUTER_API_KEY</code> in your{" "}
             <code className="text-slate-400">.env</code> or <code className="text-slate-400">.env.local</code> file.
           </p>
+        </div>
+
+        {/* Debug Report Section */}
+        <div className="mt-6">
+          <DebugReportSection />
         </div>
       </main>
     </div>

@@ -116,6 +116,18 @@ DEFAULT_CONFIG = {
         "maxTokens": 800,  # Max length of AI-generated insights
         "maxDescriptionLength": 200,  # Max chars per item description (truncated)
     },
+    # Lenny Podcast Archive - Expert knowledge integration
+    "lennyArchive": {
+        "enabled": True,  # Whether to include expert perspectives in Theme Explorer
+        "path": "Lennys Podcast Public Archive ",  # Relative path to archive folder
+        "lastIndexed": None,  # Timestamp of last indexing
+        "episodeCount": 0,  # Number of indexed episodes
+        "chunkCount": 0,  # Number of indexed chunks
+        "searchDefaults": {
+            "topK": 3,  # Number of expert quotes to show per theme
+            "minSimilarity": 0.35,  # Minimum relevance for expert matches
+        },
+    },
 }
 
 

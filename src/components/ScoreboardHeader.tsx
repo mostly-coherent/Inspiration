@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, memo } from "react";
+import { useState, useEffect, useCallback, memo, useRef } from "react";
 
 interface MemoryStats {
   localSize: string | null;
@@ -21,6 +21,14 @@ interface LibraryStats {
   thisWeek: number;
   byMode: Record<string, number>;
 }
+
+interface LennyStats {
+  indexed: boolean;
+  episodeCount: number;
+  chunkCount: number;
+}
+
+type LennySyncStatus = "idle" | "syncing" | "success" | "error";
 
 interface ScoreboardHeaderProps {
   onSyncClick: () => void;
@@ -47,7 +55,15 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     byMode: {},
   });
   const [sourceBreakdown, setSourceBreakdown] = useState<SourceBreakdown | null>(null);
+  const [lennyStats, setLennyStats] = useState<LennyStats>({
+    indexed: false,
+    episodeCount: 0,
+    chunkCount: 0,
+  });
+  const [lennySyncStatus, setLennySyncStatus] = useState<LennySyncStatus>("idle");
+  const [lennySyncMessage, setLennySyncMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const lennySyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch Memory stats
   const fetchMemoryStats = useCallback(async () => {
@@ -105,24 +121,103 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     }
   }, []);
 
+  // Fetch Lenny archive stats
+  const fetchLennyStats = useCallback(async () => {
+    try {
+      const res = await fetch("/api/lenny-stats");
+      const data = await res.json();
+      if (data.success) {
+        setLennyStats({
+          indexed: data.indexed,
+          episodeCount: data.episodeCount,
+          chunkCount: data.chunkCount,
+        });
+      }
+    } catch (e) {
+      console.error("Failed to fetch Lenny stats:", e);
+    }
+  }, []);
+
+  // Sync Lenny archive (git pull + re-index if needed)
+  const syncLennyArchive = useCallback(async () => {
+    if (lennySyncStatus === "syncing") return;
+    
+    setLennySyncStatus("syncing");
+    setLennySyncMessage("Checking for new episodes...");
+    
+    try {
+      const res = await fetch("/api/lenny-sync", { method: "POST" });
+      const data = await res.json();
+      
+      if (data.success) {
+        if (data.action === "up_to_date") {
+          setLennySyncMessage("✓ Up to date");
+        } else if (data.action === "indexed") {
+          setLennySyncMessage(`✓ ${data.newEpisodes || "New"} episodes indexed`);
+        } else if (data.action === "pulled") {
+          setLennySyncMessage("✓ Updates pulled");
+        }
+        setLennySyncStatus("success");
+        // Refresh stats after sync
+        fetchLennyStats().catch((e) => {
+          console.error("Failed to refresh Lenny stats:", e);
+        });
+      } else {
+        if (data.action === "cloud_mode") {
+          setLennySyncMessage("☁️ Cloud mode");
+        } else {
+          setLennySyncMessage("⚠️ Sync failed");
+        }
+        setLennySyncStatus("error");
+      }
+    } catch (e) {
+      console.error("Lenny sync error:", e);
+      setLennySyncMessage("⚠️ Sync failed");
+      setLennySyncStatus("error");
+    }
+    
+    // Clear message after 5 seconds
+    if (lennySyncTimeoutRef.current) {
+      clearTimeout(lennySyncTimeoutRef.current);
+    }
+    lennySyncTimeoutRef.current = setTimeout(() => {
+      setLennySyncMessage(null);
+      setLennySyncStatus("idle");
+      lennySyncTimeoutRef.current = null;
+    }, 5000);
+  }, [lennySyncStatus, fetchLennyStats]);
+
   // Fetch all stats on mount
   useEffect(() => {
     const fetchAll = async () => {
       setIsLoading(true);
-      await Promise.all([fetchMemoryStats(), fetchLibraryStats(), fetchSourceBreakdown()]);
+      await Promise.all([fetchMemoryStats(), fetchLibraryStats(), fetchSourceBreakdown(), fetchLennyStats()]);
       setIsLoading(false);
     };
     fetchAll();
-  }, [fetchMemoryStats, fetchLibraryStats, fetchSourceBreakdown]);
+  }, [fetchMemoryStats, fetchLibraryStats, fetchSourceBreakdown, fetchLennyStats]);
 
-  // Refresh library stats after sync completes
+  // Refresh library stats after sync completes + auto-sync Lenny
   useEffect(() => {
     if (syncStatus?.startsWith("✓")) {
       fetchLibraryStats();
       fetchMemoryStats();
       fetchSourceBreakdown();
+      // Auto-sync Lenny archive when Memory sync completes
+      syncLennyArchive().catch((e) => {
+        console.error("Auto-sync Lenny archive failed:", e);
+      });
     }
-  }, [syncStatus, fetchLibraryStats, fetchMemoryStats, fetchSourceBreakdown]);
+  }, [syncStatus, fetchLibraryStats, fetchMemoryStats, fetchSourceBreakdown, syncLennyArchive]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (lennySyncTimeoutRef.current) {
+        clearTimeout(lennySyncTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const isCloudMode = syncStatus === "☁️ Cloud Mode (Read-only)";
 
@@ -332,6 +427,48 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                     {mode}: {count}
                   </span>
                 ))}
+              </div>
+            )}
+
+            {/* Lenny Expert Archive */}
+            {lennyStats.indexed && lennyStats.episodeCount > 0 && (
+              <div className="flex items-center gap-1.5">
+                <div 
+                  className="flex items-center gap-1 text-amber-400 bg-amber-500/10 px-2 py-1 rounded-full"
+                  title={`${lennyStats.chunkCount.toLocaleString()} searchable segments from Lenny's Podcast`}
+                >
+                  <span>🎙️</span>
+                  <span>{lennyStats.episodeCount} expert episodes</span>
+                </div>
+                
+                {/* Lenny Sync Button */}
+                <button
+                  onClick={syncLennyArchive}
+                  disabled={lennySyncStatus === "syncing"}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs transition-all ${
+                    lennySyncStatus === "syncing"
+                      ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait"
+                      : "bg-slate-700/50 text-slate-400 hover:bg-slate-700/80 hover:text-amber-400"
+                  }`}
+                  title="Sync Lenny archive (git pull + re-index)"
+                >
+                  <span className={lennySyncStatus === "syncing" ? "animate-spin" : ""}>
+                    🔄
+                  </span>
+                </button>
+                
+                {/* Lenny Sync Status */}
+                {lennySyncMessage && (
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    lennySyncMessage.startsWith("✓")
+                      ? "bg-emerald-500/10 text-emerald-400"
+                      : lennySyncMessage.startsWith("☁️")
+                      ? "bg-blue-500/10 text-blue-400"
+                      : "bg-amber-500/10 text-amber-400"
+                  }`}>
+                    {lennySyncMessage}
+                  </span>
+                )}
               </div>
             )}
           </div>

@@ -567,6 +567,17 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 
 ## 🔮 Improvement Backlog (Post-v3)
 
+**Lenny's Podcast Expert Integration (2026-01-13):**
+| ID | Improvement | Priority | Effort | Status |
+|----|-------------|----------|--------|--------|
+| LENNY-1 | **YouTube timestamp deep-links** — Convert `00:15:30` → `?t=930` for exact moment links | HIGH | LOW | Pending |
+| LENNY-2 | **View count badge** — Show 🔥 for high-view-count episodes (>500K views) | MEDIUM | LOW | Pending |
+| LENNY-3 | **"More from this guest"** — When seeing a quote, show other episodes from that guest | MEDIUM | MEDIUM | Pending |
+| LENNY-4 | **Browse Experts page** — List all 269 guests, click to see their episodes/quotes | LOW | MEDIUM | Pending |
+| LENNY-5 | **RAG from Lenny during Generation** — Pull expert quotes into idea/insight generation | LOW | HIGH | Pending |
+| LENNY-6 | **"Related Experts" for each theme** — Show which guests have talked most about a topic | LOW | MEDIUM | Pending |
+| LENNY-7 | **Last synced timestamp** — Show when Lenny archive was last synced in UI | LOW | LOW | Pending |
+
 **Coverage Intelligence (v5 Enhancements):**
 | ID | Improvement | Priority | Effort |
 |----|-------------|----------|--------|
@@ -614,6 +625,17 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 | IMP-5 | Export only filtered/selected items | LOW | LOW |
 | IMP-14 | **Suggested date range on "Request Too Large" error** — Auto-calculates smaller range | ✅ Done | LOW |
 
+**Fast Start Enhancements (Tier 1 — Build First):**
+| ID | Improvement | Priority | Effort | Impact | Notes |
+|----|-------------|----------|--------|--------|-------|
+| FAST-2 | **Cost Estimation** — Show "This will cost ~$0.12" before Theme Map generation. Estimate based on conversation count, provider, and model. Addresses cost anxiety without quality trade-off. | HIGH | LOW | 🔥🔥🔥 | Critical for trust |
+| FAST-3 | **Share Theme Map** — One-click export Theme Map to PNG/PDF for sharing. Generate visual card with themes, evidence snippets, and branding. Enables viral loop and social proof. | HIGH | LOW | 🔥🔥 | Build after FAST-2 |
+
+**Fast Start Enhancements (Tier 2 — After Initial Validation):**
+| ID | Improvement | Priority | Effort | Impact | Notes |
+|----|-------------|----------|--------|--------|-------|
+| FAST-1 | **Ollama Support (Experimental)** — Fully offline Theme Map generation, no API keys needed. Auto-detect Ollama running locally, detect installed models (llama3, codellama, mistral). **Trade-off:** Lower quality synthesis vs frontier models (GPT-4, Claude). Position as "experimental" feature after getting 10 rave reviews with commercial LLMs. Target users (builders/coders) can easily get API keys; first impression matters more than offline capability. | MEDIUM | MEDIUM | 🔥 | Quality < Frontier LLMs |
+
 **Reliability:**
 | ID | Improvement | Priority | Effort |
 |----|-------------|----------|--------|
@@ -624,7 +646,7 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 | IMP-22 | **Streaming progress per-day** — Show which day is being processed during generation | LOW | MEDIUM |
 | IMP-23 | **Multi-strategy extraction** — Fallback logic for Cursor DB schema changes | MEDIUM | HIGH |
 | IMP-24 | **Auto-adaptation** — Discover new schema patterns automatically (conceptual) | LOW | HIGH |
-| IMP-25 | **Cost estimation before generation** — "This will cost ~$0.50" warning | MEDIUM | MEDIUM |
+| IMP-25 | **Cost estimation before generation** — "This will cost ~$0.50" warning (See FAST-2 for Fast Start specific implementation) | MEDIUM | MEDIUM |
 
 <!-- IMP-21-24 renumbered to avoid conflicts; merged from RESILIENCE_STRATEGY.md on 2026-01-09 -->
 
@@ -653,4 +675,4 @@ Users can now edit prompt templates directly in the UI. While we create backups 
 
 ---
 
-**Last Updated:** 2026-01-13 (Coverage Intelligence removed; Unexplored Territory Enrich complete)
+**Last Updated:** 2026-01-13 (Fast Start priorities: FAST-2 Cost Estimation + FAST-3 Share Theme Map prioritized; Ollama downgraded to Tier 2 due to quality trade-offs for first impression)
