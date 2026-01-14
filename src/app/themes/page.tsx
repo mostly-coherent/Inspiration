@@ -575,7 +575,7 @@ function ThemesPage() {
                               <div className="space-y-3">
                                 {expertPerspectives.quotes.map((quote, idx) => (
                                   <div 
-                                    key={idx}
+                                    key={`${quote.episodeFilename}-${quote.timestamp}-${idx}`}
                                     className="bg-amber-900/20 border border-amber-700/30 rounded-lg p-4"
                                   >
                                     <p className="text-slate-200 text-sm leading-relaxed italic mb-3">

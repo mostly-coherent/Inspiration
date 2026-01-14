@@ -107,6 +107,10 @@ export default function Home() {
     const loadSeekDefaults = async () => {
       try {
         const res = await fetch("/api/config");
+        if (!res.ok) {
+          console.error("Failed to load seek defaults:", res.status);
+          return;
+        }
         const data = await res.json();
         if (data.success && data.config?.seekDefaults) {
           const { daysBack, minSimilarity } = data.config.seekDefaults;
@@ -231,6 +235,9 @@ export default function Home() {
     setSyncStatus("Syncing...");
     try {
       const res = await fetch("/api/sync", { method: "POST" });
+      if (!res.ok) {
+        throw new Error(`Sync failed: ${res.status}`);
+      }
       const data = await res.json();
       
       if (data.success) {
@@ -339,6 +346,10 @@ export default function Home() {
     // Fetch library count before generation
     try {
       const libRes = await fetch("/api/items?view=items");
+      if (!libRes.ok) {
+        console.error("Failed to fetch library count:", libRes.status);
+        return;
+      }
       const libData = await libRes.json();
       if (libData.success) {
         setLibraryCountBefore(libData.stats?.totalItems || 0);
