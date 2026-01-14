@@ -9,7 +9,7 @@
 ![Stack](https://img.shields.io/badge/Stack-Next.js%2015%20%7C%20Python%20%7C%20Claude-orange)
 ![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-blue)
 
-<img src="public/screenshots/homepage.png" alt="Inspiration - Main Interface" width="800">
+<img src="https://raw.githubusercontent.com/mostly-coherent/Inspiration/main/public/screenshots/homepage.png" alt="Inspiration - Main Interface" width="800">
 
 **New:** [Lenny's Podcast Integration](#whats-new) — 280+ expert episodes indexed locally. See expert perspectives alongside your own themes.
 
