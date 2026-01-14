@@ -33,7 +33,7 @@ export function TimePresetsSection({
       onToggle={onToggle}
     >
       <p className="text-xs text-slate-500 mb-3">
-        Custom presets appear alongside built-in presets (Daily, Sprint, Month, Quarter).
+        Custom presets appear alongside built-in presets (Last 24 hours, Last 7 days, Last 14 days).
       </p>
 
       {timePresets.map((preset, index) => (

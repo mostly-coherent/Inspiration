@@ -65,7 +65,7 @@ DEFAULT_CONFIG = {
     },
     "ui": {
         "defaultTool": "insights",
-        "defaultMode": "sprint",
+        "defaultMode": "week",
     },
     # v3 Advanced Thresholds
     "advancedThresholds": {
@@ -115,6 +115,15 @@ DEFAULT_CONFIG = {
         "maxItemsToSynthesize": 15,  # Max items to include in AI analysis
         "maxTokens": 800,  # Max length of AI-generated insights
         "maxDescriptionLength": 200,  # Max chars per item description (truncated)
+    },
+    # v4 Smart Sampling - Use top N relevant messages instead of full conversations
+    # This dramatically improves generation speed and reliability
+    "smartSampling": {
+        "enabled": True,  # When enabled, uses focused message sampling instead of full conversations
+        "maxMessages": 50,  # Maximum number of relevant messages to sample
+        "minSimilarity": 0.25,  # Minimum similarity score for included messages
+        "includeContext": True,  # Include surrounding context for each message
+        "contextMessages": 1,  # Number of messages before/after to include as context
     },
     # Lenny Podcast Archive - Expert knowledge integration
     "lennyArchive": {
@@ -522,6 +531,47 @@ def get_synthesis_max_tokens() -> int:
 def get_synthesis_description_length() -> int:
     """Get the maximum description length per item in synthesis."""
     return get_theme_synthesis_config().get("maxDescriptionLength", 200)
+
+
+def get_smart_sampling_config() -> dict[str, Any]:
+    """
+    Get Smart Sampling configuration.
+    
+    Smart Sampling uses the top N most relevant messages instead of full conversations,
+    dramatically improving generation speed and reliability.
+    
+    Returns:
+        Dict with keys:
+        - enabled: bool - Whether to use smart sampling
+        - maxMessages: int - Maximum messages to sample (default: 50)
+        - minSimilarity: float - Minimum similarity score (default: 0.25)
+        - includeContext: bool - Include surrounding context (default: True)
+        - contextMessages: int - Messages before/after to include (default: 1)
+    """
+    config = load_config()
+    defaults = {
+        "enabled": True,
+        "maxMessages": 50,
+        "minSimilarity": 0.25,
+        "includeContext": True,
+        "contextMessages": 1,
+    }
+    return {**defaults, **config.get("smartSampling", {})}
+
+
+def is_smart_sampling_enabled() -> bool:
+    """Check if smart sampling is enabled."""
+    return get_smart_sampling_config().get("enabled", True)
+
+
+def get_smart_sampling_max_messages() -> int:
+    """Get the maximum number of messages to sample."""
+    return get_smart_sampling_config().get("maxMessages", 50)
+
+
+def get_smart_sampling_min_similarity() -> float:
+    """Get the minimum similarity score for sampled messages."""
+    return get_smart_sampling_config().get("minSimilarity", 0.25)
 
 
 def is_setup_complete() -> bool:

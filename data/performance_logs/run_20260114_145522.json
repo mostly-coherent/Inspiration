@@ -1,0 +1,266 @@
+{
+  "summary": {
+    "run_id": "20260114_145522",
+    "success": true,
+    "error": null,
+    "total_elapsed_seconds": 160.97,
+    "total_tokens_in": 11135,
+    "total_tokens_out": 4940,
+    "total_cost_usd": 0.1075,
+    "phase_timings": {
+      "confirming": 0.0,
+      "searching": 65.77,
+      "generating": 85.81,
+      "deduplicating": 3.42,
+      "ranking": 0.0,
+      "integrating": 5.97,
+      "complete": 0.0
+    }
+  },
+  "events": [
+    {
+      "timestamp": "2026-01-14T14:55:22.324407",
+      "elapsed_ms": 0,
+      "type": "run_start",
+      "run_id": "20260114_145522",
+      "mode": "ideas",
+      "item_count": 50,
+      "days": 9
+    },
+    {
+      "timestamp": "2026-01-14T14:55:22.324419",
+      "elapsed_ms": 0,
+      "type": "phase_start",
+      "phase": "confirming",
+      "message": "Request parameters confirmed"
+    },
+    {
+      "timestamp": "2026-01-14T14:55:22.324429",
+      "elapsed_ms": 0,
+      "type": "stat",
+      "key": "dateRange",
+      "value": "2026-01-06 to 2026-01-14"
+    },
+    {
+      "timestamp": "2026-01-14T14:55:22.324433",
+      "elapsed_ms": 0,
+      "type": "stat",
+      "key": "requestedItems",
+      "value": 50
+    },
+    {
+      "timestamp": "2026-01-14T14:55:22.324437",
+      "elapsed_ms": 0,
+      "type": "stat",
+      "key": "temperature",
+      "value": 0.5
+    },
+    {
+      "timestamp": "2026-01-14T14:55:22.324445",
+      "elapsed_ms": 0,
+      "type": "stat",
+      "key": "daysProcessed",
+      "value": 9
+    },
+    {
+      "timestamp": "2026-01-14T14:55:22.324462",
+      "elapsed_ms": 0,
+      "type": "phase_end",
+      "phase": "confirming",
+      "elapsed_seconds": 0.0
+    },
+    {
+      "timestamp": "2026-01-14T14:55:22.324465",
+      "elapsed_ms": 0,
+      "type": "phase_start",
+      "phase": "searching",
+      "message": "Searching chat history via semantic search..."
+    },
+    {
+      "timestamp": "2026-01-14T14:55:35.539065",
+      "elapsed_ms": 13214,
+      "type": "stat",
+      "key": "conversationsFound",
+      "value": 15
+    },
+    {
+      "timestamp": "2026-01-14T14:55:35.539077",
+      "elapsed_ms": 13214,
+      "type": "stat",
+      "key": "daysWithActivity",
+      "value": 3
+    },
+    {
+      "timestamp": "2026-01-14T14:55:35.539082",
+      "elapsed_ms": 13214,
+      "type": "stat",
+      "key": "daysProcessed",
+      "value": 9
+    },
+    {
+      "timestamp": "2026-01-14T14:56:28.094838",
+      "elapsed_ms": 65770,
+      "type": "phase_end",
+      "phase": "searching",
+      "elapsed_seconds": 65.77
+    },
+    {
+      "timestamp": "2026-01-14T14:56:28.094853",
+      "elapsed_ms": 65770,
+      "type": "warning",
+      "message": "searching took 65.8s (threshold: 30s)",
+      "phase": "searching"
+    },
+    {
+      "timestamp": "2026-01-14T14:56:28.094860",
+      "elapsed_ms": 65770,
+      "type": "phase_start",
+      "phase": "generating",
+      "message": "Generating 75 items with AI..."
+    },
+    {
+      "timestamp": "2026-01-14T14:57:49.811096",
+      "elapsed_ms": 147486,
+      "type": "tokens",
+      "operation": "generation",
+      "model": "claude-sonnet-4-20250514",
+      "tokens_in": 11135,
+      "tokens_out": 4940,
+      "cost_usd": 0.107505,
+      "cumulative_cost_usd": 0.1075
+    },
+    {
+      "timestamp": "2026-01-14T14:57:49.812737",
+      "elapsed_ms": 147488,
+      "type": "stat",
+      "key": "itemsGenerated",
+      "value": 29
+    },
+    {
+      "timestamp": "2026-01-14T14:57:53.902003",
+      "elapsed_ms": 151577,
+      "type": "phase_end",
+      "phase": "generating",
+      "elapsed_seconds": 85.81
+    },
+    {
+      "timestamp": "2026-01-14T14:57:53.902019",
+      "elapsed_ms": 151577,
+      "type": "phase_start",
+      "phase": "deduplicating",
+      "message": "Checking for duplicate items..."
+    },
+    {
+      "timestamp": "2026-01-14T14:57:53.902030",
+      "elapsed_ms": 151577,
+      "type": "stat",
+      "key": "itemsAfterSelfDedup",
+      "value": 29
+    },
+    {
+      "timestamp": "2026-01-14T14:57:57.316977",
+      "elapsed_ms": 154992,
+      "type": "phase_end",
+      "phase": "deduplicating",
+      "elapsed_seconds": 3.41
+    },
+    {
+      "timestamp": "2026-01-14T14:57:57.316988",
+      "elapsed_ms": 154992,
+      "type": "phase_start",
+      "phase": "ranking",
+      "message": "Ranking items by quality..."
+    },
+    {
+      "timestamp": "2026-01-14T14:57:57.316999",
+      "elapsed_ms": 154992,
+      "type": "stat",
+      "key": "sentToLibrary",
+      "value": 29
+    },
+    {
+      "timestamp": "2026-01-14T14:57:57.318844",
+      "elapsed_ms": 154994,
+      "type": "phase_end",
+      "phase": "ranking",
+      "elapsed_seconds": 0.0
+    },
+    {
+      "timestamp": "2026-01-14T14:57:57.318855",
+      "elapsed_ms": 154994,
+      "type": "phase_start",
+      "phase": "integrating",
+      "message": "Adding items to your Library..."
+    },
+    {
+      "timestamp": "2026-01-14T14:58:03.293361",
+      "elapsed_ms": 160968,
+      "type": "stat",
+      "key": "itemsCompared",
+      "value": 29
+    },
+    {
+      "timestamp": "2026-01-14T14:58:03.293375",
+      "elapsed_ms": 160968,
+      "type": "stat",
+      "key": "itemsAdded",
+      "value": 24
+    },
+    {
+      "timestamp": "2026-01-14T14:58:03.293379",
+      "elapsed_ms": 160968,
+      "type": "stat",
+      "key": "itemsMerged",
+      "value": 5
+    },
+    {
+      "timestamp": "2026-01-14T14:58:03.293772",
+      "elapsed_ms": 160969,
+      "type": "phase_end",
+      "phase": "integrating",
+      "elapsed_seconds": 5.97
+    },
+    {
+      "timestamp": "2026-01-14T14:58:03.293777",
+      "elapsed_ms": 160969,
+      "type": "phase_start",
+      "phase": "complete",
+      "message": "Generation complete!"
+    },
+    {
+      "timestamp": "2026-01-14T14:58:03.293784",
+      "elapsed_ms": 160969,
+      "type": "stat",
+      "key": "finalItemsAdded",
+      "value": 24
+    },
+    {
+      "timestamp": "2026-01-14T14:58:03.293788",
+      "elapsed_ms": 160969,
+      "type": "stat",
+      "key": "finalItemsMerged",
+      "value": 5
+    },
+    {
+      "timestamp": "2026-01-14T14:58:03.294024",
+      "elapsed_ms": 160969,
+      "type": "run_end",
+      "run_id": "20260114_145522",
+      "success": true,
+      "error": null,
+      "total_elapsed_seconds": 160.97,
+      "total_tokens_in": 11135,
+      "total_tokens_out": 4940,
+      "total_cost_usd": 0.1075,
+      "phase_timings": {
+        "confirming": 0.0,
+        "searching": 65.77,
+        "generating": 85.81,
+        "deduplicating": 3.42,
+        "ranking": 0.0,
+        "integrating": 5.97,
+        "complete": 0.0
+      }
+    }
+  ]
+}

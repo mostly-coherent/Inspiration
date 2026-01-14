@@ -63,6 +63,10 @@ from common.config import (
     get_judge_temperature,
     get_compression_token_threshold,
     get_compression_date_threshold,
+    is_smart_sampling_enabled,
+    get_smart_sampling_max_messages,
+    get_smart_sampling_min_similarity,
+    get_smart_sampling_config,
 )
 
 # Import v1 unified Items system (required - v0 removed)
@@ -195,6 +199,74 @@ def load_synthesize_prompt(mode: Literal["insights", "ideas", "use_case"]) -> st
             return "Find and synthesize real-world use cases from the following Cursor chat history."
     
     return combined
+
+
+def format_sampled_messages_for_prompt(search_results: list[dict]) -> str:
+    """
+    Format semantically-sampled messages into a prompt string.
+    
+    Smart Sampling uses the top N most relevant messages instead of full conversations,
+    dramatically improving generation speed and reducing timeouts.
+    
+    Args:
+        search_results: List of search result dicts from semantic search, each containing:
+            - message: dict with text, type, timestamp
+            - similarity: float (0-1)
+            - context: dict with before/after message lists
+            - workspace: str
+            - chat_type: str
+    
+    Returns:
+        Formatted string for LLM prompt
+    """
+    if not search_results:
+        return "(No relevant messages found)"
+    
+    lines = []
+    lines.append(f"=== {len(search_results)} Most Relevant Chat Snippets ===")
+    lines.append("(Sorted by relevance to your generation request)")
+    lines.append("")
+    
+    for i, result in enumerate(search_results, 1):
+        msg = result.get("message", {})
+        similarity = result.get("similarity", 0)
+        workspace = result.get("workspace", "Unknown")
+        chat_type = result.get("chat_type", "unknown")
+        context = result.get("context", {})
+        
+        # Header with relevance score
+        relevance_pct = int(similarity * 100)
+        lines.append(f"--- Snippet {i} ({workspace}) [{chat_type}] (relevance: {relevance_pct}%) ---")
+        lines.append("")
+        
+        # Context before (if available)
+        for ctx_msg in context.get("before", []):
+            ctx_role = "USER" if ctx_msg.get("type") == "user" else "ASSISTANT"
+            ctx_text = ctx_msg.get("text", "")[:500]  # Truncate context
+            if ctx_text:
+                lines.append(f"[{ctx_role} - context]")
+                lines.append(ctx_text)
+                lines.append("")
+        
+        # Main message
+        role = "USER" if msg.get("type") == "user" else "ASSISTANT"
+        text = msg.get("text", "")
+        lines.append(f"[{role}]")
+        lines.append(text)
+        lines.append("")
+        
+        # Context after (if available)
+        for ctx_msg in context.get("after", []):
+            ctx_role = "USER" if ctx_msg.get("type") == "user" else "ASSISTANT"
+            ctx_text = ctx_msg.get("text", "")[:500]  # Truncate context
+            if ctx_text:
+                lines.append(f"[{ctx_role} - context]")
+                lines.append(ctx_text)
+                lines.append("")
+        
+        lines.append("")
+    
+    return "\n".join(lines)
 
 
 def load_golden_posts() -> str:
@@ -1916,7 +1988,15 @@ def process_aggregated_range(
                             "What prototypes could I make?",
                         ]
             
-            # Collect unique chat_ids from semantic search (PARALLELIZED across date range)
+            # Check if Smart Sampling is enabled (v4 - faster, more reliable)
+            use_smart_sampling = is_smart_sampling_enabled()
+            smart_sampling_config = get_smart_sampling_config() if use_smart_sampling else {}
+            smart_max_messages = smart_sampling_config.get("maxMessages", 50)
+            smart_min_similarity = smart_sampling_config.get("minSimilarity", 0.25)
+            smart_context_messages = smart_sampling_config.get("contextMessages", 1) if smart_sampling_config.get("includeContext", True) else 0
+            
+            # Collect search results
+            all_search_results: list[dict] = []
             relevant_chat_ids: set[tuple[str, str, str]] = set()
             
             def search_query(query: str) -> list[dict]:
@@ -1924,9 +2004,9 @@ def process_aggregated_range(
                 return search_messages(
                     query,
                     messages=[],
-                    top_k=50,  # Higher top_k since we're searching entire range
-                    min_similarity=0.3,
-                    context_messages=0,
+                    top_k=smart_max_messages if use_smart_sampling else 50,
+                    min_similarity=smart_min_similarity if use_smart_sampling else 0.3,
+                    context_messages=smart_context_messages,
                     use_vector_db=True,
                     start_timestamp=start_ts,
                     end_timestamp=end_ts,
@@ -1934,9 +2014,13 @@ def process_aggregated_range(
                 )
             
             # Run searches in parallel (only 3 searches instead of days × 5)
-            print(f"🔍 Running {len(search_queries)} semantic searches across {len(dates)} days...", file=sys.stderr)
+            sampling_mode = "⚡ Smart Sampling" if use_smart_sampling else "📚 Full Conversations"
+            print(f"🔍 {sampling_mode}: Running {len(search_queries)} semantic searches across {len(dates)} days...", file=sys.stderr)
             print(f"   Search queries: {search_queries}", file=sys.stderr)
             print(f"   Date range: {start_date} to {end_date} (timestamps: {start_ts} to {end_ts})", file=sys.stderr)
+            if use_smart_sampling:
+                print(f"   Max messages: {smart_max_messages}, Min similarity: {smart_min_similarity}", file=sys.stderr)
+            
             with ThreadPoolExecutor(max_workers=len(search_queries)) as executor:
                 futures = {executor.submit(search_query, query): query for query in search_queries}
                 for future in as_completed(futures):
@@ -1948,8 +2032,49 @@ def process_aggregated_range(
                         workspace = match.get("workspace", "Unknown")
                         chat_type = match.get("chat_type", "unknown")
                         relevant_chat_ids.add((workspace, chat_id, chat_type))
+                        
+                        # For smart sampling, collect the actual results
+                        if use_smart_sampling:
+                            all_search_results.append(match)
             
-            if relevant_chat_ids:
+            if use_smart_sampling and all_search_results:
+                # SMART SAMPLING: Use top N messages directly (skip fetching full conversations)
+                # Deduplicate by message text and sort by similarity
+                seen_texts: set[str] = set()
+                unique_results: list[dict] = []
+                for result in sorted(all_search_results, key=lambda x: x.get("similarity", 0), reverse=True):
+                    msg_text = result.get("message", {}).get("text", "")[:200]  # Use first 200 chars as key
+                    if msg_text and msg_text not in seen_texts:
+                        seen_texts.add(msg_text)
+                        unique_results.append(result)
+                        if len(unique_results) >= smart_max_messages:
+                            break
+                
+                # Convert to synthetic "conversations" format for downstream compatibility
+                all_conversations = [{
+                    "workspace": "Smart Sampling",
+                    "chat_type": "sampled",
+                    "messages": [],  # Not used in smart sampling path
+                    "_smart_sampled": True,
+                    "_search_results": unique_results,
+                }]
+                days_with_activity = len(set(
+                    datetime.fromtimestamp(r.get("message", {}).get("timestamp", 0) / 1000).date()
+                    for r in unique_results if r.get("message", {}).get("timestamp")
+                ))
+                
+                print(f"✅ Smart Sampling: {len(unique_results)} unique messages from {len(relevant_chat_ids)} conversations", file=sys.stderr)
+                print(f"   Days with activity: {days_with_activity}", file=sys.stderr)
+                print(f"   Skipping full conversation fetch (faster!)", file=sys.stderr)
+                
+                emit_search_complete(
+                    conversations_found=len(unique_results),
+                    days_with_activity=days_with_activity,
+                    days_processed=len(dates)
+                )
+                
+            elif relevant_chat_ids:
+                # LEGACY MODE: Fetch full conversations (slower but more complete)
                 print(f"🔍 Found {len(relevant_chat_ids)} relevant conversations via semantic search", file=sys.stderr)
                 print(f"📥 Fetching conversations by chat_ids...", file=sys.stderr)
                 
@@ -2089,65 +2214,75 @@ def process_aggregated_range(
                 "skipped_reason": "all_topics_covered",
         }
     
-    # Step 4: Compress/distill each conversation individually (lossless compression)
-    # Users want signals/reminders, not all details - compression preserves key info
-    # OPTIMIZATION: Skip compression for small date ranges (configurable threshold)
-    # Small date ranges typically have small prompts; compression adds cost/time without much benefit
+    # Step 4: Prepare conversation text for LLM
+    # Smart Sampling: Already sampled the most relevant messages, skip compression
+    # Legacy Mode: Compress/distill each conversation individually
     from common.prompt_compression import compress_single_conversation, estimate_tokens
     
-    date_range_days = len(dates)
-    compression_date_threshold = get_compression_date_threshold()
-    skip_compression = date_range_days < compression_date_threshold
+    # Check if we're using smart sampling
+    is_smart_sampled = len(all_conversations) == 1 and all_conversations[0].get("_smart_sampled", False)
     
-    if skip_compression:
-        print(f"⏭️  Skipping compression (date range: {date_range_days} days < {compression_date_threshold} days threshold)", file=sys.stderr)
-        compressed_conversations = all_conversations
+    if is_smart_sampled:
+        # SMART SAMPLING PATH: Use pre-sampled messages directly (no compression needed)
+        search_results = all_conversations[0].get("_search_results", [])
+        conversations_text = format_sampled_messages_for_prompt(search_results)
+        compressed_conversations = all_conversations  # Keep for compatibility
+        print(f"⚡ Smart Sampling: Using {len(search_results)} pre-sampled messages (skipping compression)", file=sys.stderr)
     else:
-        # Pre-calculate which conversations need compression (avoid redundant formatting)
-        conversations_to_compress = []
-        conversations_to_keep = []
+        # LEGACY PATH: Full conversation compression
+        date_range_days = len(dates)
+        compression_date_threshold = get_compression_date_threshold()
+        skip_compression = date_range_days < compression_date_threshold
         
-        for conv in all_conversations:
-            conv_text = format_conversations_for_prompt([conv])
-            conv_tokens = estimate_tokens(conv_text)
-            if conv_tokens > 800:
-                conversations_to_compress.append((conv, conv_tokens))
-            else:
-                conversations_to_keep.append((conv, conv_tokens))
-        
-        # Compress conversations in parallel (much faster!)
-        compressed_conversations = []
-        total_before = sum(tokens for _, tokens in conversations_to_compress) + sum(tokens for _, tokens in conversations_to_keep)
-        
-        if conversations_to_compress:
-            print(f"📦 Compressing {len(conversations_to_compress)} large conversations (parallel)...", file=sys.stderr)
-            with ThreadPoolExecutor(max_workers=min(len(conversations_to_compress), 5)) as executor:
-                futures = {executor.submit(compress_single_conversation, conv, llm=llm, max_tokens=500): conv for conv, _ in conversations_to_compress}
-                for future in as_completed(futures):
-                    compressed_conv = future.result()
-                    compressed_conversations.append(compressed_conv)
-            
-            # Add uncompressed conversations
-            compressed_conversations.extend([conv for conv, _ in conversations_to_keep])
-            
-            # Calculate total after compression
-            total_after = 0
-            for conv in compressed_conversations:
-                conv_text = format_conversations_for_prompt([conv])
-                total_after += estimate_tokens(conv_text)
-            
-            if total_before > total_after:
-                reduction = ((total_before - total_after) / total_before) * 100
-                print(f"✅ Compressed {len(all_conversations)} conversations: {total_before:,} → {total_after:,} tokens ({reduction:.1f}% reduction)", file=sys.stderr)
-            
-            # Final safety check: warn if still too large (shouldn't happen with compression)
-            if total_after > 25000:
-                print(f"⚠️  Warning: Total size ({total_after:,} tokens) approaches rate limit (30k TPM)", file=sys.stderr)
-                print(f"   Consider reducing date range if generation fails", file=sys.stderr)
+        if skip_compression:
+            print(f"⏭️  Skipping compression (date range: {date_range_days} days < {compression_date_threshold} days threshold)", file=sys.stderr)
+            compressed_conversations = all_conversations
         else:
-            compressed_conversations = [conv for conv, _ in conversations_to_keep]
-    
-    conversations_text = format_conversations_for_prompt(compressed_conversations)
+            # Pre-calculate which conversations need compression (avoid redundant formatting)
+            conversations_to_compress = []
+            conversations_to_keep = []
+            
+            for conv in all_conversations:
+                conv_text = format_conversations_for_prompt([conv])
+                conv_tokens = estimate_tokens(conv_text)
+                if conv_tokens > 800:
+                    conversations_to_compress.append((conv, conv_tokens))
+                else:
+                    conversations_to_keep.append((conv, conv_tokens))
+            
+            # Compress conversations in parallel (much faster!)
+            compressed_conversations = []
+            total_before = sum(tokens for _, tokens in conversations_to_compress) + sum(tokens for _, tokens in conversations_to_keep)
+            
+            if conversations_to_compress:
+                print(f"📦 Compressing {len(conversations_to_compress)} large conversations (parallel)...", file=sys.stderr)
+                with ThreadPoolExecutor(max_workers=min(len(conversations_to_compress), 5)) as executor:
+                    futures = {executor.submit(compress_single_conversation, conv, llm=llm, max_tokens=500): conv for conv, _ in conversations_to_compress}
+                    for future in as_completed(futures):
+                        compressed_conv = future.result()
+                        compressed_conversations.append(compressed_conv)
+                
+                # Add uncompressed conversations
+                compressed_conversations.extend([conv for conv, _ in conversations_to_keep])
+                
+                # Calculate total after compression
+                total_after = 0
+                for conv in compressed_conversations:
+                    conv_text = format_conversations_for_prompt([conv])
+                    total_after += estimate_tokens(conv_text)
+                
+                if total_before > total_after:
+                    reduction = ((total_before - total_after) / total_before) * 100
+                    print(f"✅ Compressed {len(all_conversations)} conversations: {total_before:,} → {total_after:,} tokens ({reduction:.1f}% reduction)", file=sys.stderr)
+                
+                # Final safety check: warn if still too large (shouldn't happen with compression)
+                if total_after > 25000:
+                    print(f"⚠️  Warning: Total size ({total_after:,} tokens) approaches rate limit (30k TPM)", file=sys.stderr)
+                    print(f"   Consider reducing date range if generation fails", file=sys.stderr)
+            else:
+                compressed_conversations = [conv for conv, _ in conversations_to_keep]
+        
+        conversations_text = format_conversations_for_prompt(compressed_conversations)
     
     if dry_run:
         return {
@@ -2241,10 +2376,9 @@ def main():
     )
     
     mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument("--daily", action="store_true", help="Daily mode: 1 day, best-of 3")
-    mode_group.add_argument("--sprint", action="store_true", help="Sprint mode: 2 weeks, best-of 5")
-    mode_group.add_argument("--month", action="store_true", help="Month mode: 4 weeks, best-of 10")
-    mode_group.add_argument("--quarter", action="store_true", help="Quarter mode: 6 weeks, best-of 15")
+    mode_group.add_argument("--daily", action="store_true", help="Daily mode: Last 24 hours")
+    mode_group.add_argument("--week", action="store_true", help="Week mode: Last 7 days (recommended)")
+    mode_group.add_argument("--sprint", action="store_true", help="Sprint mode: Last 14 days")
     
     parser.add_argument("--date", type=str, help="Single date (YYYY-MM-DD)")
     parser.add_argument("--days", type=int, help="Process last N days")
@@ -2282,11 +2416,11 @@ def main():
     
     # MODE_PRESETS: (days_or_hours, item_count, temperature, is_hours)
     # Note: "daily" now uses hours=24 for true "last 24 hours" behavior
+    # v4: Simplified to 3 presets (24h, 7d, 14d) for better UX
     MODE_PRESETS = {
-        "daily": (24, 5, 0.3, True),   # 24 hours (not 1 day)
-        "sprint": (14, 10, 0.4, False),  # 14 days
-        "month": (28, 15, 0.5, False),   # 28 days
-        "quarter": (42, 20, 0.5, False), # 42 days
+        "daily": (24, 5, 0.3, True),    # 24 hours (not 1 day)
+        "week": (7, 10, 0.35, False),   # 7 days (recommended default)
+        "sprint": (14, 15, 0.4, False), # 14 days
     }
     
     mode_days, mode_item_count, mode_temperature = None, 10, get_default_temperature()
@@ -2302,20 +2436,15 @@ def main():
             mode_days = hours_or_days
         mode_name = "daily"
         use_aggregated = True  # Use aggregated range for 24-hour window
+    elif args.week:
+        days_or_hours, mode_item_count, mode_temperature, is_hours = MODE_PRESETS["week"]
+        mode_days = days_or_hours if not is_hours else None
+        mode_name = "week"
+        use_aggregated = True
     elif args.sprint:
         days_or_hours, mode_item_count, mode_temperature, is_hours = MODE_PRESETS["sprint"]
         mode_days = days_or_hours if not is_hours else None
         mode_name = "sprint"
-        use_aggregated = True
-    elif args.month:
-        days_or_hours, mode_item_count, mode_temperature, is_hours = MODE_PRESETS["month"]
-        mode_days = days_or_hours if not is_hours else None
-        mode_name = "month"
-        use_aggregated = True
-    elif args.quarter:
-        days_or_hours, mode_item_count, mode_temperature, is_hours = MODE_PRESETS["quarter"]
-        mode_days = days_or_hours if not is_hours else None
-        mode_name = "quarter"
         use_aggregated = True
     elif args.days and args.days > 1:
         # Custom date range: use aggregated processing (not per-day)

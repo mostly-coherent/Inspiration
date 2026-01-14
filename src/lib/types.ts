@@ -81,7 +81,7 @@ export interface TimePreset {
   isCustom: boolean;
 }
 
-export type PresetMode = "daily" | "sprint" | "month" | "quarter" | "custom";
+export type PresetMode = "daily" | "week" | "sprint" | "custom";
 
 export interface ModeConfig {
   id: PresetMode;
@@ -161,11 +161,19 @@ export const PRESET_MODES: ModeConfig[] = [
   {
     id: "daily",
     label: "Last 24 hours",
-    description: "Last 24 hours of activity",
+    description: "Quick check on today's conversations",
     days: 0, // Not used when hours is set
     hours: 24,
     temperature: 0.3,
     icon: "⚡",
+  },
+  {
+    id: "week",
+    label: "Last 7 days",
+    description: "Weekly patterns (recommended)",
+    days: 7,
+    temperature: 0.35,
+    icon: "📅",
   },
   {
     id: "sprint",
@@ -174,22 +182,6 @@ export const PRESET_MODES: ModeConfig[] = [
     days: 14,
     temperature: 0.4,
     icon: "🏃",
-  },
-  {
-    id: "month",
-    label: "Last 30 days",
-    description: "Monthly patterns",
-    days: 30,
-    temperature: 0.5,
-    icon: "📅",
-  },
-  {
-    id: "quarter",
-    label: "Last 90 days",
-    description: "Full history",
-    days: 90,
-    temperature: 0.5,
-    icon: "🎯",
   },
 ];
 

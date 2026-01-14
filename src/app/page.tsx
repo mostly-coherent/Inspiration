@@ -83,7 +83,7 @@ export default function Home() {
   // State - simplified mode system (theme auto-determined from mode)
   const [selectedModeId, setSelectedModeId] = useState<ModeType>("idea");
   const [selectedTheme, setSelectedTheme] = useState<ThemeType>("generation"); // Auto-determined from mode
-  const [selectedMode, setSelectedMode] = useState<PresetMode>("sprint");
+  const [selectedMode, setSelectedMode] = useState<PresetMode>("week");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<GenerateResult | null>(null);

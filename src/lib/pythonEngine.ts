@@ -152,9 +152,8 @@ async function callPythonEngineLocal(
     args.push("--mode", body.mode || "ideas");
     
     if (body.preset === "daily") args.push("--daily");
+    else if (body.preset === "week") args.push("--week");
     else if (body.preset === "sprint") args.push("--sprint");
-    else if (body.preset === "month") args.push("--month");
-    else if (body.preset === "quarter") args.push("--quarter");
     else {
       if (body.days) args.push("--days", body.days.toString());
       if (body.date) args.push("--date", body.date);
