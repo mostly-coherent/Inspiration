@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
@@ -128,6 +128,9 @@ function ThemesPage() {
   const [oneOffExpanded, setOneOffExpanded] = useState(false);
   const [selectedOneOffId, setSelectedOneOffId] = useState<string | null>(null);
   
+  // Prevent state updates after unmount
+  const isMountedRef = useRef(true);
+  
   // Tab-specific config
   const [unexploredConfig, setUnexploredConfig] = useState({
     daysBack: 90,
@@ -142,6 +145,7 @@ function ThemesPage() {
   
   // Load config values on mount
   useEffect(() => {
+    isMountedRef.current = true;
     const loadConfig = async () => {
       try {
         const res = await fetch("/api/config");
@@ -150,6 +154,8 @@ function ThemesPage() {
           return;
         }
         const data = await res.json();
+        if (!isMountedRef.current) return;
+        
         if (data.success && data.config?.themeExplorer) {
           const { defaultZoom, sliderMin: min, sliderMax: max, unexplored, counterIntuitive } = data.config.themeExplorer;
           if (defaultZoom !== undefined) {
@@ -186,10 +192,16 @@ function ThemesPage() {
       } catch (err) {
         console.error("Failed to load theme explorer config:", err);
       } finally {
-        setConfigLoaded(true);
+        if (isMountedRef.current) {
+          setConfigLoaded(true);
+        }
       }
     };
     loadConfig();
+    
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
   
   // P4: Pre-fetch clusters for Counter-Intuitive tab (runs once on page load)
@@ -229,6 +241,8 @@ function ThemesPage() {
 
   // Fetch theme preview when threshold or item type changes
   const fetchThemes = useCallback(async () => {
+    if (!isMountedRef.current) return;
+    
     setLoading(true);
     setError(null);
     try {
@@ -238,13 +252,19 @@ function ThemesPage() {
       );
       if (!response.ok) throw new Error("Failed to fetch themes");
       const json = await response.json();
+      
+      if (!isMountedRef.current) return;
+      
       setData(json);
       setSelectedTheme(null);
       setSynthesis(null);
     } catch (err) {
+      if (!isMountedRef.current) return;
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [debouncedThreshold, itemTypeFilter]);
 
@@ -254,6 +274,8 @@ function ThemesPage() {
 
   // Fetch synthesis when a theme is selected
   const fetchSynthesis = useCallback(async (theme: ThemePreview) => {
+    if (!isMountedRef.current) return;
+    
     setSynthesisLoading(true);
     setSynthesisError(null);
     setSynthesis(null);
@@ -270,21 +292,29 @@ function ThemesPage() {
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ error: "Failed to synthesize theme" }));
         throw new Error(errorData.error || "Failed to synthesize theme");
       }
       
       const json: SynthesisData = await response.json();
+      
+      if (!isMountedRef.current) return;
+      
       setSynthesis(json);
     } catch (err) {
+      if (!isMountedRef.current) return;
       setSynthesisError(err instanceof Error ? err.message : "Failed to generate insights");
     } finally {
-      setSynthesisLoading(false);
+      if (isMountedRef.current) {
+        setSynthesisLoading(false);
+      }
     }
   }, [itemTypeFilter]);
 
   // Fetch expert perspectives when a theme is selected
   const fetchExpertPerspectives = useCallback(async (themeName: string) => {
+    if (!isMountedRef.current) return;
+    
     setExpertLoading(true);
     setExpertPerspectives(null);
     
@@ -294,6 +324,8 @@ function ThemesPage() {
         throw new Error(`API error: ${response.status}`);
       }
       const json = await response.json();
+      
+      if (!isMountedRef.current) return;
       
       if (json.success) {
         setExpertPerspectives({
@@ -305,10 +337,13 @@ function ThemesPage() {
         setExpertPerspectives({ quotes: [], indexed: json.indexed ?? false });
       }
     } catch (err) {
+      if (!isMountedRef.current) return;
       console.error("Failed to fetch expert perspectives:", err);
       setExpertPerspectives({ quotes: [], indexed: false });
     } finally {
-      setExpertLoading(false);
+      if (isMountedRef.current) {
+        setExpertLoading(false);
+      }
     }
   }, []);
 

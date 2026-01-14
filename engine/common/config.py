@@ -559,31 +559,42 @@ def _deep_merge(base: dict, override: dict) -> dict:
 # Environment variable loading
 def load_env_file(env_path: str | Path | None = None) -> None:
     """
-    Load environment variables from .env file.
+    Load environment variables from .env files.
+    
+    Loads ALL matching env files, with later files overriding earlier ones.
+    This allows .env to have defaults and .env.local to override specific keys.
     
     Args:
-        env_path: Path to .env file. If None, searches for .env in 
-                  project root and parent directories.
+        env_path: Path to .env file. If None, loads from project root:
+                  1. .env (base config)
+                  2. .env.local (overrides)
+                  3. Parent workspace .env (fallback)
     """
     if env_path:
         paths = [Path(env_path)]
     else:
-        # Search order: project .env, then .env.local
+        # Load order: base first, then overrides
+        # Later files override earlier ones for duplicate keys
         project_root = Path(__file__).parent.parent.parent
         paths = [
-            project_root / ".env.local",
-            project_root / ".env",
-            project_root.parent / ".env",  # Parent workspace .env
+            project_root.parent / ".env",  # Parent workspace .env (fallback)
+            project_root / ".env",          # Base config
+            project_root / ".env.local",    # Local overrides (highest priority)
         ]
     
+    # Load ALL existing files (not just the first one)
     for path in paths:
         if path.exists():
             _parse_env_file(path)
-            return
 
 
 def _parse_env_file(path: Path) -> None:
-    """Parse and load a .env file."""
+    """Parse and load a .env file.
+    
+    Rules:
+    - Empty values are skipped (don't override existing values with empty)
+    - Non-empty values override existing values (later files take priority)
+    """
     try:
         with open(path) as f:
             for line in f:
@@ -597,7 +608,9 @@ def _parse_env_file(path: Path) -> None:
                     # Remove quotes if present
                     if value and value[0] == value[-1] and value[0] in ('"', "'"):
                         value = value[1:-1]
-                    if key and key not in os.environ:
+                    # Only set if key is valid AND value is non-empty
+                    # Non-empty values override existing (later files have priority)
+                    if key and value:
                         os.environ[key] = value
     except IOError:
         pass

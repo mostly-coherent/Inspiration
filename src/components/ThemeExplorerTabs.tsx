@@ -80,6 +80,7 @@ export function ThemeExplorerTabs({ activeTab, onTabChange }: ThemeExplorerTabsP
                 `}
                 aria-current={isActive ? "page" : undefined}
                 aria-disabled={isComingSoon}
+                aria-label={isComingSoon ? `${tab.label} - Coming soon` : isExperimental ? `${tab.label} - ${tab.description} (experimental feature)` : `${tab.label} - ${tab.description}`}
                 title={isComingSoon ? "Coming soon" : isExperimental ? `${tab.description} (experimental feature)` : tab.description}
               >
                 <span className="flex items-center gap-2">

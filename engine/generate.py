@@ -1935,10 +1935,14 @@ def process_aggregated_range(
             
             # Run searches in parallel (only 3 searches instead of days × 5)
             print(f"🔍 Running {len(search_queries)} semantic searches across {len(dates)} days...", file=sys.stderr)
+            print(f"   Search queries: {search_queries}", file=sys.stderr)
+            print(f"   Date range: {start_date} to {end_date} (timestamps: {start_ts} to {end_ts})", file=sys.stderr)
             with ThreadPoolExecutor(max_workers=len(search_queries)) as executor:
                 futures = {executor.submit(search_query, query): query for query in search_queries}
                 for future in as_completed(futures):
+                    query_text = futures[future]
                     matches = future.result()
+                    print(f"   Query '{query_text}': Found {len(matches)} matches", file=sys.stderr)
                     for match in matches:
                         chat_id = match.get("chat_id", "unknown")
                         workspace = match.get("workspace", "Unknown")

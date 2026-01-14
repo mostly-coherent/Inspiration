@@ -232,43 +232,58 @@ export function SeekSection({
       
       // S4 Fix: Timeout watchdog
       let lastActivityTime = Date.now();
+      const timeoutRefs: NodeJS.Timeout[] = []; // Track timeouts for cleanup
       
       const readWithTimeout = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
         return Promise.race([
           reader.read(),
           new Promise<never>((_, reject) => {
             const checkTimeout = () => {
+              // Check if request was aborted
+              if (abortController.current?.signal.aborted) {
+                reject(new Error("Request cancelled"));
+                return;
+              }
+              
               if (Date.now() - lastActivityTime > STREAM_TIMEOUT_MS) {
                 reject(new Error("Stream timeout - no response for 60 seconds. Check your Library for results."));
               } else {
-                setTimeout(checkTimeout, 5000);
+                const timeoutId = setTimeout(checkTimeout, 5000);
+                timeoutRefs.push(timeoutId);
               }
             };
-            setTimeout(checkTimeout, STREAM_TIMEOUT_MS);
+            const initialTimeoutId = setTimeout(checkTimeout, STREAM_TIMEOUT_MS);
+            timeoutRefs.push(initialTimeoutId);
           }),
         ]);
       };
 
       // Process SSE stream
-      while (true) {
-        const { done, value } = await readWithTimeout();
-        if (done) break;
-        
-        // Reset timeout on activity
-        lastActivityTime = Date.now();
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
+      try {
+        while (true) {
+          const { done, value } = await readWithTimeout();
+          if (done) {
+            // Clean up timeouts when stream completes normally
+            timeoutRefs.forEach(id => clearTimeout(id));
+            timeoutRefs.length = 0;
+            break;
+          }
           
-          try {
-            const data = JSON.parse(line.slice(6));
+          // Reset timeout on activity
+          lastActivityTime = Date.now();
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
             
-            // Handle different message types from stream
-            switch (data.type) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              // Handle different message types from stream
+              switch (data.type) {
               case "phase":
                 setProgressPhase(data.phase as SeekPhase);
                 setProgressMessage(phaseInfo[data.phase as SeekPhase]?.label || data.phase);
@@ -359,11 +374,16 @@ export function SeekSection({
                 setProgressPhase("complete");
                 setProgressMessage("Search complete!");
                 break;
+              }
+            } catch {
+              // Ignore parse errors
             }
-          } catch {
-            // Ignore parse errors
           }
         }
+      } finally {
+        // Always clean up timeouts when stream processing ends
+        timeoutRefs.forEach(id => clearTimeout(id));
+        timeoutRefs.length = 0;
       }
 
       // S3/S10 Fix: Check if complete marker was received before verifying

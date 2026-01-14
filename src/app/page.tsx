@@ -144,6 +144,8 @@ export default function Home() {
   const abortController = useRef<AbortController | null>(null);
   // Ref to track accumulated progress data (avoids stale closure in async functions)
   const progressPhaseDataRef = useRef<ProgressPhaseData>({});
+  // Ref to track sync status timeout for cleanup
+  const syncStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Advanced settings
   const [customDays, setCustomDays] = useState<number>(14);
@@ -261,7 +263,10 @@ export default function Home() {
         }
         // Note: ScoreboardHeader will auto-refresh when syncStatus changes
         // Clear success status after 5 seconds
-        setTimeout(() => {
+        if (syncStatusTimeoutRef.current) {
+          clearTimeout(syncStatusTimeoutRef.current);
+        }
+        syncStatusTimeoutRef.current = setTimeout(() => {
           setSyncStatus((prev) => {
             // Only clear if it's still a success message (not changed to error/cloud mode)
             if (prev && prev.startsWith("✓")) {
@@ -269,6 +274,7 @@ export default function Home() {
             }
             return prev;
           });
+          syncStatusTimeoutRef.current = null;
         }, 5000);
       } else {
         // Handle cloud environment limitation gracefully
@@ -279,16 +285,24 @@ export default function Home() {
           setSyncStatus("⚠️ Sync failed");
           console.error("Sync failed:", data.error);
           // Clear error status after 5 seconds
-          setTimeout(() => {
+          if (syncStatusTimeoutRef.current) {
+            clearTimeout(syncStatusTimeoutRef.current);
+          }
+          syncStatusTimeoutRef.current = setTimeout(() => {
             setSyncStatus((prev) => prev === "⚠️ Sync failed" ? null : prev);
+            syncStatusTimeoutRef.current = null;
           }, 5000);
         }
       }
     } catch (e) {
       console.error("Sync error:", e);
       setSyncStatus("⚠️ Connection error");
-      setTimeout(() => {
+      if (syncStatusTimeoutRef.current) {
+        clearTimeout(syncStatusTimeoutRef.current);
+      }
+      syncStatusTimeoutRef.current = setTimeout(() => {
         setSyncStatus((prev) => prev === "⚠️ Connection error" ? null : prev);
+        syncStatusTimeoutRef.current = null;
       }, 5000);
     } finally {
       setIsSyncing(false);
@@ -410,17 +424,26 @@ export default function Home() {
       // C3/C5 FIX: Add timeout for stalled streams (60 seconds between updates)
       const STREAM_TIMEOUT_MS = 60000;
       let lastActivityTime = Date.now();
+      const timeoutRefs: NodeJS.Timeout[] = []; // Track timeouts for cleanup
       
       const readWithTimeout = async (): Promise<ReadableStreamReadResult<Uint8Array> | null> => {
         const timeoutPromise = new Promise<null>((resolve) => {
           const checkTimeout = () => {
+            // Check if request was aborted
+            if (abortController.current?.signal.aborted) {
+              resolve(null);
+              return;
+            }
+            
             if (Date.now() - lastActivityTime > STREAM_TIMEOUT_MS) {
               resolve(null);
             } else {
-              setTimeout(checkTimeout, 5000); // Check every 5 seconds
+              const timeoutId = setTimeout(checkTimeout, 5000);
+              timeoutRefs.push(timeoutId);
             }
           };
-          setTimeout(checkTimeout, STREAM_TIMEOUT_MS);
+          const initialTimeoutId = setTimeout(checkTimeout, STREAM_TIMEOUT_MS);
+          timeoutRefs.push(initialTimeoutId);
         });
         
         try {
@@ -428,39 +451,56 @@ export default function Home() {
             reader.read(),
             timeoutPromise
           ]);
+          
+          // Clean up all timeouts when we get a result
+          timeoutRefs.forEach(id => clearTimeout(id));
+          timeoutRefs.length = 0;
+          
           if (result) {
             lastActivityTime = Date.now(); // Reset timeout on activity
           }
           return result;
         } catch {
+          // Clean up timeouts on error
+          timeoutRefs.forEach(id => clearTimeout(id));
+          timeoutRefs.length = 0;
           return null;
         }
       };
 
       // Process SSE stream
-      while (true) {
-        const result = await readWithTimeout();
-        
-        // C3/C5 FIX: Handle timeout
-        if (result === null) {
-          throw new Error("Stream timeout - no response for 60 seconds. The generation may still be running. Check the Library for results.");
-        }
-        
-        const { done, value } = result;
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || ""; // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
+      try {
+        while (true) {
+          const result = await readWithTimeout();
           
-          try {
-            const data = JSON.parse(line.slice(6));
+          // C3/C5 FIX: Handle timeout
+          if (result === null) {
+            // Clean up timeouts before throwing
+            timeoutRefs.forEach(id => clearTimeout(id));
+            timeoutRefs.length = 0;
+            throw new Error("Stream timeout - no response for 60 seconds. The generation may still be running. Check the Library for results.");
+          }
+          
+          const { done, value } = result;
+          if (done) {
+            // Clean up timeouts when stream completes normally
+            timeoutRefs.forEach(id => clearTimeout(id));
+            timeoutRefs.length = 0;
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
             
-            // Handle different message types from stream
-            switch (data.type) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              // Handle different message types from stream
+              switch (data.type) {
               case "phase":
                 setProgressPhase(data.phase);
                 setProgress(phaseProgress[data.phase] || 0);
@@ -541,11 +581,16 @@ export default function Home() {
                   setProgressPhaseData(prev => ({ ...prev, ...update }));
                 }
                 break;
+              }
+            } catch {
+              // Ignore parse errors
             }
-          } catch {
-            // Ignore parse errors
           }
         }
+      } finally {
+        // Always clean up timeouts when stream processing ends
+        timeoutRefs.forEach(id => clearTimeout(id));
+        timeoutRefs.length = 0;
       }
 
       // If there was a stream error, throw it
@@ -651,6 +696,10 @@ export default function Home() {
       setResult(result);
       
     } catch (error) {
+      // Clean up any remaining timeouts on error
+      // Note: timeoutRefs is scoped to executeGeneration, so we can't access it here
+      // But the finally block in the stream processing will clean it up
+      
       if (error instanceof Error && error.name === "AbortError") {
         setProgressPhase("stopped");
         setProgressMessage("Generation stopped by user");
@@ -772,6 +821,10 @@ export default function Home() {
       if (seekAbortController.current) {
         seekAbortController.current.abort();
         seekAbortController.current = null;
+      }
+      if (syncStatusTimeoutRef.current) {
+        clearTimeout(syncStatusTimeoutRef.current);
+        syncStatusTimeoutRef.current = null;
       }
     };
   }, []);

@@ -1,0 +1,150 @@
+{
+  "summary": {
+    "run_id": "20260114_143623",
+    "success": true,
+    "error": null,
+    "total_elapsed_seconds": 3.79,
+    "total_tokens_in": 0,
+    "total_tokens_out": 0,
+    "total_cost_usd": 0.0,
+    "phase_timings": {
+      "confirming": 0.0,
+      "searching": 3.79,
+      "complete": 0.0
+    }
+  },
+  "events": [
+    {
+      "timestamp": "2026-01-14T14:36:23.820171",
+      "elapsed_ms": 0,
+      "type": "run_start",
+      "run_id": "20260114_143623",
+      "mode": "insights",
+      "item_count": 50,
+      "days": 28
+    },
+    {
+      "timestamp": "2026-01-14T14:36:23.820184",
+      "elapsed_ms": 0,
+      "type": "phase_start",
+      "phase": "confirming",
+      "message": "Request parameters confirmed"
+    },
+    {
+      "timestamp": "2026-01-14T14:36:23.820194",
+      "elapsed_ms": 0,
+      "type": "stat",
+      "key": "dateRange",
+      "value": "2025-12-18 to 2026-01-14"
+    },
+    {
+      "timestamp": "2026-01-14T14:36:23.820197",
+      "elapsed_ms": 0,
+      "type": "stat",
+      "key": "requestedItems",
+      "value": 50
+    },
+    {
+      "timestamp": "2026-01-14T14:36:23.820201",
+      "elapsed_ms": 0,
+      "type": "stat",
+      "key": "temperature",
+      "value": 0.3
+    },
+    {
+      "timestamp": "2026-01-14T14:36:23.820208",
+      "elapsed_ms": 0,
+      "type": "stat",
+      "key": "daysProcessed",
+      "value": 28
+    },
+    {
+      "timestamp": "2026-01-14T14:36:23.820224",
+      "elapsed_ms": 0,
+      "type": "phase_end",
+      "phase": "confirming",
+      "elapsed_seconds": 0.0
+    },
+    {
+      "timestamp": "2026-01-14T14:36:23.820227",
+      "elapsed_ms": 0,
+      "type": "phase_start",
+      "phase": "searching",
+      "message": "Searching chat history via semantic search..."
+    },
+    {
+      "timestamp": "2026-01-14T14:36:27.609355",
+      "elapsed_ms": 3789,
+      "type": "stat",
+      "key": "conversationsFound",
+      "value": 0
+    },
+    {
+      "timestamp": "2026-01-14T14:36:27.609371",
+      "elapsed_ms": 3789,
+      "type": "stat",
+      "key": "daysWithActivity",
+      "value": 0
+    },
+    {
+      "timestamp": "2026-01-14T14:36:27.609408",
+      "elapsed_ms": 3789,
+      "type": "stat",
+      "key": "daysProcessed",
+      "value": 28
+    },
+    {
+      "timestamp": "2026-01-14T14:36:27.609415",
+      "elapsed_ms": 3789,
+      "type": "error",
+      "error_type": "no_messages",
+      "message": "No relevant conversations for 2025-12-18 to 2026-01-14",
+      "details": ""
+    },
+    {
+      "timestamp": "2026-01-14T14:36:27.609509",
+      "elapsed_ms": 3789,
+      "type": "phase_end",
+      "phase": "searching",
+      "elapsed_seconds": 3.79
+    },
+    {
+      "timestamp": "2026-01-14T14:36:27.609519",
+      "elapsed_ms": 3789,
+      "type": "phase_start",
+      "phase": "complete",
+      "message": "Generation complete!"
+    },
+    {
+      "timestamp": "2026-01-14T14:36:27.609525",
+      "elapsed_ms": 3789,
+      "type": "stat",
+      "key": "finalItemsAdded",
+      "value": 0
+    },
+    {
+      "timestamp": "2026-01-14T14:36:27.609529",
+      "elapsed_ms": 3789,
+      "type": "stat",
+      "key": "finalItemsMerged",
+      "value": 0
+    },
+    {
+      "timestamp": "2026-01-14T14:36:27.609542",
+      "elapsed_ms": 3789,
+      "type": "run_end",
+      "run_id": "20260114_143623",
+      "success": true,
+      "error": null,
+      "total_elapsed_seconds": 3.79,
+      "total_tokens_in": 0,
+      "total_tokens_out": 0,
+      "total_cost_usd": 0.0,
+      "phase_timings": {
+        "confirming": 0.0,
+        "searching": 3.79,
+        "complete": 0.0
+      }
+    }
+  ]
+}

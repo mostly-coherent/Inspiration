@@ -162,6 +162,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
 
   // Download Lenny embeddings from GitHub Releases
   const downloadLennyEmbeddings = useCallback(async () => {
+    // Prevent concurrent downloads
     if (lennyDownloadStatus === "downloading" || !isMountedRef.current) return;
     
     setLennyDownloadStatus("downloading");
@@ -174,12 +175,16 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-        setLennyDownloadMessage(`⚠️ ${errorData.error || "Download failed"}`);
-        setLennyDownloadStatus("error");
+        if (isMountedRef.current) {
+          setLennyDownloadMessage(`⚠️ ${errorData.error || "Download failed"}`);
+          setLennyDownloadStatus("error");
+        }
         return;
       }
       
       const data = await res.json();
+      
+      if (!isMountedRef.current) return;
       
       if (data.success) {
         if (data.message.includes("already exist")) {
@@ -217,6 +222,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
 
   // Sync Lenny archive (git pull + re-index if needed)
   const syncLennyArchive = useCallback(async () => {
+    // Prevent concurrent syncs
     if (lennySyncStatus === "syncing" || !isMountedRef.current) return;
     
     setLennySyncStatus("syncing");
@@ -229,12 +235,16 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-        setLennySyncMessage(`⚠️ ${errorData.error || "Sync failed"}`);
-        setLennySyncStatus("error");
+        if (isMountedRef.current) {
+          setLennySyncMessage(`⚠️ ${errorData.error || "Sync failed"}`);
+          setLennySyncStatus("error");
+        }
         return;
       }
       
       const data = await res.json();
+      
+      if (!isMountedRef.current) return;
       
       if (data.success) {
         if (data.action === "up_to_date") {

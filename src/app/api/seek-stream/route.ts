@@ -94,6 +94,7 @@ async function runPythonScriptStream(
 
     let isAborted = false;
     let jsonOutput = "";
+    let killTimeout: NodeJS.Timeout | null = null;
 
     // Handle abort signal
     if (signal) {
@@ -102,10 +103,15 @@ async function runPythonScriptStream(
         send({ type: "log", message: "Request cancelled, stopping..." });
         try {
           proc.kill("SIGTERM");
-          setTimeout(() => {
+          // Clean up any existing timeout before setting new one
+          if (killTimeout) {
+            clearTimeout(killTimeout);
+          }
+          killTimeout = setTimeout(() => {
             if (!proc.killed) {
               proc.kill("SIGKILL");
             }
+            killTimeout = null;
           }, 2000);
         } catch (err) {
           logger.error("[Seek-Stream] Error killing process:", err);
@@ -333,6 +339,12 @@ async function runPythonScriptStream(
     });
 
     proc.on("close", (code) => {
+      // Clean up kill timeout if process completes naturally
+      if (killTimeout) {
+        clearTimeout(killTimeout);
+        killTimeout = null;
+      }
+      
       if (!isAborted) {
         if (code === 0) {
           send({ type: "log", message: "Process completed successfully" });
@@ -345,6 +357,12 @@ async function runPythonScriptStream(
     });
 
     proc.on("error", (err) => {
+      // Clean up kill timeout on error
+      if (killTimeout) {
+        clearTimeout(killTimeout);
+        killTimeout = null;
+      }
+      
       if (!isAborted) {
         send({ type: "error", error: err.message });
         reject(err);

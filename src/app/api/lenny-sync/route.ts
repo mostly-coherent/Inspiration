@@ -188,6 +188,18 @@ export async function POST(): Promise<NextResponse<LennySyncResponse>> {
         let stdout = "";
         let stderr = "";
         let resolved = false; // Prevent double resolution
+        let timeout: NodeJS.Timeout | null = null;
+
+        // Cleanup function to ensure process and timeout are cleaned up
+        const cleanup = () => {
+          if (timeout) {
+            clearTimeout(timeout);
+            timeout = null;
+          }
+          if (!indexProcess.killed) {
+            indexProcess.kill();
+          }
+        };
 
         indexProcess.stdout.on("data", (data) => {
           stdout += data.toString();
@@ -199,10 +211,10 @@ export async function POST(): Promise<NextResponse<LennySyncResponse>> {
 
         // Timeout after 90 seconds (sufficient for 2-3 new episodes/week)
         // Typical weekly sync: ~150-300 chunks = ~30-60 seconds API time
-        const timeout = setTimeout(() => {
+        timeout = setTimeout(() => {
           if (!resolved) {
             resolved = true;
-            indexProcess.kill();
+            cleanup();
             resolve(NextResponse.json({
               success: true,
               action: "pulled",
@@ -214,7 +226,7 @@ export async function POST(): Promise<NextResponse<LennySyncResponse>> {
         indexProcess.on("close", (code) => {
           if (resolved) return; // Already resolved by timeout
           resolved = true;
-          clearTimeout(timeout);
+          cleanup();
 
           if (code !== 0) {
             console.error("Lenny indexing failed:", stderr);
@@ -237,6 +249,21 @@ export async function POST(): Promise<NextResponse<LennySyncResponse>> {
             message: `Synced and indexed ${newEpisodes} episodes`,
             newEpisodes,
           }));
+        });
+
+        // Handle process errors
+        indexProcess.on("error", (error) => {
+          if (!resolved) {
+            resolved = true;
+            cleanup();
+            console.error("Lenny indexing process error:", error);
+            resolve(NextResponse.json({
+              success: false,
+              action: "error",
+              message: "Failed to start indexing process",
+              error: error.message || "Process spawn failed",
+            }));
+          }
         });
       });
     }

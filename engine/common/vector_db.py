@@ -364,29 +364,57 @@ def search_messages_vector_db(
             print(f"   To fix: Run the SQL from engine/scripts/init_vector_db.sql in Supabase SQL Editor", file=sys.stderr)
             print(f"   This will enable fast vector search (100x faster)", file=sys.stderr)
         
-        # Build query for fallback
-        query_builder = client.table("cursor_messages").select("*")
-        
-        # Apply timestamp filters
+        # Build count query first (separate from data query)
+        count_query = client.table("cursor_messages").select("id", count="exact")
         if start_timestamp:
-            query_builder = query_builder.gte("timestamp", start_timestamp)
+            count_query = count_query.gte("timestamp", start_timestamp)
         if end_timestamp:
-            query_builder = query_builder.lt("timestamp", end_timestamp)
-        
-        # Apply workspace filter
+            count_query = count_query.lt("timestamp", end_timestamp)
         if workspace_paths:
-            query_builder = query_builder.in_("workspace", workspace_paths)
+            count_query = count_query.in_("workspace", workspace_paths)
         
-        # Fetch messages (limited for fallback)
-        result = query_builder.limit(1000).execute()
+        count_result = count_query.execute()
+        total_messages = count_result.count if hasattr(count_result, 'count') else 0
+        print(f"⚠️  Fallback: Found {total_messages} messages in date range", file=sys.stderr)
+        
+        # Build data query (separate builder)
+        data_query = client.table("cursor_messages").select("*")
+        if start_timestamp:
+            data_query = data_query.gte("timestamp", start_timestamp)
+        if end_timestamp:
+            data_query = data_query.lt("timestamp", end_timestamp)
+        if workspace_paths:
+            data_query = data_query.in_("workspace", workspace_paths)
+        
+        # Fetch messages (limit for fallback performance)
+        result = data_query.limit(5000).execute()
         messages = result.data if result.data else []
+        
+        # Check how many have embeddings
+        msgs_with_emb = [m for m in messages if m.get("embedding")]
+        print(f"⚠️  Fallback: {len(msgs_with_emb)} of {len(messages)} messages have embeddings", file=sys.stderr)
+        
+        if total_messages > 5000:
+            print(f"⚠️  Warning: Only checking first 5000 of {total_messages} messages (fallback limit)", file=sys.stderr)
+            print(f"   Consider fixing RPC function for better performance", file=sys.stderr)
         
         # Compute similarity client-side (fallback only)
         matches = []
+        messages_with_embeddings = 0
+        import json
         for msg in messages:
             msg_embedding = msg.get("embedding", [])
             if not msg_embedding:
                 continue
+            
+            # Parse embedding if it's a string (pgvector returns JSON string)
+            if isinstance(msg_embedding, str):
+                try:
+                    msg_embedding = json.loads(msg_embedding)
+                except json.JSONDecodeError:
+                    continue
+            
+            messages_with_embeddings += 1
             
             # Calculate cosine similarity
             from .semantic_search import cosine_similarity
@@ -407,7 +435,18 @@ def search_messages_vector_db(
         
         # Sort by similarity and return top_k
         matches.sort(key=lambda x: x["similarity"], reverse=True)
-        return matches[:top_k]
+        result_matches = matches[:top_k]
+        
+        if result_matches:
+            print(f"⚠️  Fallback: Found {len(result_matches)} matches (top similarity: {result_matches[0]['similarity']:.3f})", file=sys.stderr)
+        else:
+            print(f"⚠️  Fallback: No matches found (checked {messages_with_embeddings} messages with embeddings)", file=sys.stderr)
+            if messages_with_embeddings == 0:
+                print(f"   ⚠️  No embeddings found! You may need to sync your brain to create embeddings.", file=sys.stderr)
+            elif min_similarity > 0:
+                print(f"   💡 Try lowering min_similarity threshold (currently {min_similarity})", file=sys.stderr)
+        
+        return result_matches
 
 
 def get_message_count(client: Optional[Client] = None) -> int:
