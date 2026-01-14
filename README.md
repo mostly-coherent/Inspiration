@@ -13,6 +13,8 @@
 
 <img src="public/screenshots/homepage.png" alt="Inspiration - Main Interface" width="800">
 
+> **🎙️ NEW: [Lenny's Podcast Integration](#-whats-new)** — 280+ expert episodes now enrich your themes with industry wisdom. [Learn more ↓](#-whats-new)
+
 ---
 
 ## 🧠 Who This Is For
@@ -255,9 +257,9 @@ The innovation is **what** you're searching (your own AI coding conversations fo
 
 ---
 
-## 🔮 What's Next
+## 🎙️ What's New
 
-**🎙️ NEW: Lenny's Podcast Integration!** Your themes are now enriched with wisdom from a growing 280+ expert episodes—top product leaders, engineers, and founders who've built iconic products. When you explore a theme, see what experts like **Claire Vo** (ChatPRD), **Graham Weaver** (Alpine Investors), **Dylan Field** (Figma), **Elena Verna** (Amplitude, Miro), and **Sander Schulhoff** (Learn Prompting) have said about similar topics. Click through to YouTube timestamps for the exact moment.
+**Lenny's Podcast Integration!** Your themes are now enriched with wisdom from a growing 280+ expert episodes—top product leaders, engineers, and founders who've built iconic products. When you explore a theme, see what experts like **Claire Vo** (ChatPRD), **Graham Weaver** (Alpine Investors), **Dylan Field** (Figma), **Elena Verna** (Lovable, Miro), and **Sander Schulhoff** (Learn Prompting) have said about similar topics. Click through to YouTube timestamps for the exact moment.
 
 **How it works:**
 - 44,000+ searchable transcript segments indexed locally (~74MB embeddings)
