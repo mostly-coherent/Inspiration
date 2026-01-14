@@ -109,7 +109,7 @@ That's it. The **onboarding wizard** handles everything else:
 
 | Key | Required? | What It Enables |
 |-----|-----------|-----------------|
-| **Anthropic** | ✅ Yes | Generation, theme synthesis, quality scoring |
+| **Anthropic** | ✅ Yes | Generation, theme synthesis |
 | **OpenAI** | Optional | Deduplication, semantic search, library sync |
 | **Supabase** | Optional | Scale to 500MB+ history with instant search |
 

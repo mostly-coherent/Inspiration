@@ -88,7 +88,6 @@ OUTPUT_DIRS = {
 from common.config import (
     get_generation_temperature,
     get_deduplication_threshold,
-    get_quality_tier_thresholds,
     get_semantic_search_top_k,
     get_semantic_search_min_similarity,
 )
@@ -133,126 +132,6 @@ MODE_CONFIG = {
         "aggregated_title": "Ideas",
     },
 }
-
-# =============================================================================
-# Quality Scoring (LLM-based)
-# =============================================================================
-
-QUALITY_SCORING_PROMPT = """Rate this {item_type} on three dimensions from 1-5:
-
-1. **Novelty** (1-5): Is this a fresh perspective? Does it offer something new?
-   - 1: Very common/obvious idea
-   - 3: Somewhat original, seen variations before
-   - 5: Highly novel, unique perspective
-
-2. **Intellectual Interest** (1-5): Would someone want to explore this further?
-   - 1: Mundane, no curiosity spark
-   - 3: Interesting to some audiences
-   - 5: Fascinating, broadly compelling
-
-3. **Actionability** (1-5): Can this be built/shared/applied?
-   - 1: Abstract, no clear next steps
-   - 3: Some actionable elements
-   - 5: Clear, specific, ready to act on
-
-**Title:** {title}
-**Content:** {content}
-
-Respond with ONLY a JSON object:
-{{"novelty": N, "interest": N, "actionability": N}}
-
-No explanation, just the JSON."""
-
-
-def score_item_quality(
-    title: str,
-    description: str,
-    item_type: str,
-    llm: LLMProvider,
-) -> str | None:
-    """
-    Use LLM to score item quality and return A/B/C tier.
-    
-    Scoring:
-    - A-tier: Total 13-15 points (exceptional)
-    - B-tier: Total 9-12 points (good)
-    - C-tier: Total 5-8 points (basic)
-    
-    Returns: "A", "B", "C", or None if scoring fails
-    """
-    try:
-        prompt = QUALITY_SCORING_PROMPT.format(
-            item_type=item_type,
-            title=title,
-            content=description[:500],  # Truncate for efficiency
-        )
-        
-        response = llm.generate(
-            prompt,
-            temperature=0.1,  # Low temperature for consistent scoring
-        )
-        
-        # Parse JSON response
-        import re
-        json_match = re.search(r'\{[^}]+\}', response)
-        if not json_match:
-            return None
-        
-        scores = json.loads(json_match.group())
-        total = scores.get("novelty", 0) + scores.get("interest", 0) + scores.get("actionability", 0)
-        
-        # Get thresholds from config
-        try:
-            tier_a, tier_b, tier_c = get_quality_tier_thresholds()
-        except Exception:
-            tier_a, tier_b, tier_c = 13, 9, 5  # fallback defaults
-        
-        if total >= tier_a:
-            return "A"
-        elif total >= tier_b:
-            return "B"
-        elif total >= tier_c:
-            return "C"
-        else:
-            return None
-            
-    except Exception as e:
-        print(f"   ⚠️  Quality scoring failed: {e}", file=sys.stderr)
-        return None
-
-
-def batch_score_quality(
-    items: list[dict],
-    item_type: str,
-    llm: LLMProvider,
-) -> list[str | None]:
-    """
-    Batch score multiple items in parallel for efficiency.
-    Returns list of quality tiers ("A", "B", "C", or None).
-    """
-    results = []
-    
-    # Use ThreadPoolExecutor for parallel scoring
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        futures = []
-        for item in items:
-            future = executor.submit(
-                score_item_quality,
-                item.get("title", ""),
-                item.get("description", ""),
-                item_type,
-                llm,
-            )
-            futures.append(future)
-        
-        for future in as_completed(futures):
-            try:
-                results.append(future.result())
-            except Exception:
-                results.append(None)
-    
-    return results
-
 
 # =============================================================================
 # Prompt Loading (with caching)
@@ -1437,25 +1316,6 @@ def harmonize_all_outputs(
                     print(f"   ⚠️  OpenAI not configured - skipping embeddings (items added without dedup)", file=sys.stderr)
                     embeddings = [[0.0] * 1536] * len(texts)  # Zero vectors = no similarity matching
                 
-                # Quality scoring: Use LLM to rate items on novelty, interest, actionability
-                print(f"   🎯 Scoring quality for {len(prepared_items)} items...", file=sys.stderr)
-                # Emit progress markers for large batches (quality scoring can take 10-30s)
-                if len(prepared_items) > 5:
-                    print(f"[PROGRESS:current=0,total={len(prepared_items)},label=scoring]", flush=True)
-                try:
-                    # Get LLM for quality scoring (use configured model)
-                    llm_config = get_llm_config()
-                    quality_llm = create_llm(llm_config)
-                    quality_scores = batch_score_quality(prepared_items, mode_id, quality_llm)
-                    if len(prepared_items) > 5:
-                        print(f"[PROGRESS:current={len(prepared_items)},total={len(prepared_items)},label=scoring]", flush=True)
-                    print(f"   ✅ Quality scores: {sum(1 for q in quality_scores if q == 'A')} A, {sum(1 for q in quality_scores if q == 'B')} B, {sum(1 for q in quality_scores if q == 'C')} C", file=sys.stderr)
-                except Exception as e:
-                    if len(prepared_items) > 5:
-                        print(f"[PROGRESS:current={len(prepared_items)},total={len(prepared_items)},label=scoring]", flush=True)
-                    print(f"   ⚠️  Quality scoring failed: {e}", file=sys.stderr)
-                    quality_scores = [None] * len(prepared_items)
-                
                 # OPTIMIZATION (H-1, H-2): Batch add items with parallel deduplication
                 # Prepare items for batch insertion
                 batch_items_data = []
@@ -1466,7 +1326,6 @@ def harmonize_all_outputs(
                         "tags": prep["tags"],
                         "embedding": embeddings[i],
                         "first_seen_date": prep.get("_first_seen_date"),
-                        "quality": quality_scores[i] if i < len(quality_scores) else None,
                     })
                 
                 # Use batch_add_items if available (ItemsBankSupabase), else fallback to sequential
@@ -1499,7 +1358,6 @@ def harmonize_all_outputs(
                             tags=prep["tags"],
                             embedding=embeddings[i],
                             first_seen_date=prep.get("_first_seen_date"),
-                            quality=quality_scores[i] if i < len(quality_scores) else None,
                             source_start_date=source_date_range[0] if source_date_range else None,
                             source_end_date=source_date_range[1] if source_date_range else None,
                         )

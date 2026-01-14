@@ -90,13 +90,6 @@ DEFAULT_CONFIG = {
         "topK": 10,  # Maximum number of results to return
         "minSimilarity": 0.0,  # Minimum relevance score (0.0 = include all, 1.0 = exact match only)
     },
-    # v3 Quality Scoring - How items are graded (A/B/C tiers)
-    "qualityScoring": {
-        "tierA": 13,  # Score >= this = Grade A (Excellent, worth sharing)
-        "tierB": 9,   # Score >= this = Grade B (Good, needs polish)
-        "tierC": 5,   # Score >= this = Grade C (Okay, needs work)
-        # Below tierC = Unrated
-    },
     # v3 Semantic Search - How chat history search works
     "semanticSearch": {
         "defaultTopK": 50,  # Default number of results for semantic search
@@ -400,31 +393,6 @@ def get_seek_top_k() -> int:
 def get_seek_min_similarity() -> float:
     """Get the default min similarity for Seek mode."""
     return get_seek_defaults().get("minSimilarity", 0.0)
-
-
-def get_quality_scoring() -> dict[str, int]:
-    """
-    Get quality scoring tier thresholds.
-    
-    Returns:
-        Dict with keys:
-        - tierA: int - Score >= this = Grade A
-        - tierB: int - Score >= this = Grade B
-        - tierC: int - Score >= this = Grade C
-    """
-    config = load_config()
-    defaults = config.get("qualityScoring", DEFAULT_CONFIG["qualityScoring"])
-    return defaults
-
-
-def get_quality_tier_thresholds() -> tuple[int, int, int]:
-    """Get quality tier thresholds as a tuple (tierA, tierB, tierC)."""
-    scoring = get_quality_scoring()
-    return (
-        scoring.get("tierA", 13),
-        scoring.get("tierB", 9),
-        scoring.get("tierC", 5),
-    )
 
 
 def get_semantic_search_defaults() -> dict[str, Any]:

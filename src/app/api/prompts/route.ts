@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { validatePromptTemplate, formatValidationErrors } from "@/lib/promptValidator";
 
 const PROMPTS_DIR = path.join(process.cwd(), "engine", "prompts");
 
-// List of prompt templates
+// List of prompt templates grouped by category
 const PROMPT_FILES = [
-  { id: "base", file: "base_synthesize.md", label: "Base Template", description: "Common rules for all modes" },
-  { id: "ideas", file: "ideas_synthesize.md", label: "Ideas", description: "Idea generation prompt" },
-  { id: "insights", file: "insights_synthesize.md", label: "Insights", description: "Insight generation prompt" },
-  { id: "use_case", file: "use_case_synthesize.md", label: "Use Cases", description: "Use case synthesis prompt" },
-  { id: "item_ranker", file: "item_ranker.md", label: "Item Ranker", description: "Item ranking/judging prompt" },
+  // Generation prompts
+  { id: "base", file: "base_synthesize.md", label: "Base Template", description: "Common rules for all modes", category: "generation" },
+  { id: "ideas", file: "ideas_synthesize.md", label: "Ideas", description: "Idea generation prompt", category: "generation" },
+  { id: "insights", file: "insights_synthesize.md", label: "Insights", description: "Insight generation prompt", category: "generation" },
+  { id: "use_case", file: "use_case_synthesize.md", label: "Use Cases", description: "Use case synthesis prompt", category: "generation" },
+  { id: "item_ranker", file: "item_ranker.md", label: "Item Ranker", description: "Item ranking/judging prompt", category: "generation" },
+  // Counter-Intuitive prompts (Theme Explorer)
+  { id: "counter_intuitive", file: "counter_intuitive.md", label: "Counter-Intuitive (Single)", description: "Generate one counter-perspective for a theme", category: "counter_intuitive" },
+  { id: "counter_intuitive_batch", file: "counter_intuitive_batch.md", label: "Counter-Intuitive (Batch)", description: "Generate multiple counter-perspectives efficiently", category: "counter_intuitive" },
 ];
 
 export async function GET(request: NextRequest) {
@@ -149,6 +154,18 @@ export async function POST(request: NextRequest) {
     }
 
     const filePath = path.join(PROMPTS_DIR, promptConfig.file);
+
+    // Validate prompt template before saving
+    const validationResult = validatePromptTemplate(content);
+    if (!validationResult.isValid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Prompt validation failed:\n\n${formatValidationErrors(validationResult)}`,
+        },
+        { status: 400 }
+      );
+    }
 
     // Create backup before overwriting (only if this is the first edit)
     if (fs.existsSync(filePath)) {

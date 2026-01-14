@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { validatePromptTemplate, formatValidationErrors, autoEscapeJsonBraces, type ValidationResult } from "@/lib/promptValidator";
 
 interface PromptInfo {
   id: string;
@@ -10,7 +11,22 @@ interface PromptInfo {
   exists: boolean;
   size: number;
   lastModified: string | null;
+  category?: string;
 }
+
+// Category metadata for grouping prompts
+const PROMPT_CATEGORIES: Record<string, { label: string; icon: string; description: string }> = {
+  generation: {
+    label: "Generation Prompts",
+    icon: "💡",
+    description: "How AI generates Ideas, Insights, and Use Cases",
+  },
+  counter_intuitive: {
+    label: "Counter-Intuitive Prompts",
+    icon: "🔄",
+    description: "How AI generates \"what if the opposite is true?\" perspectives in Theme Explorer",
+  },
+};
 
 interface PromptWithContent extends PromptInfo {
   content: string;
@@ -27,6 +43,8 @@ export function PromptTemplateEditor() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [showAutoFix, setShowAutoFix] = useState(false);
 
   // Load prompts list
   useEffect(() => {
@@ -72,9 +90,20 @@ export function PromptTemplateEditor() {
   const savePrompt = async () => {
     if (!selectedPrompt) return;
 
+    // Validate before saving
+    const validation = validatePromptTemplate(editedContent);
+    if (!validation.isValid) {
+      setError(`Validation failed:\n\n${formatValidationErrors(validation)}`);
+      setValidationResult(validation);
+      setShowAutoFix(true);
+      return;
+    }
+
     setSaving(true);
     setError(null);
     setSuccessMessage(null);
+    setValidationResult(null);
+    setShowAutoFix(false);
 
     try {
       const res = await fetch("/api/prompts", {
@@ -100,6 +129,17 @@ export function PromptTemplateEditor() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleAutoFix = () => {
+    const fixed = autoEscapeJsonBraces(editedContent);
+    setEditedContent(fixed);
+    setHasChanges(true);
+    setValidationResult(null);
+    setShowAutoFix(false);
+    setError(null);
+    setSuccessMessage("Auto-fixed! Please review the changes before saving.");
+    setTimeout(() => setSuccessMessage(null), 5000);
   };
 
   const resetPrompt = () => {
@@ -162,8 +202,16 @@ export function PromptTemplateEditor() {
     <div className="space-y-4">
       {/* Error/Success Messages */}
       {error && (
-        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400">
-          {error}
+        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400 space-y-2">
+          <div className="whitespace-pre-wrap font-mono">{error}</div>
+          {showAutoFix && (
+            <button
+              onClick={handleAutoFix}
+              className="px-3 py-1.5 text-xs bg-amber-500 text-slate-900 font-medium rounded hover:bg-amber-400 transition-colors"
+            >
+              🔧 Auto-Fix JSON Braces
+            </button>
+          )}
         </div>
       )}
       {successMessage && (
@@ -178,28 +226,42 @@ export function PromptTemplateEditor() {
         Select a template below to view and edit it. Changes take effect immediately — no refresh needed.
       </div>
 
-      {/* Prompt Selector */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-        {prompts.map((prompt) => (
-          <button
-            key={prompt.id}
-            onClick={() => loadPromptContent(prompt.id)}
-            className={`p-3 rounded-lg border text-left transition-colors ${
-              selectedPrompt?.id === prompt.id
-                ? "border-amber-500/50 bg-amber-500/10"
-                : "border-slate-700/50 bg-slate-800/30 hover:border-slate-600"
-            }`}
-          >
-            <div className="font-medium text-sm text-slate-200">{prompt.label}</div>
-            <div className="text-xs text-slate-500 mt-1">{prompt.description}</div>
-            {prompt.lastModified && (
-              <div className="text-xs text-slate-600 mt-2">
-                {new Date(prompt.lastModified).toLocaleDateString()}
-              </div>
-            )}
-          </button>
-        ))}
-      </div>
+      {/* Prompt Selector - Grouped by Category */}
+      {Object.entries(PROMPT_CATEGORIES).map(([categoryId, categoryMeta]) => {
+        const categoryPrompts = prompts.filter((p) => p.category === categoryId);
+        if (categoryPrompts.length === 0) return null;
+
+        return (
+          <div key={categoryId} className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">{categoryMeta.icon}</span>
+              <span className="text-sm font-medium text-slate-300">{categoryMeta.label}</span>
+              <span className="text-xs text-slate-500">— {categoryMeta.description}</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {categoryPrompts.map((prompt) => (
+                <button
+                  key={prompt.id}
+                  onClick={() => loadPromptContent(prompt.id)}
+                  className={`p-3 rounded-lg border text-left transition-colors ${
+                    selectedPrompt?.id === prompt.id
+                      ? "border-amber-500/50 bg-amber-500/10"
+                      : "border-slate-700/50 bg-slate-800/30 hover:border-slate-600"
+                  }`}
+                >
+                  <div className="font-medium text-sm text-slate-200">{prompt.label}</div>
+                  <div className="text-xs text-slate-500 mt-1">{prompt.description}</div>
+                  {prompt.lastModified && (
+                    <div className="text-xs text-slate-600 mt-2">
+                      {new Date(prompt.lastModified).toLocaleDateString()}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
 
       {/* Prompt Editor */}
       {selectedPrompt && (
@@ -295,6 +357,14 @@ export function PromptTemplateEditor() {
             <div className="text-xs font-medium text-emerald-400">⭐ Item Ranker</div>
             <div className="text-xs text-slate-500">How items are ranked. Adjust criteria if rankings feel off.</div>
           </div>
+          <div className="p-2 bg-slate-700/20 rounded">
+            <div className="text-xs font-medium text-cyan-400">🔄 Counter-Intuitive (Single)</div>
+            <div className="text-xs text-slate-500">How AI generates one &quot;what if the opposite?&quot; perspective.</div>
+          </div>
+          <div className="p-2 bg-slate-700/20 rounded">
+            <div className="text-xs font-medium text-cyan-400">🔄 Counter-Intuitive (Batch)</div>
+            <div className="text-xs text-slate-500">Efficient multi-perspective generation. Uses escaped braces for JSON examples.</div>
+          </div>
         </div>
 
         <div className="text-xs text-slate-500">
@@ -303,6 +373,7 @@ export function PromptTemplateEditor() {
             <li>• Changes take effect immediately — no refresh needed</li>
             <li>• A backup is created automatically before each save</li>
             <li>• Use variables like <code className="text-amber-400">{"{item_count}"}</code> and <code className="text-amber-400">{"{voice_profile}"}</code></li>
+            <li>• For Counter-Intuitive prompts: use <code className="text-cyan-400">{"{themes_json}"}</code> (batch) or <code className="text-cyan-400">{"{theme_name}"}</code>, <code className="text-cyan-400">{"{sample_items}"}</code> (single)</li>
             <li>• If results feel off, try tweaking the prompt before changing other settings</li>
           </ul>
         </div>
