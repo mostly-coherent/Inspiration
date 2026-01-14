@@ -537,7 +537,21 @@ function ThemesPage() {
                           
                           {/* Synthesis Narrative */}
                           <div className="prose prose-invert prose-slate max-w-none prose-headings:text-slate-200 prose-h3:text-lg prose-h3:font-semibold prose-p:text-slate-200 prose-strong:text-slate-100">
-                            <ReactMarkdown>{synthesis.synthesis || ''}</ReactMarkdown>
+                            <ReactMarkdown
+                              components={{
+                                p: ({ children }) => (
+                                  <p className="text-slate-200 leading-relaxed mb-4">{children}</p>
+                                ),
+                                h3: ({ children }) => (
+                                  <h3 className="text-lg font-semibold text-slate-200 mt-6 mb-3">{children}</h3>
+                                ),
+                                strong: ({ children }) => (
+                                  <strong className="font-semibold text-slate-100">{children}</strong>
+                                ),
+                              }}
+                            >
+                              {synthesis.synthesis || ''}
+                            </ReactMarkdown>
                           </div>
                           
                           {/* Expert Perspectives from Lenny's Podcast */}
