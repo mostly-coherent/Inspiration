@@ -68,7 +68,11 @@ data/items_bank.json
 data/items_bank_backup_*.json
 
 # Lenny Podcast Archive
-# Raw transcripts (cloned from GitHub) - not needed, we ship pre-computed embeddings
+# Raw transcripts (cloned from GitHub)
 data/lenny-transcripts/
-# NOTE: lenny_embeddings.npz and lenny_metadata.json are COMMITTED
-# so new users get expert perspectives immediately (zero setup, zero cost)
+# Pre-computed embeddings (downloaded from GitHub Releases on first run)
+# Too large for git (219MB + 28MB), but auto-downloaded via scripts/download-lenny-embeddings.sh
+data/lenny_embeddings.npz
+data/lenny_metadata.json
+# Indexing log (local only)
+data/lenny_index.log

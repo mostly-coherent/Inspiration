@@ -36,12 +36,12 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 
 **What:** 280+ expert podcast episodes from Lenny's Podcast, pre-indexed and searchable.
 
-**Key Design Decision:** Pre-computed embeddings are **committed to the repo** (not gitignored) so new users get expert perspectives immediately with zero setup and zero cost.
+**Key Design Decision:** Pre-computed embeddings are **hosted on GitHub Releases** (not in repo due to 219MB size limit). Downloaded automatically on first run via `scripts/download-lenny-embeddings.sh`.
 
 | File | Size | Purpose |
 |------|------|---------|
-| `data/lenny_embeddings.npz` | ~74MB | Pre-computed embeddings (COMMITTED) |
-| `data/lenny_metadata.json` | ~5MB | Episode metadata + chunk content (COMMITTED) |
+| `data/lenny_embeddings.npz` | ~219MB | Pre-computed embeddings (DOWNLOADED from GitHub Releases) |
+| `data/lenny_metadata.json` | ~28MB | Episode metadata + chunk content (DOWNLOADED from GitHub Releases) |
 | `data/lenny-transcripts/` | ~25MB | Raw transcripts (GITIGNORED - source repo) |
 
 **Key Files:**
