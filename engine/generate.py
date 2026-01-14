@@ -228,7 +228,13 @@ def format_sampled_messages_for_prompt(search_results: list[dict]) -> str:
     lines.append("")
     
     for i, result in enumerate(search_results, 1):
+        if not isinstance(result, dict):
+            continue  # Skip invalid results
+        
         msg = result.get("message", {})
+        if not isinstance(msg, dict):
+            continue  # Skip if message is missing or invalid
+        
         similarity = result.get("similarity", 0)
         workspace = result.get("workspace", "Unknown")
         chat_type = result.get("chat_type", "unknown")
@@ -241,8 +247,10 @@ def format_sampled_messages_for_prompt(search_results: list[dict]) -> str:
         
         # Context before (if available)
         for ctx_msg in context.get("before", []):
+            if not isinstance(ctx_msg, dict):
+                continue
             ctx_role = "USER" if ctx_msg.get("type") == "user" else "ASSISTANT"
-            ctx_text = ctx_msg.get("text", "")[:500]  # Truncate context
+            ctx_text = str(ctx_msg.get("text", ""))[:500]  # Truncate context
             if ctx_text:
                 lines.append(f"[{ctx_role} - context]")
                 lines.append(ctx_text)
@@ -250,15 +258,18 @@ def format_sampled_messages_for_prompt(search_results: list[dict]) -> str:
         
         # Main message
         role = "USER" if msg.get("type") == "user" else "ASSISTANT"
-        text = msg.get("text", "")
-        lines.append(f"[{role}]")
-        lines.append(text)
-        lines.append("")
+        text = str(msg.get("text", ""))
+        if text:  # Only add if message has text
+            lines.append(f"[{role}]")
+            lines.append(text)
+            lines.append("")
         
         # Context after (if available)
         for ctx_msg in context.get("after", []):
+            if not isinstance(ctx_msg, dict):
+                continue
             ctx_role = "USER" if ctx_msg.get("type") == "user" else "ASSISTANT"
-            ctx_text = ctx_msg.get("text", "")[:500]  # Truncate context
+            ctx_text = str(ctx_msg.get("text", ""))[:500]  # Truncate context
             if ctx_text:
                 lines.append(f"[{ctx_role} - context]")
                 lines.append(ctx_text)
@@ -1991,9 +2002,17 @@ def process_aggregated_range(
             # Check if Smart Sampling is enabled (v4 - faster, more reliable)
             use_smart_sampling = is_smart_sampling_enabled()
             smart_sampling_config = get_smart_sampling_config() if use_smart_sampling else {}
-            smart_max_messages = smart_sampling_config.get("maxMessages", 50)
-            smart_min_similarity = smart_sampling_config.get("minSimilarity", 0.25)
+            smart_max_messages = smart_sampling_config.get("maxMessages", 20)
+            smart_min_similarity = smart_sampling_config.get("minSimilarity", 0.35)
             smart_context_messages = smart_sampling_config.get("contextMessages", 1) if smart_sampling_config.get("includeContext", True) else 0
+            
+            # Option 3: Comprehensive debug logging for Smart Sampling activation
+            if use_smart_sampling:
+                print(f"⚡ Smart Sampling ENABLED: maxMessages={smart_max_messages}, minSimilarity={smart_min_similarity}", file=sys.stderr)
+                print(f"   Config source: {smart_sampling_config}", file=sys.stderr)
+            else:
+                print(f"📚 Smart Sampling DISABLED (using legacy mode)", file=sys.stderr)
+                print(f"   Check: is_smart_sampling_enabled()={is_smart_sampling_enabled()}", file=sys.stderr)
             
             # Collect search results
             all_search_results: list[dict] = []
@@ -2025,17 +2044,31 @@ def process_aggregated_range(
                 futures = {executor.submit(search_query, query): query for query in search_queries}
                 for future in as_completed(futures):
                     query_text = futures[future]
-                    matches = future.result()
-                    print(f"   Query '{query_text}': Found {len(matches)} matches", file=sys.stderr)
-                    for match in matches:
-                        chat_id = match.get("chat_id", "unknown")
-                        workspace = match.get("workspace", "Unknown")
-                        chat_type = match.get("chat_type", "unknown")
-                        relevant_chat_ids.add((workspace, chat_id, chat_type))
-                        
-                        # For smart sampling, collect the actual results
-                        if use_smart_sampling:
-                            all_search_results.append(match)
+                    try:
+                        matches = future.result()
+                        print(f"   Query '{query_text}': Found {len(matches)} matches", file=sys.stderr)
+                        for match in matches:
+                            if not isinstance(match, dict):
+                                continue
+                            chat_id = match.get("chat_id", "unknown")
+                            workspace = match.get("workspace", "Unknown")
+                            chat_type = match.get("chat_type", "unknown")
+                            relevant_chat_ids.add((workspace, chat_id, chat_type))
+                            
+                            # For smart sampling, collect the actual results
+                            if use_smart_sampling:
+                                all_search_results.append(match)
+                    except Exception as e:
+                        print(f"⚠️  Error in search query '{query_text}': {e}", file=sys.stderr)
+                        # Continue with other queries
+                        continue
+            
+            # Option 3: Comprehensive Smart Sampling activation check
+            print(f"🔍 Smart Sampling Activation Check:", file=sys.stderr)
+            print(f"   Enabled: {use_smart_sampling}", file=sys.stderr)
+            print(f"   Search results collected: {len(all_search_results)}", file=sys.stderr)
+            print(f"   Unique chat IDs: {len(relevant_chat_ids)}", file=sys.stderr)
+            print(f"   Will use Smart Sampling: {use_smart_sampling and len(all_search_results) > 0}", file=sys.stderr)
             
             if use_smart_sampling and all_search_results:
                 # SMART SAMPLING: Use top N messages directly (skip fetching full conversations)
@@ -2043,57 +2076,100 @@ def process_aggregated_range(
                 seen_texts: set[str] = set()
                 unique_results: list[dict] = []
                 for result in sorted(all_search_results, key=lambda x: x.get("similarity", 0), reverse=True):
-                    msg_text = result.get("message", {}).get("text", "")[:200]  # Use first 200 chars as key
+                    if not isinstance(result, dict):
+                        continue
+                    msg = result.get("message", {})
+                    if not isinstance(msg, dict):
+                        continue
+                    msg_text = str(msg.get("text", ""))[:200]  # Use first 200 chars as key
                     if msg_text and msg_text not in seen_texts:
                         seen_texts.add(msg_text)
                         unique_results.append(result)
                         if len(unique_results) >= smart_max_messages:
                             break
                 
-                # Convert to synthetic "conversations" format for downstream compatibility
-                all_conversations = [{
-                    "workspace": "Smart Sampling",
-                    "chat_type": "sampled",
-                    "messages": [],  # Not used in smart sampling path
-                    "_smart_sampled": True,
-                    "_search_results": unique_results,
-                }]
-                days_with_activity = len(set(
-                    datetime.fromtimestamp(r.get("message", {}).get("timestamp", 0) / 1000).date()
-                    for r in unique_results if r.get("message", {}).get("timestamp")
-                ))
-                
-                print(f"✅ Smart Sampling: {len(unique_results)} unique messages from {len(relevant_chat_ids)} conversations", file=sys.stderr)
-                print(f"   Days with activity: {days_with_activity}", file=sys.stderr)
-                print(f"   Skipping full conversation fetch (faster!)", file=sys.stderr)
-                
-                emit_search_complete(
-                    conversations_found=len(unique_results),
-                    days_with_activity=days_with_activity,
-                    days_processed=len(dates)
-                )
+                if not unique_results:
+                    # Fallback to legacy mode if no valid results
+                    print(f"⚠️  Smart Sampling found no valid results, falling back to legacy mode", file=sys.stderr)
+                    all_conversations = []
+                    days_with_activity = 0
+                else:
+                    # Convert to synthetic "conversations" format for downstream compatibility
+                    all_conversations = [{
+                        "workspace": "Smart Sampling",
+                        "chat_type": "sampled",
+                        "messages": [],  # Not used in smart sampling path
+                        "_smart_sampled": True,
+                        "_search_results": unique_results,
+                    }]
+                    # Calculate days_with_activity safely
+                    try:
+                        days_with_activity = len(set(
+                            datetime.fromtimestamp(r.get("message", {}).get("timestamp", 0) / 1000).date()
+                            for r in unique_results 
+                            if isinstance(r, dict) 
+                            and isinstance(r.get("message"), dict) 
+                            and r.get("message", {}).get("timestamp", 0) > 0
+                        ))
+                    except (ValueError, TypeError, OSError) as e:
+                        print(f"⚠️  Error calculating days_with_activity: {e}, defaulting to 1", file=sys.stderr)
+                        days_with_activity = 1
+                    
+                    print(f"✅ Smart Sampling ACTIVE: {len(unique_results)} unique messages from {len(relevant_chat_ids)} conversations", file=sys.stderr)
+                    print(f"   Days with activity: {days_with_activity}", file=sys.stderr)
+                    print(f"   Skipping full conversation fetch (faster!)", file=sys.stderr)
+                    if unique_results:
+                        top_sim = unique_results[0].get('similarity', 0) if unique_results else 0
+                        bottom_sim = unique_results[-1].get('similarity', 0) if unique_results else 0
+                        print(f"   Top similarity: {top_sim:.2f} | Bottom: {bottom_sim:.2f}", file=sys.stderr)
+                    
+                    emit_search_complete(
+                        conversations_found=len(unique_results),
+                        days_with_activity=days_with_activity,
+                        days_processed=len(dates)
+                    )
                 
             elif relevant_chat_ids:
                 # LEGACY MODE: Fetch full conversations (slower but more complete)
+                if use_smart_sampling:
+                    print(f"⚠️  Smart Sampling enabled but no search results - falling back to legacy mode", file=sys.stderr)
+                    print(f"   This may indicate a search issue or empty date range", file=sys.stderr)
                 print(f"🔍 Found {len(relevant_chat_ids)} relevant conversations via semantic search", file=sys.stderr)
                 print(f"📥 Fetching conversations by chat_ids...", file=sys.stderr)
                 
                 # Fetch all conversations at once (much faster than per-date)
-                all_conversations = get_conversations_by_chat_ids(
-                    list(relevant_chat_ids),
-                    start_date,
-                    end_date,
-                )
+                try:
+                    all_conversations = get_conversations_by_chat_ids(
+                        list(relevant_chat_ids),
+                        start_date,
+                        end_date,
+                    )
+                    if not all_conversations:
+                        all_conversations = []
+                except Exception as e:
+                    print(f"⚠️  Error fetching conversations: {e}, using empty list", file=sys.stderr)
+                    all_conversations = []
                 
                 # Add source_date based on message timestamps
                 for conv in all_conversations:
+                    if not isinstance(conv, dict):
+                        continue
                     if conv.get("messages"):
-                        first_msg_ts = conv["messages"][0].get("timestamp", 0)
-                        if first_msg_ts:
-                            msg_date = datetime.fromtimestamp(first_msg_ts / 1000).date()
-                            conv["source_date"] = str(msg_date)
+                        messages = conv.get("messages", [])
+                        if messages and isinstance(messages[0], dict):
+                            first_msg_ts = messages[0].get("timestamp", 0)
+                            if first_msg_ts:
+                                try:
+                                    msg_date = datetime.fromtimestamp(first_msg_ts / 1000).date()
+                                    conv["source_date"] = str(msg_date)
+                                except (ValueError, OSError, TypeError):
+                                    pass  # Skip invalid timestamps
                 
-                days_with_activity = len(set(conv.get("source_date", "") for conv in all_conversations))
+                days_with_activity = len(set(
+                    conv.get("source_date", "") 
+                    for conv in all_conversations 
+                    if isinstance(conv, dict) and conv.get("source_date")
+                ))
                 print(f"✅ Found {len(all_conversations)} conversations across {days_with_activity} active days")
                 print(f"📊 Processing all {len(all_conversations)} conversations (compression will handle size)")
                 
@@ -2173,8 +2249,12 @@ def process_aggregated_range(
     
     # Step 3.5 (IMP-17): Pre-filter covered topics to reduce LLM generation costs
     # For covered topics: Skip generation but expand date ranges (keeps coverage accurate)
+    # NOTE: Topic filter requires full conversations with messages arrays, so skip for smart sampling
     topic_filter_stats = None
-    if topic_filter and source_date_range:
+    is_smart_sampled_check = len(all_conversations) == 1 and all_conversations[0].get("_smart_sampled", False)
+    
+    if topic_filter and source_date_range and not is_smart_sampled_check:
+        # Topic filter only works with full conversations (not smart-sampled messages)
         from common.topic_filter import filter_covered_topics
         
         # Map mode to item_type
@@ -2213,6 +2293,9 @@ def process_aggregated_range(
                 "topic_filter": topic_filter_stats,
                 "skipped_reason": "all_topics_covered",
         }
+    elif topic_filter and is_smart_sampled_check:
+        # Smart sampling already filters by relevance, so topic filter is redundant
+        print(f"⏭️  Skipping topic filter (smart sampling already filters by relevance)", file=sys.stderr)
     
     # Step 4: Prepare conversation text for LLM
     # Smart Sampling: Already sampled the most relevant messages, skip compression
@@ -2224,10 +2307,23 @@ def process_aggregated_range(
     
     if is_smart_sampled:
         # SMART SAMPLING PATH: Use pre-sampled messages directly (no compression needed)
-        search_results = all_conversations[0].get("_search_results", [])
-        conversations_text = format_sampled_messages_for_prompt(search_results)
-        compressed_conversations = all_conversations  # Keep for compatibility
-        print(f"⚡ Smart Sampling: Using {len(search_results)} pre-sampled messages (skipping compression)", file=sys.stderr)
+        try:
+            search_results = all_conversations[0].get("_search_results", [])
+            if not search_results:
+                raise ValueError("Smart sampling enabled but no search results found")
+            conversations_text = format_sampled_messages_for_prompt(search_results)
+            compressed_conversations = all_conversations  # Keep for compatibility
+            
+            # Option 3: Detailed Smart Sampling usage stats
+            estimated_tokens = estimate_tokens(conversations_text)
+            print(f"⚡ Smart Sampling ACTIVE: Using {len(search_results)} pre-sampled messages", file=sys.stderr)
+            print(f"   Estimated tokens: ~{estimated_tokens:,} (skipping compression)", file=sys.stderr)
+            print(f"   Expected generation time: ~{estimated_tokens // 1000 * 2:.0f}s (vs ~100s+ for legacy)", file=sys.stderr)
+        except (KeyError, IndexError, ValueError) as e:
+            print(f"⚠️  Error in smart sampling path: {e}, falling back to legacy mode", file=sys.stderr)
+            # Fallback: treat as empty and let downstream handle it
+            conversations_text = "(No relevant messages found)"
+            compressed_conversations = all_conversations
     else:
         # LEGACY PATH: Full conversation compression
         date_range_days = len(dates)

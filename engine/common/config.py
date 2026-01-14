@@ -551,8 +551,8 @@ def get_smart_sampling_config() -> dict[str, Any]:
     config = load_config()
     defaults = {
         "enabled": True,
-        "maxMessages": 50,
-        "minSimilarity": 0.25,
+        "maxMessages": 20,  # Aggressive limit for fastest generation (less context = faster LLM)
+        "minSimilarity": 0.35,  # Very selective - only top matches (faster, more focused)
         "includeContext": True,
         "contextMessages": 1,
     }

@@ -421,8 +421,9 @@ export default function Home() {
       let streamError: string | null = null;
       let receivedCompleteMarker = false;
       
-      // C3/C5 FIX: Add timeout for stalled streams (60 seconds between updates)
-      const STREAM_TIMEOUT_MS = 60000;
+      // C3/C5 FIX: Add timeout for stalled streams (120 seconds between updates)
+      // Increased from 60s to handle long generation phases (90+ seconds)
+      const STREAM_TIMEOUT_MS = 120000;
       let lastActivityTime = Date.now();
       const timeoutRefs: NodeJS.Timeout[] = []; // Track timeouts for cleanup
       
