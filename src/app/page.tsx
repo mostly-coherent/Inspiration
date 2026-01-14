@@ -37,6 +37,11 @@ export default function Home() {
       try {
         // First check if environment variables are configured
         const envRes = await fetch("/api/config/env");
+        if (!envRes.ok) {
+          console.error("Failed to check environment config:", envRes.status);
+          router.push("/onboarding");
+          return;
+        }
         const envData = await envRes.json();
         
         if (!envData.allRequired) {
@@ -47,6 +52,11 @@ export default function Home() {
         
         // Then check if setup is complete
         const configRes = await fetch("/api/config");
+        if (!configRes.ok) {
+          console.error("Failed to check config:", configRes.status);
+          router.push("/onboarding");
+          return;
+        }
         const configData = await configRes.json();
         
         if (!configData.success || !configData.config?.setupComplete) {
@@ -796,7 +806,9 @@ export default function Home() {
               title="View Theme Map"
               aria-label="View Theme Map"
             >
-              <span className="text-lg">🗺️</span>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
             </a>
             <a 
               href="/settings" 
@@ -1021,23 +1033,31 @@ export default function Home() {
             )}
           </main>
 
-            {/* RIGHT PANEL: Library Preview (Compact) */}
+            {/* RIGHT PANEL: Theme Explorer CTA */}
             <aside className="lg:col-span-4">
               <div className="lg:sticky lg:top-6">
-                <div id="library-section" className="bg-slate-800/30 border border-slate-700/50 rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">📚</span>
-                      <h3 className="text-sm font-semibold text-slate-300">Library Preview</h3>
-                    </div>
+                <div id="library-section" className="bg-gradient-to-br from-indigo-600/20 via-purple-600/10 to-slate-900/50 border border-indigo-500/20 rounded-2xl p-6 text-center space-y-4">
+                  <span className="text-4xl">🔭</span>
+                  <h3 className="text-lg font-semibold text-white">Explore Your Patterns</h3>
+                  <p className="text-sm text-slate-400">
+                    See themes, unexplored territory, and counter-intuitive perspectives in your thinking
+                  </p>
+                  <a
+                    href="/themes"
+                    className="inline-block btn-primary px-6 py-3 hover:scale-105 transition-transform"
+                  >
+                    Open Theme Explorer →
+                  </a>
+                  
+                  {/* Quick access to Library view */}
+                  <div className="pt-4 border-t border-slate-700/30">
                     <button
                       onClick={() => setViewMode("library")}
                       className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
                     >
-                      Full View →
+                      Or browse all items →
                     </button>
                   </div>
-                  <BanksOverview compact />
                 </div>
               </div>
             </aside>

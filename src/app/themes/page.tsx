@@ -145,6 +145,10 @@ function ThemesPage() {
     const loadConfig = async () => {
       try {
         const res = await fetch("/api/config");
+        if (!res.ok) {
+          console.error("Failed to load config:", res.status);
+          return;
+        }
         const data = await res.json();
         if (data.success && data.config?.themeExplorer) {
           const { defaultZoom, sliderMin: min, sliderMax: max, unexplored, counterIntuitive } = data.config.themeExplorer;
@@ -286,6 +290,9 @@ function ThemesPage() {
     
     try {
       const response = await fetch(`/api/expert-perspectives?theme=${encodeURIComponent(themeName)}&topK=3&minSimilarity=0.35`);
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
       const json = await response.json();
       
       if (json.success) {
@@ -293,6 +300,9 @@ function ThemesPage() {
           quotes: json.quotes || [],
           indexed: json.indexed ?? false,
         });
+      } else {
+        // API returned success: false, handle gracefully
+        setExpertPerspectives({ quotes: [], indexed: json.indexed ?? false });
       }
     } catch (err) {
       console.error("Failed to fetch expert perspectives:", err);
