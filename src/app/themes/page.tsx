@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import ReactMarkdown from "react-markdown";
 import { ThemeExplorerTabs, getTabFromSearchParams } from "@/components/ThemeExplorerTabs";
 import { UnexploredTab } from "@/components/UnexploredTab";
 import { CounterIntuitiveTab } from "@/components/CounterIntuitiveTab";
@@ -535,12 +536,8 @@ function ThemesPage() {
                           </div>
                           
                           {/* Synthesis Narrative */}
-                          <div className="prose prose-invert prose-slate max-w-none">
-                            {(synthesis.synthesis || '').split('\n\n').filter(Boolean).map((paragraph, i) => (
-                              <p key={i} className="text-slate-200 leading-relaxed mb-4">
-                                {paragraph}
-                              </p>
-                            ))}
+                          <div className="prose prose-invert prose-slate max-w-none prose-headings:text-slate-200 prose-h3:text-lg prose-h3:font-semibold prose-p:text-slate-200 prose-strong:text-slate-100">
+                            <ReactMarkdown>{synthesis.synthesis || ''}</ReactMarkdown>
                           </div>
                           
                           {/* Expert Perspectives from Lenny's Podcast */}
