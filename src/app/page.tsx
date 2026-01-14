@@ -1057,7 +1057,7 @@ export default function Home() {
                     href="/themes"
                     className="inline-block btn-primary px-6 py-3 hover:scale-105 transition-transform"
                   >
-                    Open Theme Explorer →
+                    Theme Explorer →
                   </a>
                   
                   {/* Quick access to Library view */}

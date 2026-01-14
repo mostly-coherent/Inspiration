@@ -4,8 +4,8 @@ import path from "path";
 import fs from "fs";
 import { getPythonPath } from "@/lib/pythonPath";
 
-// 2 minutes timeout: sufficient for git pull + incremental indexing of 2-3 new episodes
-// (typical weekly growth: ~150-300 chunks = ~30-60 seconds API time)
+// 2 minutes timeout: sufficient for git clone (first time) or git pull + incremental indexing
+// Typical: Clone ~30-60s, Pull ~5s, Indexing 2-3 new episodes ~30-60s API time
 export const maxDuration = 120;
 
 // Detect cloud environment
@@ -20,7 +20,7 @@ function isCloudEnvironment(): boolean {
 
 interface LennySyncResponse {
   success: boolean;
-  action: "up_to_date" | "pulled" | "indexed" | "error" | "cloud_mode";
+  action: "up_to_date" | "pulled" | "indexed" | "cloned" | "error" | "cloud_mode";
   message: string;
   newEpisodes?: number;
   error?: string;
@@ -39,14 +39,84 @@ export async function POST(): Promise<NextResponse<LennySyncResponse>> {
 
     const dataDir = path.resolve(process.cwd(), "data");
     const lennyRepoPath = path.join(dataDir, "lenny-transcripts");
+    const repoUrl = "https://github.com/ChatPRD/lennys-podcast-transcripts.git";
 
-    // Check if repo exists
+    // Step 0: Auto-clone if repo doesn't exist
+    let wasCloned = false;
     if (!fs.existsSync(lennyRepoPath)) {
+      try {
+        console.log("Lenny repo not found. Auto-cloning...");
+        
+        // Ensure data directory exists
+        if (!fs.existsSync(dataDir)) {
+          fs.mkdirSync(dataDir, { recursive: true });
+        }
+
+        // Clone the repository
+        execSync(`git clone ${repoUrl} lenny-transcripts`, {
+          cwd: dataDir,
+          encoding: "utf-8",
+          timeout: 120000, // 2 minute timeout for clone
+          stdio: "pipe", // Suppress output for cleaner logs
+        });
+
+        console.log("✅ Lenny repo cloned successfully");
+        wasCloned = true;
+        
+        // Proceed to pull/index (fresh clone should be up-to-date, but we'll verify)
+      } catch (cloneError: any) {
+        console.error("Failed to clone Lenny repo:", cloneError);
+        
+        // Clean up partial clone if it exists
+        if (fs.existsSync(lennyRepoPath)) {
+          try {
+            const gitDir = path.join(lennyRepoPath, ".git");
+            if (!fs.existsSync(gitDir)) {
+              // Partial clone - remove it
+              console.log("Cleaning up partial clone...");
+              fs.rmSync(lennyRepoPath, { recursive: true, force: true });
+            }
+          } catch (cleanupError) {
+            console.error("Failed to clean up partial clone:", cleanupError);
+          }
+        }
+        
+        // Check for specific error cases
+        if (cloneError.message?.includes("timeout") || cloneError.signal === "SIGTERM") {
+          return NextResponse.json({
+            success: false,
+            action: "error",
+            message: "Clone timed out. Check your internet connection and try again.",
+            error: "Clone operation timed out",
+          });
+        }
+        
+        if (cloneError.message?.includes("command not found") || cloneError.code === "ENOENT") {
+          return NextResponse.json({
+            success: false,
+            action: "error",
+            message: "Git is not installed. Please install Git to sync Lenny archive.",
+            error: "Git command not found",
+          });
+        }
+
+        return NextResponse.json({
+          success: false,
+          action: "error",
+          message: "Failed to clone Lenny archive. Check network connection and Git installation.",
+          error: cloneError.message || "Clone failed",
+        });
+      }
+    }
+
+    // Verify it's a valid git repository
+    const gitDir = path.join(lennyRepoPath, ".git");
+    if (!fs.existsSync(gitDir)) {
       return NextResponse.json({
         success: false,
         action: "error",
-        message: "Lenny archive not found. Clone it first.",
-        error: "Repository not found at data/lenny-transcripts/",
+        message: "Lenny archive directory exists but is not a git repository.",
+        error: "Invalid repository structure",
       });
     }
 
@@ -80,6 +150,14 @@ export async function POST(): Promise<NextResponse<LennySyncResponse>> {
 
     // Check if already up to date
     if (pullOutput.includes("Already up to date")) {
+      // If we just cloned, indicate that
+      if (wasCloned) {
+        return NextResponse.json({
+          success: true,
+          action: "cloned",
+          message: "Repository cloned successfully. Archive is up to date.",
+        });
+      }
       return NextResponse.json({
         success: true,
         action: "up_to_date",
