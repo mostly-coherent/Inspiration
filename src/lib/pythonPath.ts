@@ -57,3 +57,32 @@ export function getPythonPath(): string {
   return "python3";
 }
 
+/**
+ * Check Python version and return version info
+ * 
+ * @returns Object with version info or null if Python not found
+ */
+export function checkPythonVersion(): { version: string; major: number; minor: number; meetsRequirement: boolean } | null {
+  try {
+    const pythonPath = getPythonPath();
+    const versionOutput = execSync(`${pythonPath} --version`, { encoding: "utf-8" }).trim();
+    
+    // Parse version string like "Python 3.9.5" or "Python 3.10.0"
+    const match = versionOutput.match(/Python (\d+)\.(\d+)\.(\d+)/);
+    if (!match) {
+      return null;
+    }
+    
+    const major = parseInt(match[1], 10);
+    const minor = parseInt(match[2], 10);
+    const patch = parseInt(match[3], 10);
+    const version = `${major}.${minor}.${patch}`;
+    
+    // Requirement: Python 3.10+
+    const meetsRequirement = major > 3 || (major === 3 && minor >= 10);
+    
+    return { version, major, minor, meetsRequirement };
+  } catch {
+    return null;
+  }
+}
