@@ -107,12 +107,14 @@ function OnboardingContent() {
         
         if (data.success) {
           const sizeBytes = data.localSizeBytes || 0;
-          const isCloud = sizeBytes === 0 && !data.localSize;
+          // Use explicit cloudMode flag from API (checks VERCEL, RAILWAY env vars)
+          // Don't infer cloud from "no file found" - user may just not have chat history yet
+          const isCloud = data.cloudMode === true;
           
           setChatDb({
             detected: true,
             sizeBytes,
-            sizeFormatted: data.localSize || "0 B",
+            sizeFormatted: data.localSize || (isCloud ? "N/A (Cloud)" : "0 B"),
             requiresVectorDb: isCloud || sizeBytes >= VECTOR_DB_REQUIRED_THRESHOLD,
             isCloudMode: isCloud,
           });
