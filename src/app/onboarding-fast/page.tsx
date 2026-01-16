@@ -190,6 +190,14 @@ function FastOnboardingContent() {
         const data = await res.json();
         
         if (data.success && data.metrics) {
+          // Large chat history (>500MB) needs Supabase for good performance
+          // Redirect to full onboarding which includes Supabase setup
+          const LARGE_HISTORY_THRESHOLD_MB = 500;
+          if (data.metrics.size_mb >= LARGE_HISTORY_THRESHOLD_MB) {
+            router.push("/onboarding?reason=large-history");
+            return;
+          }
+          
           setDbMetrics(data.metrics);
           setSelectedDays(data.metrics.suggested_days || 14);
         } else {

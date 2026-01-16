@@ -49,6 +49,7 @@ function OnboardingContent() {
   const router = useRouter();
   const searchParams = useSearchParams(); // Wrapped in Suspense below (Next.js 15+ requirement)
   const isPreviewMode = searchParams.get("preview") === "true";
+  const isLargeHistoryRedirect = searchParams.get("reason") === "large-history";
   
   const [step, setStep] = useState<OnboardingStep>("welcome");
   const [error, setError] = useState<string | null>(null);
@@ -449,6 +450,22 @@ function OnboardingContent() {
                 <strong className="text-purple-300">insights</strong>
               </p>
             </div>
+
+            {/* Large History Redirect Banner */}
+            {isLargeHistoryRedirect && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-left">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">⚡</span>
+                  <div>
+                    <div className="font-semibold text-amber-300">Large chat history detected!</div>
+                    <div className="text-sm text-slate-300 mt-1">
+                      You have 500MB+ of conversations. Setting up Supabase (free tier) ensures 
+                      fast search and a smooth experience. Takes ~2 minutes.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Chat DB Detection Card */}
             <div className={`rounded-2xl p-5 text-left ${

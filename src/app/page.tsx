@@ -39,14 +39,14 @@ export default function Home() {
         const envRes = await fetch("/api/config/env");
         if (!envRes.ok) {
           console.error("Failed to check environment config:", envRes.status);
-          router.push("/onboarding");
+          router.push("/onboarding-fast");
           return;
         }
         const envData = await envRes.json();
         
         if (!envData.allRequired) {
-          // Missing required API keys → redirect to onboarding
-          router.push("/onboarding");
+          // Missing required API keys → redirect to Fast Start (simpler onboarding)
+          router.push("/onboarding-fast");
           return;
         }
         
@@ -54,14 +54,15 @@ export default function Home() {
         const configRes = await fetch("/api/config");
         if (!configRes.ok) {
           console.error("Failed to check config:", configRes.status);
-          router.push("/onboarding");
+          router.push("/onboarding-fast");
           return;
         }
         const configData = await configRes.json();
         
         if (!configData.success || !configData.config?.setupComplete) {
-          // Setup not complete → redirect to onboarding
-          router.push("/onboarding");
+          // Setup not complete → redirect to Fast Start
+          // (Fast Start will redirect to full onboarding if chat history > 500MB)
+          router.push("/onboarding-fast");
           return;
         }
         
