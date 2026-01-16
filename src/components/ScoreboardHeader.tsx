@@ -29,7 +29,7 @@ interface LennyStats {
   embeddingsSizeMB: number | null;
 }
 
-type LennySyncStatus = "idle" | "syncing" | "success" | "error";
+type LennyUpdateStatus = "idle" | "updating" | "success" | "error";
 type LennyDownloadStatus = "idle" | "downloading" | "success" | "error";
 
 interface ScoreboardHeaderProps {
@@ -63,12 +63,12 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     chunkCount: 0,
     embeddingsSizeMB: null,
   });
-  const [lennySyncStatus, setLennySyncStatus] = useState<LennySyncStatus>("idle");
-  const [lennySyncMessage, setLennySyncMessage] = useState<string | null>(null);
+  const [lennyUpdateStatus, setLennyUpdateStatus] = useState<LennyUpdateStatus>("idle");
+  const [lennyUpdateMessage, setLennyUpdateMessage] = useState<string | null>(null);
   const [lennyDownloadStatus, setLennyDownloadStatus] = useState<LennyDownloadStatus>("idle");
   const [lennyDownloadMessage, setLennyDownloadMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const lennySyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lennyUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lennyDownloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
 
@@ -220,24 +220,24 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     }, 5000);
   }, [lennyDownloadStatus, fetchLennyStats]);
 
-  // Sync Lenny archive (git pull + re-index if needed)
-  const syncLennyArchive = useCallback(async () => {
-    // Prevent concurrent syncs
-    if (lennySyncStatus === "syncing" || !isMountedRef.current) return;
+  // Update Lenny embeddings from GitHub Release (delete + re-download)
+  const updateLennyEmbeddings = useCallback(async () => {
+    // Prevent concurrent updates
+    if (lennyUpdateStatus === "updating" || !isMountedRef.current) return;
     
-    setLennySyncStatus("syncing");
-    setLennySyncMessage("Checking for new episodes...");
+    setLennyUpdateStatus("updating");
+    setLennyUpdateMessage("Downloading from GitHub...");
     
     try {
-      const res = await fetch("/api/lenny-sync", { method: "POST" });
+      const res = await fetch("/api/lenny-update", { method: "POST" });
       
       if (!isMountedRef.current) return;
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
         if (isMountedRef.current) {
-          setLennySyncMessage(`⚠️ ${errorData.error || "Sync failed"}`);
-          setLennySyncStatus("error");
+          setLennyUpdateMessage(`⚠️ ${errorData.error || "Update failed"}`);
+          setLennyUpdateStatus("error");
         }
         return;
       }
@@ -247,48 +247,45 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
       if (!isMountedRef.current) return;
       
       if (data.success) {
-        if (data.action === "up_to_date") {
-          setLennySyncMessage("✓ Up to date");
-        } else if (data.action === "cloned") {
-          setLennySyncMessage("✓ Repository cloned");
-        } else if (data.action === "indexed") {
-          setLennySyncMessage(`✓ ${data.newEpisodes || "New"} episodes indexed`);
-        } else if (data.action === "pulled") {
-          setLennySyncMessage("✓ Updates pulled");
+        if (data.action === "updated") {
+          const message = data.oldEpisodes && data.newEpisodes 
+            ? `✓ Updated: ${data.oldEpisodes}→${data.newEpisodes} episodes`
+            : `✓ ${data.message}`;
+          setLennyUpdateMessage(message);
         }
-        setLennySyncStatus("success");
-        // Refresh stats after sync
+        setLennyUpdateStatus("success");
+        // Refresh stats after update
         fetchLennyStats().catch((e) => {
           console.error("Failed to refresh Lenny stats:", e);
         });
       } else {
         if (data.action === "cloud_mode") {
-          setLennySyncMessage("☁️ Cloud mode");
+          setLennyUpdateMessage("☁️ Cloud mode");
         } else {
-          setLennySyncMessage("⚠️ Sync failed");
+          setLennyUpdateMessage("⚠️ Update failed");
         }
-        setLennySyncStatus("error");
+        setLennyUpdateStatus("error");
       }
     } catch (e) {
       if (!isMountedRef.current) return;
-      console.error("Lenny sync error:", e);
+      console.error("Lenny update error:", e);
       const errorMessage = e instanceof Error ? e.message : "Network error";
-      setLennySyncMessage(`⚠️ ${errorMessage}`);
-      setLennySyncStatus("error");
+      setLennyUpdateMessage(`⚠️ ${errorMessage}`);
+      setLennyUpdateStatus("error");
     }
     
     // Clear message after 5 seconds
-    if (lennySyncTimeoutRef.current) {
-      clearTimeout(lennySyncTimeoutRef.current);
+    if (lennyUpdateTimeoutRef.current) {
+      clearTimeout(lennyUpdateTimeoutRef.current);
     }
-    lennySyncTimeoutRef.current = setTimeout(() => {
+    lennyUpdateTimeoutRef.current = setTimeout(() => {
       if (isMountedRef.current) {
-        setLennySyncMessage(null);
-        setLennySyncStatus("idle");
+        setLennyUpdateMessage(null);
+        setLennyUpdateStatus("idle");
       }
-      lennySyncTimeoutRef.current = null;
+      lennyUpdateTimeoutRef.current = null;
     }, 5000);
-  }, [lennySyncStatus, fetchLennyStats]);
+  }, [lennyUpdateStatus, fetchLennyStats]);
 
   // Fetch all stats on mount
   useEffect(() => {
@@ -307,28 +304,24 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     };
   }, [fetchMemoryStats, fetchLibraryStats, fetchSourceBreakdown, fetchLennyStats]);
 
-  // Refresh library stats after sync completes + auto-sync Lenny
+  // Refresh library stats after sync completes
   useEffect(() => {
     if (syncStatus?.startsWith("✓") && isMountedRef.current) {
       fetchLibraryStats();
       fetchMemoryStats();
       fetchSourceBreakdown();
-      // Auto-sync Lenny archive when Memory sync completes
-      syncLennyArchive().catch((e) => {
-        console.error("Auto-sync Lenny archive failed:", e);
-      });
     }
-  }, [syncStatus, fetchLibraryStats, fetchMemoryStats, fetchSourceBreakdown, syncLennyArchive]);
+  }, [syncStatus, fetchLibraryStats, fetchMemoryStats, fetchSourceBreakdown]);
 
   // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
-      if (lennySyncTimeoutRef.current) {
-        clearTimeout(lennySyncTimeoutRef.current);
-      }
       if (lennyDownloadTimeoutRef.current) {
         clearTimeout(lennyDownloadTimeoutRef.current);
+      }
+      if (lennyUpdateTimeoutRef.current) {
+        clearTimeout(lennyUpdateTimeoutRef.current);
       }
     };
   }, []);
@@ -471,6 +464,20 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 >
                   View All →
                 </a>
+
+                {/* Knowledge Graph links */}
+                <a
+                  href="/entities"
+                  className="text-xs text-purple-400 hover:text-purple-300 transition-colors ml-2 self-center"
+                >
+                  📋 Entities
+                </a>
+                <a
+                  href="/graph"
+                  className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors ml-2 self-center"
+                >
+                  🔮 Graph
+                </a>
               </div>
             </div>
 
@@ -550,18 +557,18 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
             </div>
             
             <div className="flex items-center gap-2">
-              {/* Lenny Download/Sync Status */}
-              {(lennyDownloadMessage || lennySyncMessage) && (
+              {/* Lenny Status Messages */}
+              {(lennyDownloadMessage || lennyUpdateMessage) && (
                 <span className={`text-xs px-2 py-0.5 rounded-full ${
-                  (lennyDownloadMessage || lennySyncMessage)?.startsWith("✓")
+                  (lennyDownloadMessage || lennyUpdateMessage)?.startsWith("✓")
                     ? "bg-emerald-500/10 text-emerald-400"
-                    : (lennyDownloadMessage || lennySyncMessage)?.startsWith("☁️")
+                    : (lennyDownloadMessage || lennyUpdateMessage)?.startsWith("☁️")
                     ? "bg-blue-500/10 text-blue-400"
-                    : (lennyDownloadMessage || lennySyncMessage)?.startsWith("📥")
+                    : (lennyDownloadMessage || lennyUpdateMessage)?.startsWith("📥")
                     ? "bg-blue-500/10 text-blue-400"
                     : "bg-amber-500/10 text-amber-400"
                 }`}>
-                  {lennyDownloadMessage || lennySyncMessage}
+                  {lennyDownloadMessage || lennyUpdateMessage}
                 </span>
               )}
               
@@ -584,22 +591,22 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 </button>
               )}
               
-              {/* Lenny Sync Button (when indexed) */}
+              {/* Lenny Update Button (when indexed) */}
               {lennyStats.indexed && (
                 <button
-                  onClick={syncLennyArchive}
-                  disabled={lennySyncStatus === "syncing"}
+                  onClick={updateLennyEmbeddings}
+                  disabled={lennyUpdateStatus === "updating"}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-all ${
-                    lennySyncStatus === "syncing"
-                      ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait"
-                      : "bg-slate-700/50 text-slate-400 hover:bg-slate-700/80 hover:text-amber-400"
+                    lennyUpdateStatus === "updating"
+                      ? "bg-indigo-500/20 text-indigo-300 animate-pulse cursor-wait"
+                      : "bg-indigo-600/80 text-white hover:bg-indigo-500"
                   }`}
-                  title="Sync Lenny archive (git pull + re-index)"
+                  title="Update from GitHub Release (free, fast ~2 min)"
                 >
-                  <span className={lennySyncStatus === "syncing" ? "animate-spin" : ""}>
-                    🔄
+                  <span className={lennyUpdateStatus === "updating" ? "animate-spin" : ""}>
+                    {lennyUpdateStatus === "updating" ? "⏳" : "⬇️"}
                   </span>
-                  <span>Sync</span>
+                  <span>{lennyUpdateStatus === "updating" ? "Updating..." : "Update"}</span>
                 </button>
               )}
             </div>

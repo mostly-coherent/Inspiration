@@ -347,7 +347,14 @@ def index_lenny_archive(
     
     # WORKAROUND: Skip oversized chunks that exceed OpenAI's token limit
     # These are poorly formatted transcripts with entire intros in single chunks
-    SKIP_CHUNK_INDICES = {37850, 42869, 43385}  # Ryan Hoover, Upasna Gautam, Vijay
+    # Oversized chunks that exceed embedding model limits (8192 tokens)
+    SKIP_CHUNK_INDICES = {
+        37850,  # Ryan Hoover
+        42869,  # Upasna Gautam  
+        43385,  # Vijay
+    } | set(range(43400, 43500)) \
+      | set(range(48700, 48800)) \
+      | set(range(49400, 49500))  # Batches 435, 488, 495 with oversized chunks
     
     for i in range(start_batch * batch_size, len(all_chunks), batch_size):
         batch = all_chunks[i:i + batch_size]
