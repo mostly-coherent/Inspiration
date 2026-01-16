@@ -74,8 +74,9 @@ data/lenny-transcripts/
 # Too large for git (219MB + 28MB), but auto-downloaded via scripts/download-lenny-embeddings.sh
 data/lenny_embeddings.npz
 data/lenny_metadata.json
-# Indexing log (local only)
+# Indexing logs (local only, may contain user paths)
 data/lenny_index.log
+data/*.log
 
 # Performance logs (user-specific run logs, grows unbounded over time)
 data/performance_logs/

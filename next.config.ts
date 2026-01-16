@@ -1,20 +1,18 @@
 import type { NextConfig } from "next";
 
-// Safety check: prevent running from wrong directory (e.g., MyPrivateTools/Inspiration)
+// Safety check: prevent running from wrong directory (e.g., MyPrivateTools/Inspiration or Production_Clones)
+// Allows any directory ending in /Inspiration (or just "Inspiration" at root)
 const cwd = process.cwd();
-const expectedPaths = [
-  "/Users/jmbeh/Personal Builder Lab/Inspiration",
-  "Personal Builder Lab/Inspiration",
-];
-const isValidDirectory = expectedPaths.some(p => cwd.endsWith(p)) && 
-  !cwd.includes("MyPrivateTools") && 
-  !cwd.includes("Production_Clones");
+const isInspirationDir = cwd.endsWith("/Inspiration") || cwd.endsWith("\\Inspiration") || cwd === "Inspiration";
+const isBlockedDir = cwd.includes("MyPrivateTools") || cwd.includes("Production_Clones");
+const isValidDirectory = isInspirationDir && !isBlockedDir;
 
 if (!isValidDirectory && process.env.NODE_ENV !== "production") {
   console.error("\n❌ ERROR: Next.js started from wrong directory!");
   console.error(`   Current: ${cwd}`);
-  console.error(`   Expected: */Personal Builder Lab/Inspiration`);
-  console.error("\n   This prevents accidental creation of MyPrivateTools/Inspiration/.next\n");
+  console.error(`   Expected: Any directory named 'Inspiration'`);
+  console.error(`   Blocked: MyPrivateTools/* and Production_Clones/*`);
+  console.error("\n   This prevents accidental creation of .next in wrong locations\n");
   process.exit(1);
 }
 
