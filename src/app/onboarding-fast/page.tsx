@@ -201,11 +201,24 @@ function FastOnboardingContent() {
           setDbMetrics(data.metrics);
           setSelectedDays(data.metrics.suggested_days || 14);
         } else {
-          setError(data.error || "Failed to detect Cursor database");
+          // Check for Python version errors
+          if (data.errorType === "python_version_too_old") {
+            setError(`Python ${data.detectedVersion || "version"} is too old. ${data.error || "Python 3.10+ is required."}`);
+          } else if (data.errorType === "python_not_found") {
+            setError(data.error || "Python not found. Please install Python 3.10+.");
+          } else {
+            setError(data.error || "Failed to detect Cursor database");
+          }
         }
       } catch (e) {
         console.error("Failed to detect DB:", e);
-        setError("Failed to detect Cursor database. Make sure Cursor is installed.");
+        // Check if error message contains Python version info
+        const errorMsg = e instanceof Error ? e.message : String(e);
+        if (errorMsg.includes("Python") || errorMsg.includes("python")) {
+          setError("Python version issue detected. Please ensure Python 3.10+ is installed.");
+        } else {
+          setError("Failed to detect Cursor database. Make sure Cursor is installed.");
+        }
       } finally {
         setDetectingDb(false);
       }
@@ -778,13 +791,28 @@ function FastOnboardingContent() {
                     )}
                   </div>
                 </div>
+              ) : error && (error.includes("Python") || error.includes("python")) ? (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-5">
+                  <div className="flex items-start gap-3">
+                    <span className="text-3xl">🐍</span>
+                    <div className="flex-1">
+                      <div className="font-semibold text-amber-300 mb-2">Python Version Issue</div>
+                      <div className="text-sm text-slate-300 mb-3">{error}</div>
+                      <div className="text-xs text-slate-400 space-y-1">
+                        <div><strong>macOS:</strong> <code className="bg-slate-800 px-2 py-1 rounded">brew install python@3.11</code></div>
+                        <div><strong>Windows:</strong> Download from <a href="https://python.org/downloads" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">python.org</a></div>
+                        <div className="mt-2 text-slate-500">After installing, restart this app and try again.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <div className="flex items-center gap-3">
                   <span className="text-3xl">⚠️</span>
                   <div>
                     <div className="font-semibold text-white">Cursor database not found</div>
                     <div className="text-sm text-slate-400">
-                      Make sure Cursor is installed and has been used at least once.
+                      {error || "Make sure Cursor is installed and has been used at least once."}
                     </div>
                   </div>
                 </div>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "child_process";
 import path from "path";
-import { getPythonPath } from "@/lib/pythonPath";
+import { getPythonPath, checkPythonVersion } from "@/lib/pythonPath";
 
 /**
  * Fast Theme Map Generation API
@@ -179,6 +179,31 @@ export async function GET(request: NextRequest) {
     const daysParam = searchParams.get("days") || "14";
     const provider = searchParams.get("provider") || "anthropic";
     const model = searchParams.get("model");
+
+    // Check Python version first
+    const pythonVersion = checkPythonVersion();
+    if (!pythonVersion) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "Python not found. Please install Python 3.10+ from https://python.org or via Homebrew (brew install python@3.11)",
+          errorType: "python_not_found"
+        },
+        { status: 500 }
+      );
+    }
+    
+    if (!pythonVersion.meetsRequirement) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: `Python ${pythonVersion.version} detected, but Python 3.10+ is required. Please upgrade: macOS: brew install python@3.11 | Windows: Download from https://python.org`,
+          errorType: "python_version_too_old",
+          detectedVersion: pythonVersion.version
+        },
+        { status: 500 }
+      );
+    }
 
     // Validate days parameter (if provided)
     if (estimateCost) {
