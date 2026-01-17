@@ -146,16 +146,19 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
       );
       
       if (!response.ok) {
-        throw new Error("Failed to fetch counter-perspectives");
+        const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+        throw new Error(`Failed to fetch counter-perspectives: ${errorText.length > 100 ? response.status : errorText}`);
       }
       
-      const data = await response.json();
+      const data = await response.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
       
-      if (!data.success) {
-        throw new Error(data.error || "Unknown error");
+      if (!(data && typeof data === 'object' && data.success)) {
+        throw new Error((data && typeof data === 'object' && data.error) || "Unknown error");
       }
       
-      const newSuggestions = data.suggestions || [];
+      const newSuggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
       setSuggestions(newSuggestions);
       
       // P5: Update cache
@@ -178,11 +181,21 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
     try {
       const response = await fetch("/api/themes/counter-intuitive/save");
       if (response.ok) {
-        const data = await response.json();
-        setSavedReflections(data.reflections || []);
+        const data = await response.json().catch((parseError) => {
+          throw new Error(`Invalid response format: ${parseError.message}`);
+        });
+        if (data && typeof data === 'object' && Array.isArray(data.reflections)) {
+          setSavedReflections(data.reflections);
+        } else {
+          setSavedReflections([]);
+        }
+      } else {
+        const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+        console.warn("Failed to fetch saved reflections:", errorText.length > 100 ? response.status : errorText);
       }
-    } catch {
+    } catch (err) {
       // Silently fail - saved reflections are optional
+      console.warn("Failed to fetch saved reflections:", err);
     }
   }, []);
 
@@ -199,9 +212,21 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
       const response = await fetch(
         `/api/expert-perspectives?theme=${encodeURIComponent(searchQuery)}&topK=1&minSimilarity=0.3`
       );
-      const data = await response.json();
       
-      if (data.success && data.quotes && data.quotes.length > 0) {
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+        console.warn("Failed to fetch expert challenge:", errorText.length > 100 ? response.status : errorText);
+        setExpertChallenges(prev => ({ ...prev, [suggestionId]: [] }));
+        return;
+      }
+      
+      const data = await response.json().catch((parseError) => {
+        console.warn("Failed to parse expert challenge response:", parseError);
+        setExpertChallenges(prev => ({ ...prev, [suggestionId]: [] }));
+        return;
+      });
+      
+      if (data && typeof data === 'object' && data.success && Array.isArray(data.quotes) && data.quotes.length > 0) {
         setExpertChallenges(prev => ({ ...prev, [suggestionId]: data.quotes }));
       } else {
         setExpertChallenges(prev => ({ ...prev, [suggestionId]: [] }));
@@ -237,7 +262,16 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
         body: JSON.stringify({ suggestion }),
       });
       
-      if (response.ok) {
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+        throw new Error(`Failed to save reflection: ${errorText.length > 100 ? response.status : errorText}`);
+      }
+      
+      const data = await response.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (data && typeof data === 'object' && data.success !== false) {
         // Update UI to show saved state
         setSuggestions(prev => 
           prev.map(s => 
@@ -246,6 +280,8 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
         );
         // Refresh saved reflections
         fetchSavedReflections();
+      } else {
+        throw new Error((data && typeof data === 'object' && data.error) || "Failed to save reflection");
       }
     } catch (err) {
       console.error("Failed to save reflection:", err);
@@ -263,9 +299,20 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
         { method: "DELETE" }
       );
       
-      if (response.ok) {
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+        throw new Error(`Failed to dismiss suggestion: ${errorText.length > 100 ? response.status : errorText}`);
+      }
+      
+      const data = await response.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (data && typeof data === 'object' && data.success !== false) {
         // Remove from UI
         setSuggestions(prev => prev.filter(s => s.id !== suggestionId));
+      } else {
+        throw new Error((data && typeof data === 'object' && data.error) || "Failed to dismiss suggestion");
       }
     } catch (err) {
       console.error("Failed to dismiss suggestion:", err);
