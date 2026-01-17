@@ -82,7 +82,9 @@ async function loadSynthesisConfig(itemType: string = "all") {
 
 export async function POST(request: Request) {
   try {
-    const body: SynthesizeRequest = await request.json();
+    const body: SynthesizeRequest = await request.json().catch(() => {
+      throw new Error("Invalid JSON in request body");
+    });
     const { themeName, items, itemType = "all" } = body;
 
     if (!items || items.length === 0) {

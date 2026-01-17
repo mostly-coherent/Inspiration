@@ -55,7 +55,9 @@ export async function GET(request: NextRequest) {
 // POST: Run harmonization
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => {
+      throw new Error("Invalid JSON in request body");
+    });
     const mode = body.mode || "insights";
     
     if (!["insights", "ideas"].includes(mode)) {

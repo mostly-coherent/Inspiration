@@ -146,7 +146,11 @@ print(json.dumps({
         }
 
         try {
-          const result = JSON.parse(stdout.trim());
+          const trimmedStdout = stdout.trim();
+          if (!trimmedStdout) {
+            throw new Error("Empty response from script");
+          }
+          const result = JSON.parse(trimmedStdout);
           resolve({
             success: true,
             theme,

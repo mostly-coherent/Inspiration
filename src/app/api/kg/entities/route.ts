@@ -96,19 +96,12 @@ export async function GET(request: NextRequest) {
     }));
 
     return NextResponse.json({ entities });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Error in /api/kg/entities:", error);
     return NextResponse.json(
       { 
         error: error instanceof Error ? error.message : "Unknown error",
         entities: [] 
-      },
-      { status: 500 }
-    );
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Unknown error",
-        entities: [],
       },
       { status: 500 }
     );
