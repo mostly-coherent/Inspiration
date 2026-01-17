@@ -41,10 +41,24 @@ export async function loadThemesAsync(): Promise<ThemesConfig> {
   // Client-side (browser) - fetch from API
   try {
     const response = await fetch("/api/themes");
+    if (!response.ok) {
+      console.error(`[Themes] API returned ${response.status}: ${response.statusText}`);
+      return {
+        version: 1,
+        themes: [],
+      };
+    }
     const data = await response.json();
+    // Handle both formats: { success: true, themes: ThemesConfig } and direct ThemesConfig
     if (data.success && data.themes) {
       themesCache = data.themes as ThemesConfig;
       return themesCache;
+    } else if (data.version && Array.isArray(data.themes)) {
+      // Direct ThemesConfig format
+      themesCache = data as ThemesConfig;
+      return themesCache;
+    } else {
+      console.error("[Themes] Unexpected API response format:", data);
     }
   } catch (error) {
     console.error("[Themes] Failed to fetch themes:", error);
