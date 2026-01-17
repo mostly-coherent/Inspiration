@@ -243,6 +243,13 @@ function ThemesPage() {
   const fetchThemes = useCallback(async () => {
     if (!isMountedRef.current) return;
     
+    // Validate threshold before making request
+    if (debouncedThreshold < sliderMin || debouncedThreshold > sliderMax) {
+      setError(`Invalid threshold: ${debouncedThreshold}. Must be between ${sliderMin} and ${sliderMax}`);
+      setLoading(false);
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     try {
@@ -250,23 +257,35 @@ function ThemesPage() {
       const response = await fetch(
         `/api/items/themes/preview?threshold=${debouncedThreshold}${itemTypeParam}`
       );
-      if (!response.ok) throw new Error("Failed to fetch themes");
-      const json = await response.json();
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+        throw new Error(`Failed to fetch themes: ${errorText}`);
+      }
+      
+      const json = await response.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
       
       if (!isMountedRef.current) return;
+      
+      // Validate response structure
+      if (!json || typeof json !== 'object') {
+        throw new Error("Invalid response format from server");
+      }
       
       setData(json);
       setSelectedTheme(null);
       setSynthesis(null);
+      setSynthesisError(null);
     } catch (err) {
       if (!isMountedRef.current) return;
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : "Unknown error occurred");
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
       }
     }
-  }, [debouncedThreshold, itemTypeFilter]);
+  }, [debouncedThreshold, itemTypeFilter, sliderMin, sliderMax]);
 
   useEffect(() => {
     fetchThemes();
@@ -275,6 +294,13 @@ function ThemesPage() {
   // Fetch synthesis when a theme is selected
   const fetchSynthesis = useCallback(async (theme: ThemePreview) => {
     if (!isMountedRef.current) return;
+    
+    // Validate theme has items before synthesizing
+    if (!theme.items || theme.items.length === 0) {
+      setSynthesisError("Cannot synthesize: theme has no items");
+      setSynthesisLoading(false);
+      return;
+    }
     
     setSynthesisLoading(true);
     setSynthesisError(null);
@@ -292,13 +318,28 @@ function ThemesPage() {
       });
       
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Failed to synthesize theme" }));
-        throw new Error(errorData.error || "Failed to synthesize theme");
+        const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+        let errorMessage = "Failed to synthesize theme";
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // If not JSON, use the text or status
+          errorMessage = errorText.length > 100 ? `HTTP ${response.status}` : errorText;
+        }
+        throw new Error(errorMessage);
       }
       
-      const json: SynthesisData = await response.json();
+      const json: SynthesisData = await response.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
       
       if (!isMountedRef.current) return;
+      
+      // Validate response structure
+      if (!json || typeof json !== 'object' || !json.success) {
+        throw new Error("Synthesis failed");
+      }
       
       setSynthesis(json);
     } catch (err) {
@@ -315,21 +356,39 @@ function ThemesPage() {
   const fetchExpertPerspectives = useCallback(async (themeName: string) => {
     if (!isMountedRef.current) return;
     
+    // Validate theme name
+    if (!themeName || themeName.trim().length === 0) {
+      setExpertPerspectives({ quotes: [], indexed: false });
+      return;
+    }
+    
     setExpertLoading(true);
     setExpertPerspectives(null);
     
     try {
-      const response = await fetch(`/api/expert-perspectives?theme=${encodeURIComponent(themeName)}&topK=3&minSimilarity=0.35`);
+      const encodedTheme = encodeURIComponent(themeName.trim());
+      const response = await fetch(`/api/expert-perspectives?theme=${encodedTheme}&topK=3&minSimilarity=0.35`);
+      
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+        const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+        throw new Error(`API error: ${errorText.length > 100 ? response.status : errorText}`);
       }
-      const json = await response.json();
+      
+      const json = await response.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
       
       if (!isMountedRef.current) return;
       
+      // Validate response structure
+      if (!json || typeof json !== 'object') {
+        setExpertPerspectives({ quotes: [], indexed: false });
+        return;
+      }
+      
       if (json.success) {
         setExpertPerspectives({
-          quotes: json.quotes || [],
+          quotes: Array.isArray(json.quotes) ? json.quotes : [],
           indexed: json.indexed ?? false,
         });
       } else {
@@ -339,6 +398,7 @@ function ThemesPage() {
     } catch (err) {
       if (!isMountedRef.current) return;
       console.error("Failed to fetch expert perspectives:", err);
+      // Fail gracefully - expert perspectives are optional
       setExpertPerspectives({ quotes: [], indexed: false });
     } finally {
       if (isMountedRef.current) {
@@ -349,6 +409,11 @@ function ThemesPage() {
 
   // Handle theme selection
   const handleThemeClick = (theme: ThemePreview) => {
+    if (!theme || !theme.id) {
+      console.error("Invalid theme selected");
+      return;
+    }
+    
     if (selectedTheme?.id === theme.id) {
       // Deselect
       setSelectedTheme(null);
@@ -358,7 +423,12 @@ function ThemesPage() {
     } else {
       // Select and fetch synthesis + expert perspectives
       setSelectedTheme(theme);
-      fetchSynthesis(theme);
+      // Only fetch if theme has items
+      if (theme.items && theme.items.length > 0) {
+        fetchSynthesis(theme);
+      } else {
+        setSynthesisError("Cannot synthesize: theme has no items");
+      }
       fetchExpertPerspectives(theme.name);
     }
   };
@@ -464,7 +534,13 @@ function ThemesPage() {
                     max={sliderMax}
                     step="0.01"
                     value={threshold}
-                    onChange={(e) => setThreshold(parseFloat(e.target.value))}
+                    onChange={(e) => {
+                      const newValue = parseFloat(e.target.value);
+                      // Validate range before setting
+                      if (!isNaN(newValue) && newValue >= sliderMin && newValue <= sliderMax) {
+                        setThreshold(newValue);
+                      }
+                    }}
                     aria-label={`Theme similarity threshold: ${(threshold * 100).toFixed(0)}%`}
                     aria-valuemin={sliderMin * 100}
                     aria-valuemax={sliderMax * 100}
