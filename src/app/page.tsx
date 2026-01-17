@@ -42,17 +42,20 @@ export default function Home() {
         if (cancelled) return;
         
         if (!envRes.ok) {
-          console.error("Failed to check environment config:", envRes.status);
-          router.push("/onboarding-fast");
+          const errorText = await envRes.text().catch(() => `HTTP ${envRes.status}`);
+          console.error("Failed to check environment config:", errorText.length > 100 ? envRes.status : errorText);
+          if (!cancelled) router.push("/onboarding-fast");
           return;
         }
-        const envData = await envRes.json();
+        const envData = await envRes.json().catch((parseError) => {
+          throw new Error(`Invalid response format: ${parseError.message}`);
+        });
         
         if (cancelled) return;
         
-        if (!envData.allRequired) {
+        if (!envData || typeof envData !== 'object' || !envData.allRequired) {
           // Missing required API keys → redirect to Fast Start (simpler onboarding)
-          router.push("/onboarding-fast");
+          if (!cancelled) router.push("/onboarding-fast");
           return;
         }
         
@@ -61,11 +64,14 @@ export default function Home() {
         if (cancelled) return;
         
         if (!configRes.ok) {
-          console.error("Failed to check config:", configRes.status);
-          router.push("/onboarding-fast");
+          const errorText = await configRes.text().catch(() => `HTTP ${configRes.status}`);
+          console.error("Failed to check config:", errorText.length > 100 ? configRes.status : errorText);
+          if (!cancelled) router.push("/onboarding-fast");
           return;
         }
-        const configData = await configRes.json();
+        const configData = await configRes.json().catch((parseError) => {
+          throw new Error(`Invalid response format: ${parseError.message}`);
+        });
         
         if (cancelled) return;
         
@@ -120,24 +126,41 @@ export default function Home() {
   
   // Load seek defaults from config on mount
   useEffect(() => {
+    let cancelled = false;
+    
     const loadSeekDefaults = async () => {
       try {
         const res = await fetch("/api/config");
+        if (cancelled) return;
+        
         if (!res.ok) {
-          console.error("Failed to load seek defaults:", res.status);
+          const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+          console.error("Failed to load seek defaults:", errorText.length > 100 ? res.status : errorText);
           return;
         }
-        const data = await res.json();
-        if (data.success && data.config?.seekDefaults) {
+        const data = await res.json().catch((parseError) => {
+          throw new Error(`Invalid response format: ${parseError.message}`);
+        });
+        
+        if (cancelled) return;
+        
+        if (data && typeof data === 'object' && data.success && data.config?.seekDefaults) {
           const { daysBack, minSimilarity } = data.config.seekDefaults;
-          if (daysBack !== undefined) setReverseDaysBack(daysBack);
-          if (minSimilarity !== undefined) setReverseMinSimilarity(minSimilarity);
+          if (daysBack !== undefined && !cancelled) setReverseDaysBack(daysBack);
+          if (minSimilarity !== undefined && !cancelled) setReverseMinSimilarity(minSimilarity);
         }
       } catch (err) {
-        console.error("Failed to load seek defaults:", err);
+        if (!cancelled) {
+          console.error("Failed to load seek defaults:", err);
+        }
       }
     };
+    
     loadSeekDefaults();
+    
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Sync state
@@ -179,25 +202,45 @@ export default function Home() {
   const [modeConfig, setModeConfig] = useState<{ name: string; icon: string; color: string } | null>(null);
   
   useEffect(() => {
+    let cancelled = false;
+    
     // Auto-determine theme from mode if needed
     const determineTheme = async () => {
-      // Load themes to find which theme contains the selected mode
-      const themesConfig = await loadThemesAsync();
-      for (const theme of themesConfig.themes) {
-        const mode = theme.modes.find(m => m.id === selectedModeId);
-        if (mode) {
-          setSelectedTheme(theme.id as ThemeType);
-          setModeConfig({
-            name: mode.name,
-            icon: mode.icon,
-            color: mode.color,
-          });
+      try {
+        // Load themes to find which theme contains the selected mode
+        const themesConfig = await loadThemesAsync();
+        if (cancelled) return;
+        
+        if (!themesConfig || !Array.isArray(themesConfig.themes)) {
+          console.error("Invalid themes config structure");
           return;
+        }
+        
+        for (const theme of themesConfig.themes) {
+          if (cancelled) return;
+          const mode = theme.modes?.find(m => m.id === selectedModeId);
+          if (mode) {
+            setSelectedTheme(theme.id as ThemeType);
+            setModeConfig({
+              name: mode.name,
+              icon: mode.icon,
+              color: mode.color,
+            });
+            return;
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to determine theme:", err);
         }
       }
     };
     
     determineTheme();
+    
+    return () => {
+      cancelled = true;
+    };
   }, [selectedModeId]);
   
   // Backward compatibility: derive tool from mode for display
@@ -254,12 +297,15 @@ export default function Home() {
     try {
       const res = await fetch("/api/sync", { method: "POST" });
       if (!res.ok) {
-        throw new Error(`Sync failed: ${res.status}`);
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Sync failed: ${errorText.length > 100 ? res.status : errorText}`);
       }
-      const data = await res.json();
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
       
-      if (data.success) {
-        if (data.stats) {
+      if (data && typeof data === 'object' && data.success) {
+        if (data.stats && typeof data.stats === 'object') {
           const { indexed = 0, skipped = 0, failed = 0 } = data.stats;
           if (indexed > 0) {
             const statusMsg = skipped > 0 
@@ -377,15 +423,19 @@ export default function Home() {
     try {
       const libRes = await fetch("/api/items?view=items");
       if (!libRes.ok) {
-        console.error("Failed to fetch library count:", libRes.status);
+        const errorText = await libRes.text().catch(() => `HTTP ${libRes.status}`);
+        console.error("Failed to fetch library count:", errorText.length > 100 ? libRes.status : errorText);
         return;
       }
-      const libData = await libRes.json();
-      if (libData.success) {
+      const libData = await libRes.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      if (libData && typeof libData === 'object' && libData.success) {
         setLibraryCountBefore(libData.stats?.totalItems || 0);
       }
     } catch (e) {
       console.error("Failed to fetch library count before:", e);
+      // Continue with generation even if library count fetch fails
     }
     
     // Create new AbortController for this request
@@ -621,8 +671,13 @@ export default function Home() {
         // Check if Library count increased - items may have been saved before crash
         try {
           const checkRes = await fetch("/api/items?view=items");
-          const checkData = await checkRes.json();
-          const currentCount = checkData.stats?.totalItems || 0;
+          if (!checkRes.ok) {
+            throw new Error(`HTTP ${checkRes.status}`);
+          }
+          const checkData = await checkRes.json().catch((parseError) => {
+            throw new Error(`Invalid response format: ${parseError.message}`);
+          });
+          const currentCount = (checkData && typeof checkData === 'object' && checkData.stats?.totalItems) || 0;
           const itemsAdded = progressPhaseDataRef.current.itemsAdded || 0;
           
           if (itemsAdded > 0 && currentCount > (libraryCountBefore || 0)) {
