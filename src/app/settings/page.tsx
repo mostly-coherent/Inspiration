@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { ModeSettingsManager } from "@/components/ModeSettingsManager";
 import { AdvancedConfigSection } from "@/components/AdvancedConfigSection";
@@ -95,6 +95,17 @@ export default function SettingsPage() {
   const [localVoiceGuideFile, setLocalVoiceGuideFile] = useState("");
   const [localLlmModel, setLocalLlmModel] = useState("");
 
+  // Prevent state updates after unmount
+  const isMountedRef = useRef(true);
+
+  // Initialize isMountedRef
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   // Load configuration
   useEffect(() => {
     loadConfig();
@@ -120,9 +131,23 @@ export default function SettingsPage() {
   }, [config]);
 
   const loadConfig = async () => {
+    if (!isMountedRef.current) return;
+    
+    setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/config");
-      const data = await res.json();
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Failed to load config: ${errorText.length > 100 ? res.status : errorText}`);
+      }
+      
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (!isMountedRef.current) return;
+      
       if (data.success && data.config) {
         setConfig(data.config);
       } else {
@@ -150,18 +175,33 @@ export default function SettingsPage() {
         });
       }
     } catch (err) {
-      setError("Failed to load configuration");
+      if (!isMountedRef.current) return;
+      setError(err instanceof Error ? err.message : "Failed to load configuration");
       console.error(err);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   const detectChatHistory = async () => {
+    if (!isMountedRef.current) return;
+    
     setDetectingChatHistory(true);
     try {
       const res = await fetch("/api/chat-history");
-      const data = await res.json();
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Failed to detect chat history: ${errorText.length > 100 ? res.status : errorText}`);
+      }
+      
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (!isMountedRef.current) return;
+      
       if (data.success) {
         setChatHistoryPath(data.path);
         setChatHistoryPlatform(data.platform);
@@ -179,9 +219,13 @@ export default function SettingsPage() {
         }
       }
     } catch (err) {
+      if (!isMountedRef.current) return;
       console.error("Failed to detect chat history:", err);
+      // Fail silently - chat history detection is optional
     } finally {
-      setDetectingChatHistory(false);
+      if (isMountedRef.current) {
+        setDetectingChatHistory(false);
+      }
     }
   };
 
