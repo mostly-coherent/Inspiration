@@ -423,10 +423,17 @@ function OnboardingContent() {
     
     try {
       const res = await fetch("/api/sync", { method: "POST" });
-      const data = await res.json();
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Sync failed: ${errorText.length > 100 ? res.status : errorText}`);
+      }
       
-      if (data.success) {
-        const { indexed = 0, skipped = 0 } = data.stats || {};
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (data && typeof data === 'object' && data.success) {
+        const { indexed = 0, skipped = 0 } = (data.stats && typeof data.stats === 'object') ? data.stats : {};
         setSyncProgress({
           status: "complete",
           message: `Indexed ${indexed} messages${skipped > 0 ? ` (${skipped} already indexed)` : ""}`,
@@ -434,14 +441,23 @@ function OnboardingContent() {
         });
         
         // Mark setup as complete
-        await fetch("/api/config", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ setupComplete: true }),
-        });
+        try {
+          const configRes = await fetch("/api/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ setupComplete: true }),
+          });
+          if (!configRes.ok) {
+            console.warn("Failed to mark setup as complete:", configRes.status);
+          }
+        } catch (configErr) {
+          console.warn("Failed to mark setup as complete:", configErr);
+          // Non-critical - sync succeeded even if config update fails
+        }
       } else {
         // Handle cloud mode gracefully
-        if (data.error?.includes("cloud") || data.error?.includes("Cannot sync")) {
+        const errorMsg = (data && typeof data === 'object' && data.error) || "Sync failed";
+        if (errorMsg.includes("cloud") || errorMsg.includes("Cannot sync")) {
           setSyncProgress({
             status: "complete",
             message: "Cloud mode detected. You can sync later from a local machine.",
@@ -449,7 +465,7 @@ function OnboardingContent() {
         } else {
           setSyncProgress({
             status: "error",
-            message: data.error || "Sync failed",
+            message: errorMsg,
           });
         }
       }
