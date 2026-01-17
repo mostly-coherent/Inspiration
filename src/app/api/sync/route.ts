@@ -34,23 +34,36 @@ export async function POST() {
     const scriptPath = path.join(enginePath, "scripts", "sync_messages.py");
     const pythonPath = getPythonPath();
     
-    return new Promise<NextResponse>((resolve) => {
-      const process = spawn(pythonPath, [scriptPath], {
+    return new Promise<NextResponse>((resolve, reject) => {
+      const proc = spawn(pythonPath, [scriptPath], {
         cwd: enginePath,
       });
 
       let stdout = "";
       let stderr = "";
 
-      process.stdout.on("data", (data) => {
+      proc.stdout.on("data", (data) => {
         stdout += data.toString();
       });
 
-      process.stderr.on("data", (data) => {
+      proc.stderr.on("data", (data) => {
         stderr += data.toString();
       });
 
-      process.on("close", (code) => {
+      proc.on("error", (err) => {
+        console.error("Sync process spawn error:", err);
+        reject(NextResponse.json(
+          {
+            success: false,
+            errorType: "spawn_failed",
+            error: `Failed to start sync process: ${err.message}`,
+            remediation: "Check that Python is installed and accessible."
+          },
+          { status: 500 }
+        ));
+      });
+
+      proc.on("close", (code) => {
         if (code !== 0) {
           console.error("Sync script failed:", stderr);
           

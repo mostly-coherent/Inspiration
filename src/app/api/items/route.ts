@@ -12,8 +12,10 @@ export async function GET(request: NextRequest) {
     const view = searchParams.get("view") || "items"; // "items" or "categories"
     
     // Pagination parameters
-    const page = parseInt(searchParams.get("page") || "1", 10);
-    const pageSize = parseInt(searchParams.get("pageSize") || "50", 10);
+    const pageParam = searchParams.get("page") || "1";
+    const pageSizeParam = searchParams.get("pageSize") || "50";
+    const page = Math.max(1, parseInt(pageParam, 10) || 1); // Ensure page >= 1
+    const pageSize = Math.max(1, Math.min(100, parseInt(pageSizeParam, 10) || 50)); // Clamp between 1-100
     const paginateItems = searchParams.get("paginate") !== "false"; // Default to paginated
     
     // Initialize Supabase client

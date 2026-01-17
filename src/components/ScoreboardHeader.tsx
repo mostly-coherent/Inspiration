@@ -107,7 +107,11 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
         const oneWeekAgo = new Date();
         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
         const thisWeek = (data.items || []).filter((item: { lastSeen?: string; firstSeen?: string }) => {
-          const itemDate = new Date(item.lastSeen || item.firstSeen || "");
+          const dateStr = item.lastSeen || item.firstSeen;
+          if (!dateStr) return false; // Skip items without dates
+          const itemDate = new Date(dateStr);
+          // Check if date is valid
+          if (isNaN(itemDate.getTime())) return false;
           return itemDate >= oneWeekAgo;
         }).length;
 
