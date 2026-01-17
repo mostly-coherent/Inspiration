@@ -149,6 +149,8 @@ function FastOnboardingContent() {
   // Optional OpenAI key for Lenny's expert perspectives
   const [openaiKey, setOpenaiKey] = useState("");
   const [openaiKeyFromEnv, setOpenaiKeyFromEnv] = useState(false);
+  const [validatingOpenaiKey, setValidatingOpenaiKey] = useState(false);
+  const [openaiKeyValid, setOpenaiKeyValid] = useState<boolean | null>(null);
   
   // Theme generation state
   const [generating, setGenerating] = useState(false);
@@ -374,10 +376,19 @@ function FastOnboardingContent() {
       return;
     }
     
-    // Validate first (always required, even for env keys)
+    // Validate Anthropic key first (always required, even for env keys)
     if (keyValid !== true) {
       const isValid = await validateKey();
       if (!isValid) return;
+    }
+    
+    // Validate OpenAI key if provided (optional but should be valid if provided)
+    if (openaiKey && openaiKey.length > 0 && openaiKeyValid !== true) {
+      const isValid = await validateOpenaiKey();
+      if (!isValid) {
+        setError("OpenAI API key is invalid. Please check your key or leave it empty.");
+        return;
+      }
     }
     
     try {
@@ -395,7 +406,7 @@ function FastOnboardingContent() {
       }
       
       // Save OpenAI key if user typed one (optional, for Lenny's expert perspectives)
-      if (!openaiKeyFromEnv && openaiKey) {
+      if (!openaiKeyFromEnv && openaiKey && openaiKey.length > 0) {
         keysToSave["OPENAI_API_KEY"] = openaiKey;
       }
       
@@ -408,7 +419,8 @@ function FastOnboardingContent() {
         });
         
         if (!res.ok) {
-          throw new Error("Failed to save API key");
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || "Failed to save API key");
         }
       }
       
@@ -434,7 +446,7 @@ function FastOnboardingContent() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
     }
-  }, [apiKey, keyFromEnv, keyValid, selectedProvider, validateKey, isPreviewMode, openaiKey, openaiKeyFromEnv]);
+  }, [apiKey, keyFromEnv, keyValid, selectedProvider, validateKey, validateOpenaiKey, isPreviewMode, openaiKey, openaiKeyFromEnv, openaiKeyValid]);
 
   // Generate Theme Map
   const generateThemeMap = useCallback(async () => {
@@ -952,11 +964,36 @@ function FastOnboardingContent() {
                   <input
                     type="password"
                     value={openaiKey}
-                    onChange={(e) => setOpenaiKey(e.target.value)}
+                    onChange={(e) => {
+                      setOpenaiKey(e.target.value);
+                      setOpenaiKeyValid(null);
+                    }}
+                    onBlur={() => {
+                      // Auto-validate when user clicks away or presses Tab (optional field)
+                      if (openaiKey && openaiKey.length > 0) {
+                        validateOpenaiKey();
+                      }
+                    }}
                     placeholder="sk-..."
                     autoComplete="off"
-                    className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                    className={`w-full px-4 py-2 pr-10 bg-slate-800/50 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm ${
+                      openaiKeyValid === true
+                        ? "border-emerald-500"
+                        : openaiKeyValid === false
+                        ? "border-red-500"
+                        : "border-slate-700"
+                    }`}
                   />
+                  {openaiKeyValid !== null && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm">
+                      {openaiKeyValid ? "✅" : "❌"}
+                    </span>
+                  )}
+                  {validatingOpenaiKey && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                      ⏳
+                    </span>
+                  )}
                 </div>
               )}
               <p className="text-xs text-slate-500">
