@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // Default theme synthesis configuration (exported for compatibility)
 export const DEFAULT_THEME_SYNTHESIS = {
