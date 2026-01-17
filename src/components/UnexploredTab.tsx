@@ -90,12 +90,18 @@ export function UnexploredTab({ config }: UnexploredTabProps) {
         throw new Error((data && typeof data === 'object' && data.error) || "Unknown error");
       }
       
-      setAreas(Array.isArray(data.areas) ? data.areas : []);
+      if (isMountedRef.current) {
+        setAreas(Array.isArray(data.areas) ? data.areas : []);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-      setAreas([]);
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err.message : "Unknown error");
+        setAreas([]);
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [analyzedDays, severityFilter]);
 
