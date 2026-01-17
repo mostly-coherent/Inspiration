@@ -167,9 +167,12 @@ function FastOnboardingContent() {
 
   // Detect DB metrics on mount
   useEffect(() => {
+    let cancelled = false;
+    
     const detectDb = async () => {
       if (isPreviewMode) {
         // Simulate detection in preview mode
+        if (cancelled) return;
         setDbMetrics({
           size_mb: 150.5,
           estimated_conversations_total: 450,
@@ -186,10 +189,14 @@ function FastOnboardingContent() {
       
       try {
         const res = await fetch("/api/generate-themes");
+        if (cancelled) return;
+        
         if (!res.ok) {
           throw new Error(`API error: ${res.status}`);
         }
         const data = await res.json();
+        
+        if (cancelled) return;
         
         if (data.success && data.metrics) {
           // Large chat history (>500MB) needs Supabase for good performance
@@ -213,6 +220,7 @@ function FastOnboardingContent() {
           }
         }
       } catch (e) {
+        if (cancelled) return;
         console.error("Failed to detect DB:", e);
         // Check if error message contains Python version info
         const errorMsg = e instanceof Error ? e.message : String(e);
@@ -222,12 +230,18 @@ function FastOnboardingContent() {
           setError("Failed to detect Cursor database. Make sure Cursor is installed.");
         }
       } finally {
-        setDetectingDb(false);
+        if (!cancelled) {
+          setDetectingDb(false);
+        }
       }
     };
     
     detectDb();
-  }, [isPreviewMode]);
+    
+    return () => {
+      cancelled = true;
+    };
+  }, [isPreviewMode, router]);
 
   // Check for API keys in environment and Vector DB status
   useEffect(() => {
@@ -368,6 +382,45 @@ function FastOnboardingContent() {
       setValidatingKey(false);
     }
   }, [apiKey, keyFromEnv, selectedProvider]);
+
+  // Validate OpenAI key (optional - only validate if provided)
+  const validateOpenaiKey = useCallback(async () => {
+    if (!openaiKey || openaiKey.length === 0) {
+      setOpenaiKeyValid(null);
+      return true; // Empty is valid (optional field)
+    }
+    
+    setValidatingOpenaiKey(true);
+    setOpenaiKeyValid(null);
+    
+    try {
+      const res = await fetch("/api/config/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ OPENAI_API_KEY: openaiKey }),
+      });
+      
+      if (!res.ok) {
+        throw new Error(`Validation failed: ${res.status}`);
+      }
+      
+      const data = await res.json();
+      
+      if (data.success && data.results?.openai?.valid) {
+        setOpenaiKeyValid(true);
+        return true;
+      } else {
+        setOpenaiKeyValid(false);
+        return false;
+      }
+    } catch (e) {
+      console.error("OpenAI key validation failed:", e);
+      setOpenaiKeyValid(false);
+      return false;
+    } finally {
+      setValidatingOpenaiKey(false);
+    }
+  }, [openaiKey]);
 
   // Save API key and proceed
   const saveKeyAndProceed = useCallback(async () => {

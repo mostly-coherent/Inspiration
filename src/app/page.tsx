@@ -33,16 +33,22 @@ export default function Home() {
 
   // Check if user has completed onboarding
   useEffect(() => {
+    let cancelled = false;
+    
     const checkSetup = async () => {
       try {
         // First check if environment variables are configured
         const envRes = await fetch("/api/config/env");
+        if (cancelled) return;
+        
         if (!envRes.ok) {
           console.error("Failed to check environment config:", envRes.status);
           router.push("/onboarding-fast");
           return;
         }
         const envData = await envRes.json();
+        
+        if (cancelled) return;
         
         if (!envData.allRequired) {
           // Missing required API keys → redirect to Fast Start (simpler onboarding)
@@ -52,12 +58,16 @@ export default function Home() {
         
         // Then check if setup is complete
         const configRes = await fetch("/api/config");
+        if (cancelled) return;
+        
         if (!configRes.ok) {
           console.error("Failed to check config:", configRes.status);
           router.push("/onboarding-fast");
           return;
         }
         const configData = await configRes.json();
+        
+        if (cancelled) return;
         
         if (!configData.success || !configData.config?.setupComplete) {
           // Setup not complete → redirect to Fast Start
@@ -69,6 +79,7 @@ export default function Home() {
         // All good, show the app
         setIsCheckingSetup(false);
       } catch (e) {
+        if (cancelled) return;
         console.error("Failed to check setup:", e);
         // On error, still show the app (might be first load)
         setIsCheckingSetup(false);
@@ -76,6 +87,10 @@ export default function Home() {
     };
     
     checkSetup();
+    
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   // View mode state (Library View vs Comprehensive View)

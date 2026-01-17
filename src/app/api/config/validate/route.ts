@@ -42,7 +42,12 @@ export async function POST(request: Request) {
         if (response.ok) {
           results.anthropic = { valid: true };
         } else {
-          const errorData = await response.json();
+          let errorData: { error?: { message?: string } } = {};
+          try {
+            errorData = await response.json();
+          } catch {
+            // Response is not JSON, use default error
+          }
           if (response.status === 401) {
             results.anthropic = { valid: false, error: "Invalid API key" };
           } else if (response.status === 403) {
