@@ -559,11 +559,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                       </div>
                     )}
                   </>
-                ) : (
-                  <div className="flex items-center gap-1.5 text-slate-500 bg-slate-800/50 px-2.5 py-1 rounded-full">
-                    <span className="text-xs">Not downloaded yet</span>
-                  </div>
-                )}
+                ) : null}
               </div>
             </div>
             
@@ -583,7 +579,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 </span>
               )}
               
-              {/* Lenny Download Button (when not indexed) */}
+              {/* Lenny Download/Sync Button (when not indexed) */}
               {/* Show button on cloud too - Supabase Storage makes it available */}
               {!lennyStats.indexed && (
                 <button
@@ -596,14 +592,19 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                   }`}
                   title={
                     lennyStats.cloudMode
-                      ? "Download embeddings from Supabase Storage (fast) or GitHub Releases (fallback)"
+                      ? "Sync embeddings from Supabase Storage (fast) or GitHub Releases (fallback)"
                       : "Download pre-computed embeddings from GitHub Releases (~250MB, one-time)"
                   }
                 >
                   <span className={lennyDownloadStatus === "downloading" ? "animate-spin" : ""}>
-                    {lennyDownloadStatus === "downloading" ? "⏳" : "📥"}
+                    {lennyDownloadStatus === "downloading" ? "⏳" : lennyStats.cloudMode ? "🔄" : "📥"}
                   </span>
-                  <span>{lennyDownloadStatus === "downloading" ? "Downloading..." : "Download"}</span>
+                  <span>
+                    {lennyDownloadStatus === "downloading" 
+                      ? (lennyStats.cloudMode ? "Syncing..." : "Downloading...") 
+                      : (lennyStats.cloudMode ? "Sync" : "Download")
+                    }
+                  </span>
                 </button>
               )}
               
