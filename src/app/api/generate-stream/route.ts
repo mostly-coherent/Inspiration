@@ -6,7 +6,7 @@ import { existsSync } from "fs";
 import { GenerateRequest, TOOL_CONFIG, PRESET_MODES, getToolPath, ThemeType, ModeType, ToolType, GenerationDefaults } from "@/lib/types";
 import { logger } from "@/lib/logger";
 import { resolveThemeModeFromTool, validateThemeMode, getModeSettings } from "@/lib/themes";
-import { getPythonPath } from "@/lib/pythonPath";
+import { getPythonPath, checkPythonVersion } from "@/lib/pythonPath";
 
 // Default generation settings (fallback if config not found)
 const DEFAULT_GENERATION: GenerationDefaults = {
@@ -48,8 +48,52 @@ export async function POST(request: NextRequest) {
       };
 
       try {
+        // Validate Python version before processing request
+        const pythonVersionInfo = checkPythonVersion();
+        if (!pythonVersionInfo) {
+          send({ type: "error", error: "Python not found. Please install Python 3.10+." });
+          controller.close();
+          return;
+        }
+        if (!pythonVersionInfo.meetsRequirement) {
+          send({ 
+            type: "error", 
+            error: `Python ${pythonVersionInfo.version} is too old. Python 3.10+ is required.` 
+          });
+          controller.close();
+          return;
+        }
+
         const body: GenerateRequest = await request.json();
         const { tool, theme, modeId, mode, days, temperature, fromDate, toDate, dryRun } = body;
+        
+        // Validate input parameters
+        if (days !== undefined && (days < 1 || !Number.isInteger(days))) {
+          send({ type: "error", error: "Days must be a positive integer" });
+          controller.close();
+          return;
+        }
+        
+        if (temperature !== undefined && (temperature < 0 || temperature > 2)) {
+          send({ type: "error", error: "Temperature must be between 0 and 2" });
+          controller.close();
+          return;
+        }
+        
+        if (fromDate && toDate) {
+          const from = new Date(fromDate);
+          const to = new Date(toDate);
+          if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+            send({ type: "error", error: "Invalid date format" });
+            controller.close();
+            return;
+          }
+          if (from > to) {
+            send({ type: "error", error: "Start date must be before end date" });
+            controller.close();
+            return;
+          }
+        }
         
         // Get abort signal from request
         const signal = request.signal;
@@ -142,6 +186,17 @@ export async function POST(request: NextRequest) {
 
         const toolPath = getToolPath(resolvedTool);
         const pythonPath = getPythonPath();
+        const scriptPath = path.join(toolPath, toolConfig.script);
+        
+        // Validate script exists before spawning
+        if (!existsSync(scriptPath)) {
+          send({ 
+            type: "error", 
+            error: `Script not found: ${scriptPath}. Please ensure the script exists.` 
+          });
+          controller.close();
+          return;
+        }
         
         send({ type: "start", message: `Starting ${resolvedTool} generation...` });
         send({ type: "log", message: `Running: ${pythonPath} ${toolConfig.script} ${args.join(" ")}` });
@@ -386,8 +441,13 @@ async function runPythonScriptStream(
       }
       
       if (!isAborted) {
-        send({ type: "error", error: err.message });
-        reject(err);
+        // Provide more helpful error messages for common spawn failures
+        let errorMessage = err.message;
+        if (err.message.includes("ENOENT") || err.message.includes("spawn")) {
+          errorMessage = `Failed to start Python process: ${err.message}. Please ensure Python 3.10+ is installed and accessible.`;
+        }
+        send({ type: "error", error: errorMessage });
+        reject(new Error(errorMessage));
       }
     });
   });
