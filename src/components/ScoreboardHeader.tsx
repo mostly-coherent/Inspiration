@@ -420,6 +420,40 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
               </div>
             </div>
 
+            {/* Metadata Row: Date Coverage and Source Breakdown */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              {/* Date Coverage: First → Most Recent */}
+              {memoryStats.earliestDate && memoryStats.latestDate && (
+                <div className="flex items-center gap-1 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
+                  <span>📅</span>
+                  <span>{memoryStats.earliestDate}</span>
+                  <span className="text-slate-600">→</span>
+                  <span>{memoryStats.latestDate}</span>
+                </div>
+              )}
+
+              {/* Source Breakdown: Cursor | Claude Code */}
+              {sourceBreakdown && (sourceBreakdown.cursor > 0 || sourceBreakdown.claudeCode > 0) && (
+                <div className="flex items-center gap-1.5 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
+                  {sourceBreakdown.cursor > 0 && (
+                    <>
+                      <span className="text-blue-400">Cursor</span>
+                      <span className="font-medium text-slate-300">{sourceBreakdown.cursor.toLocaleString()}</span>
+                    </>
+                  )}
+                  {sourceBreakdown.cursor > 0 && sourceBreakdown.claudeCode > 0 && (
+                    <span className="text-slate-600">|</span>
+                  )}
+                  {sourceBreakdown.claudeCode > 0 && (
+                    <>
+                      <span className="text-purple-400">Claude Code</span>
+                      <span className="font-medium text-slate-300">{sourceBreakdown.claudeCode.toLocaleString()}</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Main Content Row */}
             <div className="flex flex-wrap items-center gap-6">
               {/* Size Transformation: Raw → Indexed → Extracted → Themes → Items → View All */}
@@ -513,40 +547,6 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 🔮 Graph
               </a>
               {/* Lenny's KG will be added here later */}
-            </div>
-
-            {/* Metadata Row */}
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              {/* Date Coverage: First → Most Recent */}
-              {memoryStats.earliestDate && memoryStats.latestDate && (
-                <div className="flex items-center gap-1 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
-                  <span>📅</span>
-                  <span>{memoryStats.earliestDate}</span>
-                  <span className="text-slate-600">→</span>
-                  <span>{memoryStats.latestDate}</span>
-                </div>
-              )}
-
-              {/* Source Breakdown: Cursor | Claude Code */}
-              {sourceBreakdown && (sourceBreakdown.cursor > 0 || sourceBreakdown.claudeCode > 0) && (
-                <div className="flex items-center gap-1.5 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
-                  {sourceBreakdown.cursor > 0 && (
-                    <>
-                      <span className="text-blue-400">Cursor</span>
-                      <span className="font-medium text-slate-300">{sourceBreakdown.cursor.toLocaleString()}</span>
-                    </>
-                  )}
-                  {sourceBreakdown.cursor > 0 && sourceBreakdown.claudeCode > 0 && (
-                    <span className="text-slate-600">|</span>
-                  )}
-                  {sourceBreakdown.claudeCode > 0 && (
-                    <>
-                      <span className="text-purple-400">Claude Code</span>
-                      <span className="font-medium text-slate-300">{sourceBreakdown.claudeCode.toLocaleString()}</span>
-                    </>
-                  )}
-                </div>
-              )}
             </div>
           </div>
 
