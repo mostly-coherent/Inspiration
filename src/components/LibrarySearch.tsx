@@ -56,9 +56,13 @@ export const LibrarySearch = memo(function LibrarySearch({
     // Sort
     filtered.sort((a, b) => {
       if (sortBy === "recency") {
-        const dateA = new Date(a.lastSeen || a.firstSeen || "1970-01-01").getTime();
-        const dateB = new Date(b.lastSeen || b.firstSeen || "1970-01-01").getTime();
-        return dateB - dateA; // Most recent first
+        const dateA = a.lastSeen || a.firstSeen || "1970-01-01";
+        const dateB = b.lastSeen || b.firstSeen || "1970-01-01";
+        const timeA = new Date(dateA);
+        const timeB = new Date(dateB);
+        const timeAValue = isNaN(timeA.getTime()) ? 0 : timeA.getTime();
+        const timeBValue = isNaN(timeB.getTime()) ? 0 : timeB.getTime();
+        return timeBValue - timeAValue; // Most recent first
       }
       if (sortBy === "occurrence") {
         return (b.occurrence || 0) - (a.occurrence || 0);

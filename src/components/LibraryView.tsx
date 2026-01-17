@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, memo } from "react";
+import { useState, useEffect, useMemo, memo, useRef } from "react";
 
 // Format YYYY-MM date string to readable format (e.g., "2025-12" → "Dec 2025")
 function formatMonthYear(dateStr: string): string {
@@ -85,10 +85,15 @@ export const LibraryView = memo(function LibraryView() {
   // Bulk selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
+  const [bulkActionError, setBulkActionError] = useState<string | null>(null);
   
   // Cleanup state
   const [staleCount, setStaleCount] = useState<number>(0);
   const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupError, setCleanupError] = useState<string | null>(null);
+  
+  // Prevent state updates after unmount
+  const isMountedRef = useRef(true);
   
   // Filter state
   const [filters, setFilters] = useState<FilterState>({
@@ -98,26 +103,50 @@ export const LibraryView = memo(function LibraryView() {
     sort: "recent",
   });
 
+  // Initialize isMountedRef
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   // Fetch library data with pagination
   useEffect(() => {
     const fetchLibrary = async () => {
+      if (!isMountedRef.current) return;
+      
+      setLoading(true);
+      setError(null);
       try {
         const params = new URLSearchParams({
           page: currentPage.toString(),
           pageSize: pageSize.toString(),
         });
         const res = await fetch(`/api/items?${params}`);
-        if (!res.ok) throw new Error("Failed to fetch library");
-        const json = await res.json();
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+          throw new Error(`Failed to fetch library: ${errorText.length > 100 ? res.status : errorText}`);
+        }
+        
+        const json = await res.json().catch((parseError) => {
+          throw new Error(`Invalid response format: ${parseError.message}`);
+        });
+        
+        if (!isMountedRef.current) return;
+        
         if (json.success) {
           setData(json);
         } else {
           throw new Error(json.error || "Unknown error");
         }
       } catch (err) {
+        if (!isMountedRef.current) return;
         setError(err instanceof Error ? err.message : "Unknown error");
       } finally {
-        setLoading(false);
+        if (isMountedRef.current) {
+          setLoading(false);
+        }
       }
     };
     fetchLibrary();
@@ -161,10 +190,22 @@ export const LibraryView = memo(function LibraryView() {
     // Sort
     switch (filters.sort) {
       case "recent":
-        items.sort((a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime());
+        items.sort((a, b) => {
+          const dateA = a.lastSeen ? new Date(a.lastSeen) : new Date(0);
+          const dateB = b.lastSeen ? new Date(b.lastSeen) : new Date(0);
+          const timeA = isNaN(dateA.getTime()) ? 0 : dateA.getTime();
+          const timeB = isNaN(dateB.getTime()) ? 0 : dateB.getTime();
+          return timeB - timeA; // Most recent first
+        });
         break;
       case "oldest":
-        items.sort((a, b) => new Date(a.firstSeen).getTime() - new Date(b.firstSeen).getTime());
+        items.sort((a, b) => {
+          const dateA = a.firstSeen ? new Date(a.firstSeen) : new Date(0);
+          const dateB = b.firstSeen ? new Date(b.firstSeen) : new Date(0);
+          const timeA = isNaN(dateA.getTime()) ? 0 : dateA.getTime();
+          const timeB = isNaN(dateB.getTime()) ? 0 : dateB.getTime();
+          return timeA - timeB; // Oldest first
+        });
         break;
     }
     
@@ -178,32 +219,52 @@ export const LibraryView = memo(function LibraryView() {
 
   // Refetch library data
   const refetchLibrary = async () => {
+    if (!isMountedRef.current) return;
+    
     try {
       const params = new URLSearchParams({
         page: currentPage.toString(),
         pageSize: pageSize.toString(),
       });
       const res = await fetch(`/api/items?${params}`);
-      if (!res.ok) throw new Error("Failed to fetch library");
-      const json = await res.json();
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Failed to refetch library: ${errorText.length > 100 ? res.status : errorText}`);
+      }
+      
+      const json = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (!isMountedRef.current) return;
+      
       if (json.success) {
         setData(json);
+      } else {
+        throw new Error(json.error || "Refetch failed");
       }
     } catch (err) {
+      if (!isMountedRef.current) return;
       console.error("Refetch error:", err);
+      setError(err instanceof Error ? err.message : "Failed to refresh library");
     }
   };
 
   // Fetch stale items count
   const fetchStaleCount = async () => {
+    if (!isMountedRef.current) return;
+    
     try {
       const res = await fetch("/api/items/cleanup");
       if (res.ok) {
-        const json = await res.json();
+        const json = await res.json().catch(() => ({ staleCount: 0 }));
+        if (!isMountedRef.current) return;
         setStaleCount(json.staleCount || 0);
       }
     } catch (err) {
+      if (!isMountedRef.current) return;
       console.error("Stale count error:", err);
+      // Fail silently - stale count is optional
     }
   };
 
@@ -218,21 +279,41 @@ export const LibraryView = memo(function LibraryView() {
   const runCleanup = async () => {
     if (staleCount === 0) return;
     if (!confirm(`Archive ${staleCount} stale items? (Items not seen in >90 days)`)) return;
+    
+    if (!isMountedRef.current) return;
     setCleanupLoading(true);
+    setCleanupError(null);
+    
     try {
       const res = await fetch("/api/items/cleanup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dryRun: false }),
       });
-      if (res.ok) {
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Cleanup failed: ${errorText.length > 100 ? res.status : errorText}`);
+      }
+      
+      const json = await res.json().catch(() => ({ success: false }));
+      
+      if (!isMountedRef.current) return;
+      
+      if (json.success) {
         await refetchLibrary();
         await fetchStaleCount();
+      } else {
+        throw new Error(json.error || "Cleanup failed");
       }
     } catch (err) {
+      if (!isMountedRef.current) return;
       console.error("Cleanup error:", err);
+      setCleanupError(err instanceof Error ? err.message : "Cleanup failed");
     } finally {
-      setCleanupLoading(false);
+      if (isMountedRef.current) {
+        setCleanupLoading(false);
+      }
     }
   };
 
@@ -262,21 +343,41 @@ export const LibraryView = memo(function LibraryView() {
   // Bulk archive
   const bulkArchive = async () => {
     if (selectedIds.size === 0) return;
+    if (!isMountedRef.current) return;
+    
     setBulkActionLoading(true);
+    setBulkActionError(null);
+    
     try {
       const res = await fetch("/api/items/bulk", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: Array.from(selectedIds), status: "archived" }),
       });
-      if (res.ok) {
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Archive failed: ${errorText.length > 100 ? res.status : errorText}`);
+      }
+      
+      const json = await res.json().catch(() => ({ success: false }));
+      
+      if (!isMountedRef.current) return;
+      
+      if (json.success) {
         setSelectedIds(new Set());
         await refetchLibrary();
+      } else {
+        throw new Error(json.error || "Archive failed");
       }
     } catch (err) {
+      if (!isMountedRef.current) return;
       console.error("Bulk archive error:", err);
+      setBulkActionError(err instanceof Error ? err.message : "Archive failed");
     } finally {
-      setBulkActionLoading(false);
+      if (isMountedRef.current) {
+        setBulkActionLoading(false);
+      }
     }
   };
 
@@ -284,42 +385,83 @@ export const LibraryView = memo(function LibraryView() {
   const bulkDelete = async () => {
     if (selectedIds.size === 0) return;
     if (!confirm(`Delete ${selectedIds.size} items? This cannot be undone.`)) return;
+    if (!isMountedRef.current) return;
+    
     setBulkActionLoading(true);
+    setBulkActionError(null);
+    
     try {
       const res = await fetch("/api/items/bulk", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: Array.from(selectedIds) }),
       });
-      if (res.ok) {
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Delete failed: ${errorText.length > 100 ? res.status : errorText}`);
+      }
+      
+      const json = await res.json().catch(() => ({ success: false }));
+      
+      if (!isMountedRef.current) return;
+      
+      if (json.success) {
         setSelectedIds(new Set());
         await refetchLibrary();
+      } else {
+        throw new Error(json.error || "Delete failed");
       }
     } catch (err) {
+      if (!isMountedRef.current) return;
       console.error("Bulk delete error:", err);
+      setBulkActionError(err instanceof Error ? err.message : "Delete failed");
     } finally {
-      setBulkActionLoading(false);
+      if (isMountedRef.current) {
+        setBulkActionLoading(false);
+      }
     }
   };
 
   // Bulk status change
   const bulkSetStatus = async (status: string) => {
     if (selectedIds.size === 0) return;
+    if (!status || status.trim() === "") return;
+    if (!isMountedRef.current) return;
+    
     setBulkActionLoading(true);
+    setBulkActionError(null);
+    
     try {
       const res = await fetch("/api/items/bulk", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: Array.from(selectedIds), status }),
       });
-      if (res.ok) {
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Status update failed: ${errorText.length > 100 ? res.status : errorText}`);
+      }
+      
+      const json = await res.json().catch(() => ({ success: false }));
+      
+      if (!isMountedRef.current) return;
+      
+      if (json.success) {
         setSelectedIds(new Set());
         await refetchLibrary();
+      } else {
+        throw new Error(json.error || "Status update failed");
       }
     } catch (err) {
+      if (!isMountedRef.current) return;
       console.error("Bulk status change error:", err);
+      setBulkActionError(err instanceof Error ? err.message : "Status update failed");
     } finally {
-      setBulkActionLoading(false);
+      if (isMountedRef.current) {
+        setBulkActionLoading(false);
+      }
     }
   };
 
@@ -327,21 +469,41 @@ export const LibraryView = memo(function LibraryView() {
   const mergeSelected = async () => {
     if (selectedIds.size < 2) return;
     if (!confirm(`Merge ${selectedIds.size} items into one? The item with highest occurrence will be kept, others deleted.`)) return;
+    if (!isMountedRef.current) return;
+    
     setBulkActionLoading(true);
+    setBulkActionError(null);
+    
     try {
       const res = await fetch("/api/items/merge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: Array.from(selectedIds) }),
       });
-      if (res.ok) {
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Merge failed: ${errorText.length > 100 ? res.status : errorText}`);
+      }
+      
+      const json = await res.json().catch(() => ({ success: false }));
+      
+      if (!isMountedRef.current) return;
+      
+      if (json.success) {
         setSelectedIds(new Set());
         await refetchLibrary();
+      } else {
+        throw new Error(json.error || "Merge failed");
       }
     } catch (err) {
+      if (!isMountedRef.current) return;
       console.error("Merge error:", err);
+      setBulkActionError(err instanceof Error ? err.message : "Merge failed");
     } finally {
-      setBulkActionLoading(false);
+      if (isMountedRef.current) {
+        setBulkActionLoading(false);
+      }
     }
   };
 
@@ -431,6 +593,13 @@ export const LibraryView = memo(function LibraryView() {
             </button>
           </div>
           
+          {/* Error Message */}
+          {(bulkActionError || cleanupError) && (
+            <div className="text-xs text-red-400" role="alert">
+              {bulkActionError || cleanupError}
+            </div>
+          )}
+          
           {/* Bulk Action Buttons */}
           {selectedIds.size > 0 ? (
             <div className="flex items-center gap-2">
@@ -489,6 +658,11 @@ export const LibraryView = memo(function LibraryView() {
                 >
                   {cleanupLoading ? "Cleaning..." : `🧹 Clean up ${staleCount} stale`}
                 </button>
+              )}
+              {cleanupError && (
+                <span className="text-xs text-red-400" role="alert">
+                  {cleanupError}
+                </span>
               )}
             </div>
           )}
@@ -647,9 +821,13 @@ const ItemCard = memo(function ItemCard({
       <h3 className="font-medium text-white mb-1 line-clamp-2">{item.title}</h3>
       
       {/* Description preview */}
-      <p className="text-sm text-adobe-gray-400 line-clamp-2 mb-2">
-        {item.description.substring(0, 100)}...
-      </p>
+      {item.description && (
+        <p className="text-sm text-adobe-gray-400 line-clamp-2 mb-2">
+          {item.description.length > 100 
+            ? `${item.description.substring(0, 100)}...` 
+            : item.description}
+        </p>
+      )}
       
       {/* Footer */}
       <div className="flex items-center justify-between text-xs text-adobe-gray-500">
