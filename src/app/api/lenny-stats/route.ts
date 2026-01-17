@@ -30,25 +30,22 @@ interface LennyStats {
 
 export async function GET(): Promise<NextResponse<LennyStats>> {
   try {
-    // Cloud environment: Lenny embeddings not available
-    if (isCloudEnvironment()) {
-      return NextResponse.json({
-        success: true,
-        indexed: false,
-        episodeCount: 0,
-        chunkCount: 0,
-        wordCount: 0,
-        withRichMetadata: 0,
-        format: "none",
-        indexedAt: null,
-        embeddingsSizeMB: null,
-        cloudMode: true,
-      });
-    }
+    const isCloud = isCloudEnvironment();
+    
+    // Check /tmp first (cloud), then data/ (local)
+    const tmpMetadataPath = "/tmp/lenny-embeddings/lenny_metadata.json";
+    const tmpEmbeddingsPath = "/tmp/lenny-embeddings/lenny_embeddings.npz";
+    const localDataDir = path.resolve(process.cwd(), "data");
+    const localMetadataPath = path.join(localDataDir, "lenny_metadata.json");
+    const localEmbeddingsPath = path.join(localDataDir, "lenny_embeddings.npz");
 
-    const dataDir = path.resolve(process.cwd(), "data");
-    const metadataPath = path.join(dataDir, "lenny_metadata.json");
-    const embeddingsPath = path.join(dataDir, "lenny_embeddings.npz");
+    // Determine which paths to use (cloud: /tmp, local: data/)
+    const metadataPath = isCloud && fs.existsSync(tmpMetadataPath) 
+      ? tmpMetadataPath 
+      : localMetadataPath;
+    const embeddingsPath = isCloud && fs.existsSync(tmpEmbeddingsPath)
+      ? tmpEmbeddingsPath
+      : localEmbeddingsPath;
 
     // Check if indexed
     if (!fs.existsSync(metadataPath)) {
@@ -62,7 +59,7 @@ export async function GET(): Promise<NextResponse<LennyStats>> {
         format: "none",
         indexedAt: null,
         embeddingsSizeMB: null,
-        cloudMode: false,
+        cloudMode: isCloud,
       });
     }
 
