@@ -895,6 +895,12 @@ function FastOnboardingContent() {
                       setApiKey(e.target.value);
                       setKeyValid(null);
                     }}
+                    onBlur={() => {
+                      // Auto-validate when user clicks away or presses Tab
+                      if (apiKey && apiKey.length > 0) {
+                        validateKey();
+                      }
+                    }}
                     placeholder="sk-ant-..."
                     autoComplete="off"
                     className={`w-full px-4 py-3 pr-10 bg-slate-800/50 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
