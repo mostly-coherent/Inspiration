@@ -70,12 +70,36 @@ export function loadThemes(): ThemesConfig {
       const { readFileSync } = require("fs");
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { join } = require("path");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { existsSync } = require("fs");
       const themesPath = join(process.cwd(), "data", "themes.json");
+      
+      if (!existsSync(themesPath)) {
+        console.error(`[Themes] themes.json not found at: ${themesPath}`);
+        return {
+          version: 1,
+          themes: [],
+        };
+      }
+      
       const content = readFileSync(themesPath, "utf-8");
       themesCache = JSON.parse(content) as ThemesConfig;
+      
+      // Validate that themes were loaded
+      if (!themesCache.themes || themesCache.themes.length === 0) {
+        console.error("[Themes] themes.json is empty or invalid");
+        themesCache = null; // Reset cache so we can retry
+        return {
+          version: 1,
+          themes: [],
+        };
+      }
+      
       return themesCache;
     } catch (error) {
       console.error("[Themes] Failed to load themes.json:", error);
+      // Reset cache on error so we can retry
+      themesCache = null;
     }
   }
 
@@ -123,8 +147,27 @@ export function resolveThemeModeFromTool(tool: "ideas" | "insights"): {
  * Validate theme/mode combination
  */
 export function validateThemeMode(themeId: ThemeType, modeId: ModeType): boolean {
-  const mode = getMode(themeId, modeId);
-  return mode !== null;
+  const config = loadThemes();
+  
+  // Debug: Log if themes failed to load
+  if (!config.themes || config.themes.length === 0) {
+    console.error(`[Themes] Validation failed: themes.json not loaded or empty. Theme: ${themeId}, Mode: ${modeId}`);
+    return false;
+  }
+  
+  const theme = config.themes.find((t) => t.id === themeId);
+  if (!theme) {
+    console.error(`[Themes] Theme not found: ${themeId}. Available themes: ${config.themes.map(t => t.id).join(", ")}`);
+    return false;
+  }
+  
+  const mode = theme.modes.find((m) => m.id === modeId);
+  if (!mode) {
+    console.error(`[Themes] Mode not found: ${modeId} in theme ${themeId}. Available modes: ${theme.modes.map(m => m.id).join(", ")}`);
+    return false;
+  }
+  
+  return true;
 }
 
 /**
