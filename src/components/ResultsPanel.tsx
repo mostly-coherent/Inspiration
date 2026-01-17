@@ -17,6 +17,10 @@ interface ResultsPanelProps {
 
 export const ResultsPanel = memo(function ResultsPanel({ result, onRetry, onRetryWithDays }: ResultsPanelProps) {
   const [showRaw, setShowRaw] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isCopying, setIsCopying] = useState(false);
+  const [isHarmonizing, setIsHarmonizing] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const router = useRouter();
   
   // Validate stats in development mode
@@ -45,35 +49,75 @@ export const ResultsPanel = memo(function ResultsPanel({ result, onRetry, onRetr
   }, [result.estimatedCost, result.content, result.stats.itemsGenerated]);
 
   const downloadResult = async (content: string) => {
-    // Show file picker dialog
-    if (typeof window !== "undefined" && "showSaveFilePicker" in window) {
-      try {
-        const timestamp = new Date().toISOString().split("T")[0];
-        const filename = `${result.tool}_${timestamp}.md`;
-        
-        // @ts-expect-error - showSaveFilePicker is available in modern browsers
-        const fileHandle = await window.showSaveFilePicker({
-          suggestedName: filename,
-          types: [{
-            description: "Markdown files",
-            accept: { "text/markdown": [".md"] },
-          }],
-        });
-        
-        const writable = await fileHandle.createWritable();
-        await writable.write(content);
-        await writable.close();
-      } catch {
-        // User cancelled or error - fallback to download
+    if (!content) {
+      console.error("Cannot download: content is empty");
+      return;
+    }
+    
+    setIsDownloading(true);
+    try {
+      // Show file picker dialog
+      if (typeof window !== "undefined" && "showSaveFilePicker" in window) {
+        try {
+          const timestamp = new Date().toISOString().split("T")[0];
+          const filename = `${result.tool}_${timestamp}.md`;
+          
+          // @ts-expect-error - showSaveFilePicker is available in modern browsers
+          const fileHandle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            types: [{
+              description: "Markdown files",
+              accept: { "text/markdown": [".md"] },
+            }],
+          });
+          
+          const writable = await fileHandle.createWritable();
+          await writable.write(content);
+          await writable.close();
+        } catch (err: any) {
+          // Check if user cancelled (DOMException with name "AbortError")
+          if (err?.name === "AbortError") {
+            // User cancelled - silently ignore
+            return;
+          }
+          // Actual error - fallback to download
+          const timestamp = new Date().toISOString().split("T")[0];
+          const filename = `${result.tool}_${timestamp}.md`;
+          downloadFile(content, filename);
+        }
+      } else {
+        // Fallback for browsers without File System Access API
         const timestamp = new Date().toISOString().split("T")[0];
         const filename = `${result.tool}_${timestamp}.md`;
         downloadFile(content, filename);
       }
-    } else {
-      // Fallback for browsers without File System Access API
-      const timestamp = new Date().toISOString().split("T")[0];
-      const filename = `${result.tool}_${timestamp}.md`;
-      downloadFile(content, filename);
+    } catch (error) {
+      console.error("Download failed:", error);
+      // Note: downloadFile doesn't throw, but showSaveFilePicker might
+      // User will see browser's download dialog or error
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleCopy = async (content: string) => {
+    if (!content) {
+      setCopyError("Nothing to copy");
+      setTimeout(() => setCopyError(null), 3000);
+      return;
+    }
+    
+    setIsCopying(true);
+    setCopyError(null);
+    try {
+      await copyToClipboard(content);
+      // Success - clear error after brief delay to show success state
+      setTimeout(() => setIsCopying(false), 500);
+    } catch (error) {
+      console.error("Copy failed:", error);
+      setCopyError("Failed to copy to clipboard. Please try again.");
+      setIsCopying(false);
+      setTimeout(() => setCopyError(null), 5000);
     }
   };
 
@@ -105,20 +149,38 @@ export const ResultsPanel = memo(function ResultsPanel({ result, onRetry, onRetr
           break;
         case "harmonize":
           // Call harmonize API
+          setIsHarmonizing(true);
           fetch("/api/harmonize", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ mode: result.tool === "ideas" ? "ideas" : "insights" }),
           })
-            .then((res) => res.json())
+            .then(async (res) => {
+              if (!res.ok) {
+                throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+              }
+              return res.json().catch(() => {
+                throw new Error("Invalid JSON response from server");
+              });
+            })
             .then((data) => {
+              setIsHarmonizing(false);
               if (data.success) {
-                alert(`✅ Harmonized ${data.filesProcessed} files: ${data.itemsAdded} added, ${data.itemsUpdated} updated`);
+                // Use a more user-friendly notification (could be replaced with toast library)
+                const message = `✅ Harmonized ${data.filesProcessed} files: ${data.itemsAdded} added, ${data.itemsUpdated} updated`;
+                // For now, use alert but could be replaced with toast notification
+                alert(message);
+                // Optionally refresh the page or update UI
+                window.location.reload();
               } else {
-                alert(`❌ Harmonization failed: ${data.error}`);
+                alert(`❌ Harmonization failed: ${data.error || "Unknown error"}`);
               }
             })
-            .catch((err) => alert(`❌ Error: ${err}`));
+            .catch((err) => {
+              setIsHarmonizing(false);
+              console.error("Harmonize API error:", err);
+              alert(`❌ Error: ${err instanceof Error ? err.message : String(err)}`);
+            });
           break;
       }
     };
@@ -138,9 +200,10 @@ export const ResultsPanel = memo(function ResultsPanel({ result, onRetry, onRetr
           <div className="mt-4 flex gap-3">
             <button
               onClick={handleCTA}
-              className="px-4 py-2 bg-adobe-blue-600 hover:bg-adobe-blue-500 text-white rounded-md text-sm font-medium transition-colors"
+              disabled={isHarmonizing}
+              className="px-4 py-2 bg-adobe-blue-600 hover:bg-adobe-blue-500 text-white rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {friendlyError.cta.label}
+              {isHarmonizing ? "⏳ Processing..." : friendlyError.cta.label}
             </button>
             
             {/* Show raw error toggle for debugging */}
@@ -419,18 +482,25 @@ export const ResultsPanel = memo(function ResultsPanel({ result, onRetry, onRetr
             <div className="flex items-center gap-2">
               <button
                 onClick={() => result.content && downloadResult(result.content)}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                disabled={isDownloading || !result.content}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 aria-label="Save result to file"
               >
-                <span aria-hidden="true">💾</span> Save
+                <span aria-hidden="true">{isDownloading ? "⏳" : "💾"}</span> {isDownloading ? "Saving..." : "Save"}
               </button>
               <button
-                onClick={() => result.content && copyToClipboard(result.content)}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                onClick={() => result.content && handleCopy(result.content)}
+                disabled={isCopying || !result.content}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 aria-label="Copy result to clipboard"
               >
-                <span aria-hidden="true">📋</span> Copy
+                <span aria-hidden="true">{isCopying ? "✓" : "📋"}</span> {isCopying ? "Copied!" : "Copy"}
               </button>
+              {copyError && (
+                <span className="text-xs text-red-400" role="alert">
+                  {copyError}
+                </span>
+              )}
             </div>
           </div>
 
