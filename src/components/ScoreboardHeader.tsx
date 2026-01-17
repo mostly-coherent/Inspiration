@@ -17,7 +17,8 @@ interface SourceBreakdown {
 
 interface LibraryStats {
   totalItems: number;
-  totalCategories: number;
+  totalCategories: number; // Persisted categories from database
+  themeCount: number; // Dynamic themes from preview API (matches Theme Explorer)
   thisWeek: number;
   byMode: Record<string, number>;
 }
@@ -54,6 +55,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
   const [libraryStats, setLibraryStats] = useState<LibraryStats>({
     totalItems: 0,
     totalCategories: 0,
+    themeCount: 0, // Dynamic theme count (matches Theme Explorer)
     thisWeek: 0,
     byMode: {},
   });
@@ -98,16 +100,29 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
   // Fetch Library stats
   const fetchLibraryStats = useCallback(async () => {
     try {
-      const res = await fetch("/api/items?view=items");
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+      // Fetch both persisted categories and dynamic theme count
+      const [itemsRes, themesRes] = await Promise.all([
+        fetch("/api/items?view=items"),
+        fetch("/api/items/themes/preview?threshold=0.7"), // Use default threshold to match Theme Explorer
+      ]);
+      
+      if (!itemsRes.ok) {
+        throw new Error(`HTTP ${itemsRes.status}`);
       }
-      const data = await res.json();
-      if (data.success && isMountedRef.current) {
+      const itemsData = await itemsRes.json();
+      
+      // Get dynamic theme count (matches Theme Explorer)
+      let themeCount = 0;
+      if (themesRes.ok) {
+        const themesData = await themesRes.json();
+        themeCount = themesData.themeCount || 0;
+      }
+      
+      if (itemsData.success && isMountedRef.current) {
         // Calculate items added this week
         const oneWeekAgo = new Date();
         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-        const thisWeek = (data.items || []).filter((item: { lastSeen?: string; firstSeen?: string }) => {
+        const thisWeek = (itemsData.items || []).filter((item: { lastSeen?: string; firstSeen?: string }) => {
           const dateStr = item.lastSeen || item.firstSeen;
           if (!dateStr) return false; // Skip items without dates
           const itemDate = new Date(dateStr);
@@ -117,10 +132,11 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
         }).length;
 
         setLibraryStats({
-          totalItems: data.stats?.totalItems || 0,
-          totalCategories: data.stats?.totalCategories || 0,
+          totalItems: itemsData.stats?.totalItems || 0,
+          totalCategories: itemsData.stats?.totalCategories || 0,
+          themeCount, // Dynamic theme count (matches Theme Explorer)
           thisWeek,
-          byMode: data.stats?.byMode || {},
+          byMode: itemsData.stats?.byMode || {},
         });
       }
     } catch (e) {
@@ -447,10 +463,11 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                   </div>
                   <div className="text-[10px] text-slate-500">items</div>
                 </div>
-                {libraryStats.totalCategories > 0 && (
+                {/* Show dynamic theme count (matches Theme Explorer) instead of persisted categories */}
+                {libraryStats.themeCount > 0 && (
                   <div>
                     <div className="text-lg font-semibold text-indigo-400">
-                      {libraryStats.totalCategories}
+                      {libraryStats.themeCount}
                     </div>
                     <div className="text-[10px] text-slate-500">themes</div>
                   </div>
