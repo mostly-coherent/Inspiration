@@ -88,39 +88,69 @@ function OnboardingContent() {
   
   // Detect chat DB size on mount
   useEffect(() => {
+    let cancelled = false;
+    
     const detectChatDb = async () => {
       if (isPreviewMode) {
         // Simulate detection in preview mode
-        setChatDb({
-          detected: true,
-          sizeBytes: 150 * 1024 * 1024, // Simulate 150MB
-          sizeFormatted: "150 MB",
-          requiresVectorDb: false,
-          isCloudMode: false,
-        });
-        setDetectingDb(false);
+        if (!cancelled) {
+          setChatDb({
+            detected: true,
+            sizeBytes: 150 * 1024 * 1024, // Simulate 150MB
+            sizeFormatted: "150 MB",
+            requiresVectorDb: false,
+            isCloudMode: false,
+          });
+          setDetectingDb(false);
+        }
         return;
       }
       
       try {
         const res = await fetch("/api/brain-stats");
-        const data = await res.json();
+        if (cancelled) return;
         
-        if (data.success) {
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+          throw new Error(`API error: ${errorText.length > 100 ? res.status : errorText}`);
+        }
+        const data = await res.json().catch((parseError) => {
+          throw new Error(`Invalid response format: ${parseError.message}`);
+        });
+        
+        if (cancelled) return;
+        
+        if (data && typeof data === 'object' && data.success) {
           const sizeBytes = data.localSizeBytes || 0;
           // Use explicit cloudMode flag from API (checks VERCEL, RAILWAY env vars)
           // Don't infer cloud from "no file found" - user may just not have chat history yet
           const isCloud = data.cloudMode === true;
           
-          setChatDb({
-            detected: true,
-            sizeBytes,
-            sizeFormatted: data.localSize || (isCloud ? "N/A (Cloud)" : "0 B"),
-            requiresVectorDb: isCloud || sizeBytes >= VECTOR_DB_REQUIRED_THRESHOLD,
-            isCloudMode: isCloud,
-          });
+          if (!cancelled) {
+            setChatDb({
+              detected: true,
+              sizeBytes,
+              sizeFormatted: data.localSize || (isCloud ? "N/A (Cloud)" : "0 B"),
+              requiresVectorDb: isCloud || sizeBytes >= VECTOR_DB_REQUIRED_THRESHOLD,
+              isCloudMode: isCloud,
+            });
+          }
         } else {
           // Couldn't detect, assume cloud mode
+          if (!cancelled) {
+            setChatDb({
+              detected: true,
+              sizeBytes: 0,
+              sizeFormatted: "N/A",
+              requiresVectorDb: true,
+              isCloudMode: true,
+            });
+          }
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.error("Failed to detect chat DB:", e);
+          // On error, assume cloud mode (safest)
           setChatDb({
             detected: true,
             sizeBytes: 0,
@@ -129,40 +159,58 @@ function OnboardingContent() {
             isCloudMode: true,
           });
         }
-      } catch (e) {
-        console.error("Failed to detect chat DB:", e);
-        // On error, assume cloud mode (safest)
-        setChatDb({
-          detected: true,
-          sizeBytes: 0,
-          sizeFormatted: "N/A",
-          requiresVectorDb: true,
-          isCloudMode: true,
-        });
       } finally {
-        setDetectingDb(false);
+        if (!cancelled) {
+          setDetectingDb(false);
+        }
       }
     };
     
     detectChatDb();
+    
+    return () => {
+      cancelled = true;
+    };
   }, [isPreviewMode]);
 
   // Check if already onboarded (redirect if so, unless preview mode)
   useEffect(() => {
+    let cancelled = false;
+    
     const checkOnboarding = async () => {
       if (isPreviewMode) return; // Skip check in preview mode
       
       try {
         const res = await fetch("/api/config");
-        const data = await res.json();
-        if (data.success && data.config?.setupComplete) {
+        if (cancelled) return;
+        
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+          console.error("Failed to check onboarding status:", errorText.length > 100 ? res.status : errorText);
+          return;
+        }
+        
+        const data = await res.json().catch((parseError) => {
+          throw new Error(`Invalid response format: ${parseError.message}`);
+        });
+        
+        if (cancelled) return;
+        
+        if (data && typeof data === 'object' && data.success && data.config?.setupComplete) {
           router.push("/");
         }
       } catch (e) {
-        console.error("Failed to check onboarding status:", e);
+        if (!cancelled) {
+          console.error("Failed to check onboarding status:", e);
+        }
       }
     };
+    
     checkOnboarding();
+    
+    return () => {
+      cancelled = true;
+    };
   }, [router, isPreviewMode]);
 
   // Validate API keys before saving
@@ -192,9 +240,16 @@ function OnboardingContent() {
         body: JSON.stringify(payload),
       });
       
-      const data = await res.json();
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Validation failed: ${errorText.length > 100 ? res.status : errorText}`);
+      }
       
-      if (data.success) {
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (data && typeof data === 'object' && data.success) {
         setValidationResults({
           anthropic: data.results.anthropic,
           openai: data.results.openai || null,
@@ -273,8 +328,14 @@ function OnboardingContent() {
       });
       
       if (!envRes.ok) {
-        const envData = await envRes.json();
-        throw new Error(envData.error || "Failed to save API keys");
+        const errorText = await envRes.text().catch(() => `HTTP ${envRes.status}`);
+        let envData: any = {};
+        try {
+          envData = JSON.parse(errorText);
+        } catch {
+          // Not JSON, use text as error
+        }
+        throw new Error((envData && typeof envData === 'object' && envData.error) || errorText || "Failed to save API keys");
       }
       
       // Build config object
@@ -317,8 +378,22 @@ function OnboardingContent() {
       });
       
       if (!configRes.ok) {
-        const configData = await configRes.json();
-        throw new Error(configData.error || "Failed to save config");
+        const errorText = await configRes.text().catch(() => `HTTP ${configRes.status}`);
+        let configData: any = {};
+        try {
+          configData = JSON.parse(errorText);
+        } catch {
+          // Not JSON, use text as error
+        }
+        throw new Error((configData && typeof configData === 'object' && configData.error) || errorText || "Failed to save config");
+      }
+      
+      const configResponseData = await configRes.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (!(configResponseData && typeof configResponseData === 'object' && configResponseData.success)) {
+        throw new Error("Config save returned unsuccessful response");
       }
       
       // If skipping Supabase, go directly to app (no sync needed)
