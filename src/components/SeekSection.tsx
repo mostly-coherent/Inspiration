@@ -186,12 +186,21 @@ export function SeekSection({
     let libraryCountBefore: number | null = null;
     try {
       const libRes = await fetch("/api/items?view=items");
-      const libData = await libRes.json();
-      if (libData.success) {
-        libraryCountBefore = libData.stats?.totalItems || 0;
+      if (!libRes.ok) {
+        const errorText = await libRes.text().catch(() => `HTTP ${libRes.status}`);
+        console.error("[Seek] Failed to fetch library count before:", errorText.length > 100 ? libRes.status : errorText);
+        // Continue with generation even if library count fetch fails
+      } else {
+        const libData = await libRes.json().catch((parseError) => {
+          throw new Error(`Invalid response format: ${parseError.message}`);
+        });
+        if (libData && typeof libData === 'object' && libData.success) {
+          libraryCountBefore = libData.stats?.totalItems || 0;
+        }
       }
     } catch (e) {
       console.error("[Seek] Failed to fetch library count before:", e);
+      // Continue with generation even if library count fetch fails
     }
 
     // Create new AbortController for this request
@@ -218,7 +227,8 @@ export function SeekSection({
       });
 
       if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
+        const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+        throw new Error(`Request failed: ${errorText.length > 100 ? response.status : errorText}`);
       }
 
       const reader = response.body?.getReader();
@@ -281,6 +291,11 @@ export function SeekSection({
             
             try {
               const data = JSON.parse(line.slice(6));
+              
+              // Validate data structure before processing
+              if (!data || typeof data !== 'object') {
+                continue; // Skip invalid data
+              }
               
               // Handle different message types from stream
               switch (data.type) {
@@ -402,9 +417,14 @@ export function SeekSection({
             }
             
             const response = await fetch("/api/items?view=items");
-            const data = await response.json();
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+            const data = await response.json().catch((parseError) => {
+              throw new Error(`Invalid response format: ${parseError.message}`);
+            });
             
-            if (data.success) {
+            if (data && typeof data === 'object' && data.success) {
               const newCount = data.stats?.totalItems || 0;
               // S8 Fix: Use ref instead of state
               const useCasesAdded = progressDataRef.current.useCasesAdded || 0;
