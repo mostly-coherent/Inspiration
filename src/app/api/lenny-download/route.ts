@@ -12,6 +12,17 @@ interface DownloadResponse {
   success: boolean;
   message: string;
   error?: string;
+  cloudMode?: boolean;
+}
+
+// Detect cloud environment (Vercel, Railway, etc.)
+function isCloudEnvironment(): boolean {
+  return !!(
+    process.env.VERCEL || 
+    process.env.RAILWAY_ENVIRONMENT || 
+    process.env.RENDER ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME
+  );
 }
 
 /**
@@ -19,9 +30,25 @@ interface DownloadResponse {
  * 
  * Triggers download of Lenny embeddings from GitHub Releases.
  * Idempotent: skips if files already exist.
+ * 
+ * NOTE: Lenny embeddings (~250MB) are NOT available on Vercel/cloud deployments:
+ * - Vercel has read-only filesystem (except /tmp)
+ * - Serverless functions have 50MB limit (embeddings are 250MB)
+ * - Files would be lost on next deployment (ephemeral storage)
+ * 
+ * Solution: Run locally to download embeddings, or use Supabase Storage for cloud deployments.
  */
 export async function POST(): Promise<NextResponse<DownloadResponse>> {
   try {
+    // Cloud environment: Cannot download embeddings
+    if (isCloudEnvironment()) {
+      return NextResponse.json({
+        success: false,
+        cloudMode: true,
+        message: "Lenny embeddings are not available on cloud deployments",
+        error: "Vercel/serverless environments have read-only filesystems and 50MB function limits. Lenny embeddings (~250MB) must be downloaded locally. Run 'npm run dev' locally to download embeddings, or use Supabase Storage for cloud deployments.",
+      }, { status: 400 });
+    }
     const dataDir = path.resolve(process.cwd(), "data");
     const embeddingsPath = path.join(dataDir, "lenny_embeddings.npz");
     const metadataPath = path.join(dataDir, "lenny_metadata.json");

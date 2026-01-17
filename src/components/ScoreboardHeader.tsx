@@ -200,7 +200,12 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
         // Refresh stats after download
         await fetchLennyStats();
       } else {
-        setLennyDownloadMessage(`⚠️ ${data.error || "Download failed"}`);
+        // Handle cloud mode error message
+        if (data.cloudMode) {
+          setLennyDownloadMessage("☁️ Cloud mode - not available");
+        } else {
+          setLennyDownloadMessage(`⚠️ ${data.error || "Download failed"}`);
+        }
         setLennyDownloadStatus("error");
       }
     } catch (e) {
