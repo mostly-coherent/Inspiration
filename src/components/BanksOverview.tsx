@@ -67,28 +67,23 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
       });
       
       if (data && typeof data === 'object' && data.success) {
-          const loadedItems = data.items || [];
-          
+        const loadedItems = Array.isArray(data.items) ? data.items : [];
+        
+        if (isMountedRef.current) {
           if (append) {
             // Append to existing items
             setItems(prev => [...prev, ...loadedItems]);
             setFilteredItems(prev => [...prev, ...loadedItems]);
           } else {
             // Replace items (initial load)
-          setItems(loadedItems);
+            setItems(loadedItems);
             setFilteredItems(loadedItems);
           }
           
-          if (isMountedRef.current) {
-            setStats(data.stats);
-            setCurrentPage(data.currentPage || page);
-            setHasNextPage(data.hasNextPage || false);
-            setTotalItems(data.totalItems || 0);
-          }
-        } else {
-          if (isMountedRef.current) {
-            setError((data && typeof data === 'object' && data.error) || "Failed to load items");
-          }
+          setStats(data.stats);
+          setCurrentPage(data.currentPage || page);
+          setHasNextPage(data.hasNextPage || false);
+          setTotalItems(data.totalItems || 0);
         }
       } else {
         if (isMountedRef.current) {
