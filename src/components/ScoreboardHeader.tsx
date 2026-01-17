@@ -583,8 +583,9 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 </span>
               )}
               
-              {/* Lenny Download Button (when not indexed and not cloud mode) */}
-              {!lennyStats.indexed && !lennyStats.cloudMode && (
+              {/* Lenny Download Button (when not indexed) */}
+              {/* Show button on cloud too - Supabase Storage makes it available */}
+              {!lennyStats.indexed && (
                 <button
                   onClick={downloadLennyEmbeddings}
                   disabled={lennyDownloadStatus === "downloading"}
@@ -593,21 +594,17 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                       ? "bg-blue-500/20 text-blue-300 animate-pulse cursor-wait"
                       : "bg-indigo-600/80 text-white hover:bg-indigo-500"
                   }`}
-                  title="Download pre-computed embeddings from GitHub Releases (~250MB, one-time)"
+                  title={
+                    lennyStats.cloudMode
+                      ? "Download embeddings from Supabase Storage (fast) or GitHub Releases (fallback)"
+                      : "Download pre-computed embeddings from GitHub Releases (~250MB, one-time)"
+                  }
                 >
                   <span className={lennyDownloadStatus === "downloading" ? "animate-spin" : ""}>
                     {lennyDownloadStatus === "downloading" ? "⏳" : "📥"}
                   </span>
                   <span>{lennyDownloadStatus === "downloading" ? "Downloading..." : "Download"}</span>
                 </button>
-              )}
-              
-              {/* Cloud mode message (when not indexed and cloud mode) */}
-              {!lennyStats.indexed && lennyStats.cloudMode && (
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-blue-500/10 text-blue-400">
-                  <span>☁️</span>
-                  <span>Local only</span>
-                </div>
               )}
               
               {/* Lenny Update Button (when indexed) */}
