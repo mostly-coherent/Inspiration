@@ -27,6 +27,7 @@ interface LennyStats {
   episodeCount: number;
   chunkCount: number;
   embeddingsSizeMB: number | null;
+  cloudMode?: boolean;
 }
 
 type LennyUpdateStatus = "idle" | "updating" | "success" | "error";
@@ -157,6 +158,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
           episodeCount: data.episodeCount,
           chunkCount: data.chunkCount,
           embeddingsSizeMB: data.embeddingsSizeMB || null,
+          cloudMode: data.cloudMode || false,
         });
       }
     } catch (e) {
@@ -581,8 +583,8 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 </span>
               )}
               
-              {/* Lenny Download Button (when not indexed) */}
-              {!lennyStats.indexed && (
+              {/* Lenny Download Button (when not indexed and not cloud mode) */}
+              {!lennyStats.indexed && !lennyStats.cloudMode && (
                 <button
                   onClick={downloadLennyEmbeddings}
                   disabled={lennyDownloadStatus === "downloading"}
@@ -598,6 +600,14 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                   </span>
                   <span>{lennyDownloadStatus === "downloading" ? "Downloading..." : "Download"}</span>
                 </button>
+              )}
+              
+              {/* Cloud mode message (when not indexed and cloud mode) */}
+              {!lennyStats.indexed && lennyStats.cloudMode && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-blue-500/10 text-blue-400">
+                  <span>☁️</span>
+                  <span>Local only</span>
+                </div>
               )}
               
               {/* Lenny Update Button (when indexed) */}
