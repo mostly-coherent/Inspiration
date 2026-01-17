@@ -422,7 +422,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
 
             {/* Main Content Row */}
             <div className="flex flex-wrap items-center gap-6">
-              {/* Size Transformation: Raw → Indexed → Library */}
+              {/* Size Transformation: Raw → Indexed → Extracted → Themes → Items → View All */}
               <div className="flex items-center gap-2">
                 {(memoryStats.localSize || memoryStats.vectorSize) ? (
                   <>
@@ -446,72 +446,78 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                       </div>
                       <div className="text-[10px] text-slate-500">extracted</div>
                     </div>
+                    <span className="text-slate-600">→</span>
+                    {/* Themes */}
+                    {libraryStats.themeCount > 0 && (
+                      <>
+                        <div className="text-center">
+                          <div className="text-lg font-semibold text-indigo-400">
+                            {libraryStats.themeCount}
+                          </div>
+                          <div className="text-[10px] text-slate-500">themes</div>
+                        </div>
+                        <span className="text-slate-600">→</span>
+                      </>
+                    )}
+                    {/* Items */}
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-white">
+                        {isLoading ? "—" : libraryStats.totalItems}
+                      </div>
+                      <div className="text-[10px] text-slate-500">items</div>
+                    </div>
+                    {/* View All link */}
+                    <a
+                      href="#library-section"
+                      className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors ml-2 self-center"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        document.getElementById("library-section")?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                    >
+                      View All →
+                    </a>
                   </>
                 ) : (
                   <div className="text-slate-500 text-sm">Loading...</div>
                 )}
               </div>
 
-              {/* Divider */}
-              <div className="hidden md:block w-px h-8 bg-slate-700/50" />
-
-              {/* Library Stats */}
-              <div className="flex items-end gap-3">
-                <div>
-                  <div className="text-2xl font-bold text-white">
-                    {isLoading ? "—" : libraryStats.totalItems}
-                  </div>
-                  <div className="text-[10px] text-slate-500">items</div>
-                </div>
-                {/* Show dynamic theme count (matches Theme Explorer) instead of persisted categories */}
-                {libraryStats.themeCount > 0 && (
-                  <div>
-                    <div className="text-lg font-semibold text-indigo-400">
-                      {libraryStats.themeCount}
-                    </div>
-                    <div className="text-[10px] text-slate-500">themes</div>
-                  </div>
-                )}
-                {libraryStats.thisWeek > 0 && (
-                  <div>
+              {/* This Week indicator (if applicable) */}
+              {libraryStats.thisWeek > 0 && (
+                <>
+                  <div className="hidden md:block w-px h-8 bg-slate-700/50" />
+                  <div className="text-center">
                     <div className="text-lg font-semibold text-emerald-400">
                       +{libraryStats.thisWeek}
                     </div>
                     <div className="text-[10px] text-slate-500">this week</div>
                   </div>
-                )}
-                
-                {/* View All link */}
-                <a
-                  href="#library-section"
-                  className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors ml-2 self-center"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    document.getElementById("library-section")?.scrollIntoView({ behavior: "smooth" });
-                  }}
-                >
-                  View All →
-                </a>
+                </>
+              )}
+            </div>
 
-                {/* Knowledge Graph links */}
-                <a
-                  href="/entities"
-                  className="text-xs text-purple-400 hover:text-purple-300 transition-colors ml-2 self-center"
-                >
-                  📋 Entities
-                </a>
-                <a
-                  href="/graph"
-                  className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors ml-2 self-center"
-                >
-                  🔮 Graph
-                </a>
-              </div>
+            {/* Knowledge Graph Section (separate mental model) */}
+            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-700/30">
+              <span className="text-xs text-slate-500 uppercase tracking-wide">Knowledge Graph:</span>
+              <a
+                href="/entities"
+                className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+              >
+                📋 Entities
+              </a>
+              <a
+                href="/graph"
+                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+              >
+                🔮 Graph
+              </a>
+              {/* Lenny's KG will be added here later */}
             </div>
 
             {/* Metadata Row */}
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              {/* Date Coverage */}
+              {/* Date Coverage: First → Most Recent */}
               {memoryStats.earliestDate && memoryStats.latestDate && (
                 <div className="flex items-center gap-1 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
                   <span>📅</span>
@@ -521,7 +527,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 </div>
               )}
 
-              {/* Source Breakdown */}
+              {/* Source Breakdown: Cursor | Claude Code */}
               {sourceBreakdown && (sourceBreakdown.cursor > 0 || sourceBreakdown.claudeCode > 0) && (
                 <div className="flex items-center gap-1.5 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
                   {sourceBreakdown.cursor > 0 && (
