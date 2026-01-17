@@ -30,10 +30,16 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
   const [currentPage, setCurrentPage] = useState(1);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [totalItems, setTotalItems] = useState(0);
+  const isMountedRef = useRef(true);
 
   // Load items on mount
   useEffect(() => {
+    isMountedRef.current = true;
     loadItems();
+    
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   // Callbacks for LibrarySearch
