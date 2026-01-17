@@ -41,11 +41,11 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+/env/
+/venv/
+/ENV/
+/env.bak/
+/venv.bak/
 
 # Data & Cache (User-specific, contains personal paths and API keys)
 data/config.json
