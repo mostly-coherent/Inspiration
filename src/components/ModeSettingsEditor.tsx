@@ -23,28 +23,40 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
   const [semanticSearchQueries, setSemanticSearchQueries] = useState<string[]>([]);
 
   useEffect(() => {
-    loadMode();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [theme, mode]); // loadMode is stable, only re-run when theme/mode changes
-
-  const loadMode = async () => {
-    setLoading(true);
-    try {
-      const modeData = await getModeAsync(theme, mode);
-      if (modeData) {
-        setModeData(modeData);
-        setGoldenExamplesFolder(modeData.settings.goldenExamplesFolder || "");
-        setTemperature(modeData.settings.temperature);
-        setMinSimilarity(modeData.settings.minSimilarity);
-        setDeduplicationThreshold(modeData.settings.deduplicationThreshold ?? 0.85);
-        setSemanticSearchQueries(modeData.settings.semanticSearchQueries || []);
+    let cancelled = false;
+    
+    const loadMode = async () => {
+      setLoading(true);
+      try {
+        const modeData = await getModeAsync(theme, mode);
+        if (cancelled) return;
+        
+        if (modeData) {
+          setModeData(modeData);
+          setGoldenExamplesFolder(modeData.settings.goldenExamplesFolder || "");
+          setTemperature(modeData.settings.temperature);
+          setMinSimilarity(modeData.settings.minSimilarity);
+          setDeduplicationThreshold(modeData.settings.deduplicationThreshold ?? 0.85);
+          setSemanticSearchQueries(modeData.settings.semanticSearchQueries || []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Failed to load mode:", error);
+          setError("Failed to load mode settings. Please refresh the page.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-    } catch (error) {
-      console.error("Failed to load mode:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    
+    loadMode();
+    
+    return () => {
+      cancelled = true;
+    };
+  }, [theme, mode]);
 
   const handleSave = async () => {
     if (!modeData) return;
@@ -76,13 +88,36 @@ export function ModeSettingsEditor({ theme, mode, onSave }: ModeSettingsEditorPr
       });
 
       if (response.ok) {
-        setSuccess("Settings saved successfully!");
-        setTimeout(() => setSuccess(null), 3000);
-        await loadMode();
-        onSave?.();
+        const responseData = await response.json().catch((parseError) => {
+          throw new Error(`Invalid response format: ${parseError.message}`);
+        });
+        
+        if (responseData && typeof responseData === 'object' && responseData.success !== false) {
+          setSuccess("Settings saved successfully!");
+          setTimeout(() => setSuccess(null), 3000);
+          // Reload mode data
+          const modeData = await getModeAsync(theme, mode);
+          if (modeData) {
+            setModeData(modeData);
+            setGoldenExamplesFolder(modeData.settings.goldenExamplesFolder || "");
+            setTemperature(modeData.settings.temperature);
+            setMinSimilarity(modeData.settings.minSimilarity);
+            setDeduplicationThreshold(modeData.settings.deduplicationThreshold ?? 0.85);
+            setSemanticSearchQueries(modeData.settings.semanticSearchQueries || []);
+          }
+          onSave?.();
+        } else {
+          setError("Failed to save settings");
+        }
       } else {
-        const data = await response.json();
-        setError(data.error || "Failed to save settings");
+        const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+        let data: any = {};
+        try {
+          data = JSON.parse(errorText);
+        } catch {
+          // Not JSON, use text as error
+        }
+        setError((data && typeof data === 'object' && data.error) || errorText || "Failed to save settings");
       }
     } catch (error) {
       console.error("Failed to save mode settings:", error);

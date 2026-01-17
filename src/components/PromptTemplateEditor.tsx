@@ -48,40 +48,70 @@ export function PromptTemplateEditor() {
 
   // Load prompts list
   useEffect(() => {
-    loadPrompts();
-  }, []);
-
-  const loadPrompts = async () => {
-    try {
-      const res = await fetch("/api/prompts");
-      const data = await res.json();
-      if (data.success) {
-        setPrompts(data.prompts);
-      } else {
-        setError(data.error || "Failed to load prompts");
+    let cancelled = false;
+    
+    const loadPrompts = async () => {
+      try {
+        const res = await fetch("/api/prompts");
+        if (cancelled) return;
+        
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+          throw new Error(`API error: ${errorText.length > 100 ? res.status : errorText}`);
+        }
+        
+        const data = await res.json().catch((parseError) => {
+          throw new Error(`Invalid response format: ${parseError.message}`);
+        });
+        
+        if (cancelled) return;
+        
+        if (data && typeof data === 'object' && data.success) {
+          setPrompts(Array.isArray(data.prompts) ? data.prompts : []);
+        } else {
+          setError((data && typeof data === 'object' && data.error) || "Failed to load prompts");
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(`Failed to load prompts: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-    } catch (err) {
-      setError(`Failed to load prompts: ${err}`);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    
+    loadPrompts();
+    
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadPromptContent = async (id: string) => {
     setLoadingContent(true);
     setError(null);
     try {
       const res = await fetch(`/api/prompts?id=${id}`);
-      const data = await res.json();
-      if (data.success) {
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`API error: ${errorText.length > 100 ? res.status : errorText}`);
+      }
+      
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (data && typeof data === 'object' && data.success && data.prompt) {
         setSelectedPrompt(data.prompt);
-        setEditedContent(data.prompt.content);
+        setEditedContent(data.prompt.content || "");
         setHasChanges(false);
       } else {
-        setError(data.error || "Failed to load prompt content");
+        setError((data && typeof data === 'object' && data.error) || "Failed to load prompt content");
       }
     } catch (err) {
-      setError(`Failed to load prompt: ${err}`);
+      setError(`Failed to load prompt: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setLoadingContent(false);
     }
@@ -114,15 +144,36 @@ export function PromptTemplateEditor() {
           content: editedContent,
         }),
       });
-      const data = await res.json();
-      if (data.success) {
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        let errorData: any = {};
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          // Not JSON, use text as error
+        }
+        throw new Error((errorData && typeof errorData === 'object' && errorData.error) || errorText || "Failed to save prompt");
+      }
+      
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (data && typeof data === 'object' && data.success) {
         setSuccessMessage("Prompt saved successfully! A backup was created.");
         setHasChanges(false);
         // Refresh prompts list to update lastModified
-        loadPrompts();
+        const refreshRes = await fetch("/api/prompts");
+        if (refreshRes.ok) {
+          const refreshData = await refreshRes.json().catch(() => ({ success: false }));
+          if (refreshData && typeof refreshData === 'object' && refreshData.success && Array.isArray(refreshData.prompts)) {
+            setPrompts(refreshData.prompts);
+          }
+        }
         setTimeout(() => setSuccessMessage(null), 3000);
       } else {
-        setError(data.error || "Failed to save prompt");
+        setError((data && typeof data === 'object' && data.error) || "Failed to save prompt");
       }
     } catch (err) {
       setError(`Failed to save prompt: ${err}`);
@@ -169,16 +220,38 @@ export function PromptTemplateEditor() {
           action: "reset",
         }),
       });
-      const data = await res.json();
-      if (data.success) {
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        let errorData: any = {};
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          // Not JSON, use text as error
+        }
+        throw new Error((errorData && typeof errorData === 'object' && errorData.error) || errorText || "Failed to reset prompt");
+      }
+      
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (data && typeof data === 'object' && data.success && data.defaultContent) {
         setEditedContent(data.defaultContent);
         setSelectedPrompt({ ...selectedPrompt, content: data.defaultContent });
         setHasChanges(false);
         setSuccessMessage("Prompt reset to original default");
-        loadPrompts();
+        // Refresh prompts list
+        const refreshRes = await fetch("/api/prompts");
+        if (refreshRes.ok) {
+          const refreshData = await refreshRes.json().catch(() => ({ success: false }));
+          if (refreshData && typeof refreshData === 'object' && refreshData.success && Array.isArray(refreshData.prompts)) {
+            setPrompts(refreshData.prompts);
+          }
+        }
         setTimeout(() => setSuccessMessage(null), 3000);
       } else {
-        setError(data.error || "Failed to reset prompt");
+        setError((data && typeof data === 'object' && data.error) || "Failed to reset prompt");
       }
     } catch (err) {
       setError(`Failed to reset prompt: ${err}`);
@@ -253,7 +326,14 @@ export function PromptTemplateEditor() {
                   <div className="text-xs text-slate-500 mt-1">{prompt.description}</div>
                   {prompt.lastModified && (
                     <div className="text-xs text-slate-600 mt-2">
-                      {new Date(prompt.lastModified).toLocaleDateString()}
+                      {(() => {
+                        try {
+                          const date = new Date(prompt.lastModified);
+                          return isNaN(date.getTime()) ? "Unknown" : date.toLocaleDateString();
+                        } catch {
+                          return "Unknown";
+                        }
+                      })()}
                     </div>
                   )}
                 </button>
