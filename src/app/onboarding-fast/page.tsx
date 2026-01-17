@@ -192,13 +192,16 @@ function FastOnboardingContent() {
         if (cancelled) return;
         
         if (!res.ok) {
-          throw new Error(`API error: ${res.status}`);
+          const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+          throw new Error(`API error: ${errorText.length > 100 ? res.status : errorText}`);
         }
-        const data = await res.json();
+        const data = await res.json().catch((parseError) => {
+          throw new Error(`Invalid response format: ${parseError.message}`);
+        });
         
         if (cancelled) return;
         
-        if (data.success && data.metrics) {
+        if (data && typeof data === 'object' && data.success && data.metrics) {
           // Large chat history (>500MB) needs Supabase for good performance
           // Redirect to full onboarding which includes Supabase setup
           const LARGE_HISTORY_THRESHOLD_MB = 500;
@@ -245,14 +248,23 @@ function FastOnboardingContent() {
 
   // Check for API keys in environment and Vector DB status
   useEffect(() => {
+    let cancelled = false;
+    
     const checkConfig = async () => {
       try {
         // First check if Anthropic key exists in environment
         const envRes = await fetch("/api/config/env");
+        if (cancelled) return;
+        
         if (envRes.ok) {
           try {
-            const envData = await envRes.json();
-            if (envData.configured?.anthropic) {
+            const envData = await envRes.json().catch((parseError) => {
+              throw new Error(`Invalid response format: ${parseError.message}`);
+            });
+            
+            if (cancelled) return;
+            
+            if (envData && typeof envData === 'object' && envData.configured?.anthropic) {
               // Anthropic key is in environment - trust it and enable proceed
               setKeyFromEnv(true);
               setSelectedProvider("anthropic");
@@ -260,20 +272,29 @@ function FastOnboardingContent() {
               setError(null);
             }
             // Also check for OpenAI key (optional, for Lenny's expert perspectives)
-            if (envData.configured?.openai) {
+            if (envData && typeof envData === 'object' && envData.configured?.openai) {
               setOpenaiKeyFromEnv(true);
             }
           } catch (parseError) {
-            console.error("Failed to parse env config response:", parseError);
-            // Continue - will prompt user for key if needed
+            if (!cancelled) {
+              console.error("Failed to parse env config response:", parseError);
+              // Continue - will prompt user for key if needed
+            }
           }
         }
         
         // Then check config for Vector DB status
         const res = await fetch("/api/config");
+        if (cancelled) return;
+        
         if (res.ok) {
-          const data = await res.json();
-          if (data.success && data.config) {
+          const data = await res.json().catch((parseError) => {
+            throw new Error(`Invalid response format: ${parseError.message}`);
+          });
+          
+          if (cancelled) return;
+          
+          if (data && typeof data === 'object' && data.success && data.config) {
             // Check if Vector DB is configured
             if (data.config.vectordb?.url && data.config.vectordb?.anonKey) {
               setHasVectorDb(true);
@@ -281,61 +302,86 @@ function FastOnboardingContent() {
           }
         }
       } catch (e) {
-        // Ignore - config not available
-        console.error("Failed to load config:", e);
+        if (!cancelled) {
+          // Ignore - config not available
+          console.error("Failed to load config:", e);
+        }
       }
     };
     
     checkConfig();
+    
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Fetch cost estimate when provider or days change
   useEffect(() => {
+    let cancelled = false;
+    
     const fetchCostEstimate = async () => {
       if (isPreviewMode) {
         // Simulate cost in preview mode
-        setCostEstimate({
-          estimatedCostUSD: 0.12,
-          inputTokens: 9500,
-          outputTokens: 2500,
-          breakdown: {
-            inputCostUSD: 0.0285,
-            outputCostUSD: 0.0375,
-            pricingPerMTok: { input: 3.0, output: 15.0 },
-          },
-          provider: selectedProvider,
-          model: selectedProvider === "anthropic" ? "claude-sonnet-4-20250514" : "gpt-4o",
-          disclaimer: "Estimate may vary ±20% based on actual conversation length",
-          conversationCount: 50,
-        });
+        if (!cancelled) {
+          setCostEstimate({
+            estimatedCostUSD: 0.12,
+            inputTokens: 9500,
+            outputTokens: 2500,
+            breakdown: {
+              inputCostUSD: 0.0285,
+              outputCostUSD: 0.0375,
+              pricingPerMTok: { input: 3.0, output: 15.0 },
+            },
+            provider: selectedProvider,
+            model: selectedProvider === "anthropic" ? "claude-sonnet-4-20250514" : "gpt-4o",
+            disclaimer: "Estimate may vary ±20% based on actual conversation length",
+            conversationCount: 50,
+          });
+        }
         return;
       }
 
       if (!dbMetrics) return;
 
-      setLoadingCost(true);
+      if (!cancelled) setLoadingCost(true);
       try {
         const res = await fetch(
           `/api/generate-themes?estimateCost=true&days=${selectedDays}&provider=${selectedProvider}`
         );
-        if (!res.ok) {
-          throw new Error(`API error: ${res.status}`);
-        }
-        const data = await res.json();
+        if (cancelled) return;
         
-        if (data.success && data.costEstimate) {
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+          throw new Error(`API error: ${errorText.length > 100 ? res.status : errorText}`);
+        }
+        const data = await res.json().catch((parseError) => {
+          throw new Error(`Invalid response format: ${parseError.message}`);
+        });
+        
+        if (cancelled) return;
+        
+        if (data && typeof data === 'object' && data.success && data.costEstimate) {
           setCostEstimate(data.costEstimate);
         }
       } catch (e) {
-        console.error("Failed to fetch cost estimate:", e);
-        // Non-critical - don't show error, just don't display cost
-        setCostEstimate(null);
+        if (!cancelled) {
+          console.error("Failed to fetch cost estimate:", e);
+          // Non-critical - don't show error, just don't display cost
+          setCostEstimate(null);
+        }
       } finally {
-        setLoadingCost(false);
+        if (!cancelled) {
+          setLoadingCost(false);
+        }
       }
     };
 
     fetchCostEstimate();
+    
+    return () => {
+      cancelled = true;
+    };
   }, [selectedDays, selectedProvider, dbMetrics, isPreviewMode]);
 
   // Validate API key
@@ -360,12 +406,15 @@ function FastOnboardingContent() {
       });
       
       if (!res.ok) {
-        throw new Error(`Validation failed: ${res.status}`);
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Validation failed: ${errorText.length > 100 ? res.status : errorText}`);
       }
       
-      const data = await res.json();
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
       
-      if (data.success && data.valid) {
+      if (data && typeof data === 'object' && data.success && data.valid) {
         setKeyValid(true);
         return true;
       } else {
@@ -401,12 +450,15 @@ function FastOnboardingContent() {
       });
       
       if (!res.ok) {
-        throw new Error(`Validation failed: ${res.status}`);
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Validation failed: ${errorText.length > 100 ? res.status : errorText}`);
       }
       
-      const data = await res.json();
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
       
-      if (data.success && data.results?.openai?.valid) {
+      if (data && typeof data === 'object' && data.success && data.results?.openai?.valid) {
         setOpenaiKeyValid(true);
         return true;
       } else {
@@ -472,8 +524,14 @@ function FastOnboardingContent() {
         });
         
         if (!res.ok) {
-          const errorData = await res.json().catch(() => ({}));
-          throw new Error(errorData.error || "Failed to save API key");
+          const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+          let errorData: any = {};
+          try {
+            errorData = JSON.parse(errorText);
+          } catch {
+            // Not JSON, use text as error
+          }
+          throw new Error((errorData && typeof errorData === 'object' && errorData.error) || errorText || "Failed to save API key");
         }
       }
       
@@ -492,7 +550,16 @@ function FastOnboardingContent() {
       });
       
       if (!configRes.ok) {
-        throw new Error("Failed to save config");
+        const errorText = await configRes.text().catch(() => `HTTP ${configRes.status}`);
+        throw new Error(`Failed to save config: ${errorText.length > 100 ? configRes.status : errorText}`);
+      }
+      
+      const configData = await configRes.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (!(configData && typeof configData === 'object' && configData.success)) {
+        throw new Error("Config save returned unsuccessful response");
       }
       
       setStep("generate");
@@ -597,20 +664,23 @@ function FastOnboardingContent() {
       });
       
       if (!res.ok) {
-        const errorText = await res.text();
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
         let errorMsg = `API error: ${res.status}`;
         try {
           const errorData = JSON.parse(errorText);
-          errorMsg = errorData.error || errorMsg;
+          errorMsg = (errorData && typeof errorData === 'object' && errorData.error) || errorMsg;
         } catch {
           // Use default error message
+          errorMsg = errorText.length > 100 ? `HTTP ${res.status}` : errorText;
         }
         throw new Error(errorMsg);
       }
       
-      const data = await res.json();
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
       
-      if (data.success && data.result) {
+      if (data && typeof data === 'object' && data.success && data.result) {
         setThemeMap(data.result);
         
         // Persist Theme Map to data/theme_map.json
@@ -638,7 +708,8 @@ function FastOnboardingContent() {
             }),
           });
           if (!persistRes.ok) {
-            console.warn("Failed to persist Theme Map (non-critical):", await persistRes.text());
+            const errorText = await persistRes.text().catch(() => `HTTP ${persistRes.status}`);
+            console.warn("Failed to persist Theme Map (non-critical):", errorText.length > 100 ? persistRes.status : errorText);
           }
         } catch (persistErr) {
           // Non-critical: Theme Map still displayed even if persistence fails
@@ -646,8 +717,8 @@ function FastOnboardingContent() {
         }
       } else {
         // Enhanced error handling
-        const errorMsg = data.error || "Failed to generate themes";
-        const errorDetails = data.details || null;
+        const errorMsg = (data && typeof data === 'object' && data.error) || "Failed to generate themes";
+        const errorDetails = (data && typeof data === 'object' && data.details) || null;
         
         // Format user-friendly error message
         let friendlyError = errorMsg;
