@@ -65,6 +65,7 @@ export function UnexploredTab({ config }: UnexploredTabProps) {
   const [dismissingId, setDismissingId] = useState<string | null>(null);
   const enrichAbortControllerRef = useRef<AbortController | null>(null);
   const enrichTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
+  const isMountedRef = useRef(true);
 
   const fetchUnexploredAreas = useCallback(async () => {
     setLoading(true);
@@ -77,16 +78,19 @@ export function UnexploredTab({ config }: UnexploredTabProps) {
       );
       
       if (!response.ok) {
-        throw new Error("Failed to fetch unexplored areas");
+        const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+        throw new Error(`Failed to fetch unexplored areas: ${errorText.length > 100 ? response.status : errorText}`);
       }
       
-      const data = await response.json();
+      const data = await response.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
       
-      if (!data.success) {
-        throw new Error(data.error || "Unknown error");
+      if (!(data && typeof data === 'object' && data.success)) {
+        throw new Error((data && typeof data === 'object' && data.error) || "Unknown error");
       }
       
-      setAreas(data.areas || []);
+      setAreas(Array.isArray(data.areas) ? data.areas : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
       setAreas([]);
@@ -101,7 +105,10 @@ export function UnexploredTab({ config }: UnexploredTabProps) {
 
   // Cleanup on unmount
   useEffect(() => {
+    isMountedRef.current = true;
+    
     return () => {
+      isMountedRef.current = false;
       // Abort any in-flight enrich requests
       if (enrichAbortControllerRef.current) {
         enrichAbortControllerRef.current.abort();
@@ -166,10 +173,16 @@ export function UnexploredTab({ config }: UnexploredTabProps) {
         // Try to parse error message from response body
         let errorMessage = "Failed to enrich library";
         try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorMessage;
+          const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+          try {
+            const errorData = JSON.parse(errorText);
+            errorMessage = (errorData && typeof errorData === 'object' && errorData.error) || errorMessage;
+          } catch {
+            // If JSON parse fails, use text as error message (if not too long)
+            errorMessage = errorText.length > 100 ? `HTTP ${response.status}` : errorText;
+          }
         } catch {
-          // If JSON parse fails, use default message
+          // If text extraction fails, use default message
         }
         throw new Error(errorMessage);
       }
@@ -262,11 +275,21 @@ export function UnexploredTab({ config }: UnexploredTabProps) {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to dismiss topic");
+        const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+        throw new Error(`Failed to dismiss topic: ${errorText.length > 100 ? response.status : errorText}`);
       }
 
-      // Remove from list
-      setAreas((prev) => prev.filter((a) => a.id !== area.id));
+      const data = await response.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+
+      // Validate response before removing from list
+      if (data && typeof data === 'object' && data.success !== false) {
+        // Remove from list
+        setAreas((prev) => prev.filter((a) => a.id !== area.id));
+      } else {
+        throw new Error((data && typeof data === 'object' && data.error) || "Failed to dismiss topic");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to dismiss");
     } finally {

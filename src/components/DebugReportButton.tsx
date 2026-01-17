@@ -23,12 +23,20 @@ export function DebugReportButton({ variant = "button", className = "" }: Props)
     try {
       const res = await fetch("/api/debug-report");
       if (!res.ok) {
-        throw new Error(`API error: ${res.status}`);
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`API error: ${errorText.length > 100 ? res.status : errorText}`);
       }
-      const data = await res.json();
       
-      if (!data.success) {
-        throw new Error(data.error || "Failed to generate report");
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (!(data && typeof data === 'object' && data.success)) {
+        throw new Error((data && typeof data === 'object' && data.error) || "Failed to generate report");
+      }
+      
+      if (!data.formatted || typeof data.formatted !== 'string') {
+        throw new Error("Invalid report format");
       }
       
       await navigator.clipboard.writeText(data.formatted);
