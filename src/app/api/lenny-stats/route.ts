@@ -4,6 +4,16 @@ import path from "path";
 
 export const maxDuration = 5;
 
+// Detect cloud environment
+function isCloudEnvironment(): boolean {
+  return !!(
+    process.env.VERCEL || 
+    process.env.RAILWAY_ENVIRONMENT || 
+    process.env.RENDER ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME
+  );
+}
+
 interface LennyStats {
   success: boolean;
   indexed: boolean;
@@ -14,11 +24,28 @@ interface LennyStats {
   format: string;
   indexedAt: string | null;
   embeddingsSizeMB: number | null;
+  cloudMode?: boolean;
   error?: string;
 }
 
 export async function GET(): Promise<NextResponse<LennyStats>> {
   try {
+    // Cloud environment: Lenny embeddings not available
+    if (isCloudEnvironment()) {
+      return NextResponse.json({
+        success: true,
+        indexed: false,
+        episodeCount: 0,
+        chunkCount: 0,
+        wordCount: 0,
+        withRichMetadata: 0,
+        format: "none",
+        indexedAt: null,
+        embeddingsSizeMB: null,
+        cloudMode: true,
+      });
+    }
+
     const dataDir = path.resolve(process.cwd(), "data");
     const metadataPath = path.join(dataDir, "lenny_metadata.json");
     const embeddingsPath = path.join(dataDir, "lenny_embeddings.npz");
@@ -35,6 +62,7 @@ export async function GET(): Promise<NextResponse<LennyStats>> {
         format: "none",
         indexedAt: null,
         embeddingsSizeMB: null,
+        cloudMode: false,
       });
     }
 
@@ -59,6 +87,7 @@ export async function GET(): Promise<NextResponse<LennyStats>> {
       format: metadata.format || "legacy",
       indexedAt: metadata.indexed_at || null,
       embeddingsSizeMB,
+      cloudMode: false,
     });
   } catch (error) {
     console.error("Lenny stats API error:", error);
