@@ -84,7 +84,7 @@ export async function GET(): Promise<NextResponse<LennyStats>> {
       format: metadata.format || "legacy",
       indexedAt: metadata.indexed_at || null,
       embeddingsSizeMB,
-      cloudMode: false,
+      cloudMode: isCloud && metadataPath.startsWith("/tmp"),
     });
   } catch (error) {
     console.error("Lenny stats API error:", error);
