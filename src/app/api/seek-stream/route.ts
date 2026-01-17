@@ -148,19 +148,39 @@ async function runPythonScriptStream(
       if (!isAborted) {
         const text = data.toString();
         
-        // Check if this is JSON output (final result)
-        if (text.trim().startsWith("{") && text.trim().endsWith("}")) {
-          jsonOutput = text.trim();
-          // Send the result
-          try {
-            const result = JSON.parse(jsonOutput);
-            send({ type: "result", result });
-          } catch (parseErr) {
-            // S9 Fix: Log JSON parsing errors instead of silently ignoring
-            logger.error(`[Seek-Stream] JSON parse error: ${parseErr}`);
-            logger.error(`[Seek-Stream] Problematic JSON (first 500 chars): ${jsonOutput.slice(0, 500)}`);
-            // Might be incomplete JSON, accumulate
-            jsonOutput += text;
+        // Accumulate JSON chunks (Python may output JSON in multiple chunks)
+        // Python prints JSON with print(json.dumps(...)) which may arrive in chunks via Node.js spawn
+        // Start accumulating when we see content starting with { (JSON begins)
+        // Continue accumulating until we have complete JSON (ends with })
+        if (text.trim().startsWith("{") || jsonOutput.length > 0) {
+          // Accumulate chunks that contain JSON
+          jsonOutput += text;
+          
+          // Try to parse accumulated JSON (may be complete now)
+          const trimmed = jsonOutput.trim();
+          // Check if we have complete JSON (starts with { and ends with })
+          if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            try {
+              const result = JSON.parse(trimmed);
+              send({ type: "result", result });
+              // Clear after successful parse
+              jsonOutput = "";
+            } catch (parseErr) {
+              // JSON might still be incomplete, keep accumulating
+              // Only log if we've accumulated a lot (likely a real parse error)
+              if (trimmed.length > 10000) {
+                logger.error(`[Seek-Stream] JSON parse error after accumulating ${trimmed.length} chars: ${parseErr}`);
+                logger.error(`[Seek-Stream] Problematic JSON (first 500 chars): ${trimmed.slice(0, 500)}`);
+                // Reset to prevent infinite accumulation
+                jsonOutput = "";
+              }
+            }
+          }
+          // If we're accumulating JSON, skip progress marker parsing for this chunk
+          // (to avoid parsing JSON content as progress markers)
+          if (jsonOutput.length > 0) {
+            // Still accumulating, don't parse as progress markers yet
+            return;
           }
         }
         
@@ -171,7 +191,8 @@ async function runPythonScriptStream(
           if (!trimmed) continue;
           
           // Skip JSON output lines (they start with { or end with })
-          if (trimmed.startsWith("{") || trimmed.endsWith("}")) continue;
+          // But only if we're not currently accumulating (to avoid false positives)
+          if (jsonOutput.length === 0 && trimmed.startsWith("{") && trimmed.endsWith("}")) continue;
           
           // Parse [PHASE:xyz] markers
           const phaseMatch = trimmed.match(/^\[PHASE:(\w+)\]$/);
