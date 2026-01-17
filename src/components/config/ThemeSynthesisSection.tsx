@@ -27,31 +27,54 @@ export function ThemeSynthesisSection() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
+  const isMountedRef = useRef(true);
 
   // Load prompts
   useEffect(() => {
+    isMountedRef.current = true;
     loadPrompts();
+    
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   const loadPrompts = async () => {
     try {
       const res = await fetch("/api/synthesis-prompts");
-      const data = await res.json();
-      if (data.success) {
-        setPrompts(data.prompts);
-        // Auto-select "all" prompt
-        const allPrompt = data.prompts.find((p: SynthesisPrompt) => p.id === "all");
-        if (allPrompt && !selectedPrompt) {
-          setSelectedPrompt(allPrompt);
-          setEditedContent(allPrompt.content);
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Failed to load prompts: ${errorText.length > 100 ? res.status : errorText}`);
+      }
+      
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (data && typeof data === 'object' && data.success) {
+        if (isMountedRef.current) {
+          const promptsArray = Array.isArray(data.prompts) ? data.prompts : [];
+          setPrompts(promptsArray);
+          // Auto-select "all" prompt
+          const allPrompt = promptsArray.find((p: SynthesisPrompt) => p.id === "all");
+          if (allPrompt && !selectedPrompt) {
+            setSelectedPrompt(allPrompt);
+            setEditedContent(allPrompt.content);
+          }
         }
       } else {
-        setError(data.error || "Failed to load prompts");
+        if (isMountedRef.current) {
+          setError((data && typeof data === 'object' && data.error) || "Failed to load prompts");
+        }
       }
     } catch (err) {
-      setError(`Failed to load prompts: ${err}`);
+      if (isMountedRef.current) {
+        setError(`Failed to load prompts: ${err instanceof Error ? err.message : String(err)}`);
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -88,20 +111,45 @@ export function ThemeSynthesisSection() {
           content: editedContent,
         }),
       });
-      const data = await res.json();
-      if (data.success) {
-        setSuccessMessage("Prompt saved! It takes effect on the next theme synthesis.");
-        setHasChanges(false);
-        // Refresh prompts to update isDefault status
-        loadPrompts();
-        setTimeout(() => setSuccessMessage(null), 3000);
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        let errorData: any = {};
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          // Not JSON, use text as error
+        }
+        throw new Error(
+          (errorData && typeof errorData === 'object' && errorData.error) || errorText || "Failed to save prompt"
+        );
+      }
+      
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (data && typeof data === 'object' && data.success) {
+        if (isMountedRef.current) {
+          setSuccessMessage("Prompt saved! It takes effect on the next theme synthesis.");
+          setHasChanges(false);
+          // Refresh prompts to update isDefault status
+          loadPrompts();
+          setTimeout(() => setSuccessMessage(null), 3000);
+        }
       } else {
-        setError(data.error || "Failed to save prompt");
+        if (isMountedRef.current) {
+          setError((data && typeof data === 'object' && data.error) || "Failed to save prompt");
+        }
       }
     } catch (err) {
-      setError(`Failed to save prompt: ${err}`);
+      if (isMountedRef.current) {
+        setError(`Failed to save prompt: ${err instanceof Error ? err.message : String(err)}`);
+      }
     } finally {
-      setSaving(false);
+      if (isMountedRef.current) {
+        setSaving(false);
+      }
     }
   };
 
@@ -125,20 +173,45 @@ export function ThemeSynthesisSection() {
           action: "reset",
         }),
       });
-      const data = await res.json();
-      if (data.success) {
-        setEditedContent(data.defaultContent);
-        setHasChanges(false);
-        setSuccessMessage("Prompt reset to default");
-        loadPrompts();
-        setTimeout(() => setSuccessMessage(null), 3000);
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        let errorData: any = {};
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          // Not JSON, use text as error
+        }
+        throw new Error(
+          (errorData && typeof errorData === 'object' && errorData.error) || errorText || "Failed to reset prompt"
+        );
+      }
+      
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (data && typeof data === 'object' && data.success) {
+        if (isMountedRef.current) {
+          setEditedContent(data.defaultContent);
+          setHasChanges(false);
+          setSuccessMessage("Prompt reset to default");
+          loadPrompts();
+          setTimeout(() => setSuccessMessage(null), 3000);
+        }
       } else {
-        setError(data.error || "Failed to reset prompt");
+        if (isMountedRef.current) {
+          setError((data && typeof data === 'object' && data.error) || "Failed to reset prompt");
+        }
       }
     } catch (err) {
-      setError(`Failed to reset prompt: ${err}`);
+      if (isMountedRef.current) {
+        setError(`Failed to reset prompt: ${err instanceof Error ? err.message : String(err)}`);
+      }
     } finally {
-      setResetting(false);
+      if (isMountedRef.current) {
+        setResetting(false);
+      }
     }
   };
 

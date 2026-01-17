@@ -59,17 +59,31 @@ export function AdvancedConfigSection({ onSave }: AdvancedConfigSectionProps) {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [expandedSection, setExpandedSection] = useState<SectionId | null>("llm");
+  const isMountedRef = useRef(true);
 
   // Load configuration on mount
   useEffect(() => {
+    isMountedRef.current = true;
     loadConfig();
+    
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   const loadConfig = async () => {
     try {
       const res = await fetch("/api/config");
-      const data = await res.json();
-      if (data.success && data.config) {
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Failed to load config: ${errorText.length > 100 ? res.status : errorText}`);
+      }
+      
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (data && typeof data === 'object' && data.success && data.config && isMountedRef.current) {
         // Load LLM config
         if (data.config.advancedLLM) {
           setLlmConfig(data.config.advancedLLM);
@@ -109,9 +123,13 @@ export function AdvancedConfigSection({ onSave }: AdvancedConfigSectionProps) {
       }
     } catch (err) {
       console.error("Failed to load config:", err);
-      setError("Failed to load configuration");
+      if (isMountedRef.current) {
+        setError("Failed to load configuration");
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -135,19 +153,43 @@ export function AdvancedConfigSection({ onSave }: AdvancedConfigSectionProps) {
         }),
       });
       
-      const data = await res.json();
-      if (data.success) {
-        setSuccessMessage("Configuration saved successfully!");
-        setTimeout(() => setSuccessMessage(null), 3000);
-        onSave?.();
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        let errorData: any = {};
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          // Not JSON, use text as error
+        }
+        throw new Error(
+          (errorData && typeof errorData === 'object' && errorData.error) || errorText || "Failed to save configuration"
+        );
+      }
+      
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (data && typeof data === 'object' && data.success) {
+        if (isMountedRef.current) {
+          setSuccessMessage("Configuration saved successfully!");
+          setTimeout(() => setSuccessMessage(null), 3000);
+          onSave?.();
+        }
       } else {
-        setError(data.error || "Failed to save configuration");
+        if (isMountedRef.current) {
+          setError((data && typeof data === 'object' && data.error) || "Failed to save configuration");
+        }
       }
     } catch (err) {
       console.error("Failed to save config:", err);
-      setError("Failed to save configuration");
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err.message : "Failed to save configuration");
+      }
     } finally {
-      setSaving(false);
+      if (isMountedRef.current) {
+        setSaving(false);
+      }
     }
   };
 

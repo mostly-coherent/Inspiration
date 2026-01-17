@@ -125,8 +125,23 @@ function SupabaseCredentialsSection({ vectordb }: { vectordb?: VectorDBConfig })
     setTestResult(null);
     try {
       const res = await fetch("/api/test-supabase");
-      const data = await res.json();
-      setTestResult(data);
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Connection test failed: ${errorText.length > 100 ? res.status : errorText}`);
+      }
+      
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (data && typeof data === 'object') {
+        setTestResult(data);
+      } else {
+        setTestResult({
+          success: false,
+          error: "Invalid response structure",
+        });
+      }
     } catch (err) {
       setTestResult({
         success: false,

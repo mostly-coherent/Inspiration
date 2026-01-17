@@ -61,11 +61,27 @@ export function ModeForm({ theme, mode, onSave, onCancel }: ModeFormProps) {
         ),
       });
 
-      if (response.ok) {
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+        let errorData: any = {};
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          // Not JSON, use text as error
+        }
+        throw new Error(
+          (errorData && typeof errorData === 'object' && errorData.error) || errorText || "Failed to save mode"
+        );
+      }
+
+      const data = await response.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+
+      if (data && typeof data === 'object' && data.success !== false) {
         onSave();
       } else {
-        const data = await response.json();
-        setError(data.error || "Failed to save mode");
+        throw new Error((data && typeof data === 'object' && data.error) || "Failed to save mode");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");

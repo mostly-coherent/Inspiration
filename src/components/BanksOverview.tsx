@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, memo, useCallback } from "react";
+import { useState, useEffect, memo, useCallback, useRef } from "react";
 import { copyToClipboard, downloadFile } from "@/lib/utils";
 import { Item } from "@/lib/types";
 import { LoadingSpinner } from "./LoadingSpinner";
@@ -57,9 +57,16 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
       });
       
       const res = await fetch(`/api/items?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`Failed to load items: ${errorText.length > 100 ? res.status : errorText}`);
+      }
+      
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Invalid response format: ${parseError.message}`);
+      });
+      
+      if (data && typeof data === 'object' && data.success) {
           const loadedItems = data.items || [];
           
           if (append) {
@@ -72,21 +79,31 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
             setFilteredItems(loadedItems);
           }
           
-          setStats(data.stats);
-          setCurrentPage(data.currentPage || page);
-          setHasNextPage(data.hasNextPage || false);
-          setTotalItems(data.totalItems || 0);
+          if (isMountedRef.current) {
+            setStats(data.stats);
+            setCurrentPage(data.currentPage || page);
+            setHasNextPage(data.hasNextPage || false);
+            setTotalItems(data.totalItems || 0);
+          }
         } else {
-          setError(data.error || "Failed to load items");
+          if (isMountedRef.current) {
+            setError((data && typeof data === 'object' && data.error) || "Failed to load items");
+          }
         }
       } else {
-        setError(`Failed to load items: HTTP ${res.status}`);
+        if (isMountedRef.current) {
+          setError((data && typeof data === 'object' && data.error) || "Failed to load items");
+        }
       }
     } catch (err) {
-      setError(`Failed to load items: ${err instanceof Error ? err.message : "Unknown error"}`);
+      if (isMountedRef.current) {
+        setError(`Failed to load items: ${err instanceof Error ? err.message : "Unknown error"}`);
+      }
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   };
   

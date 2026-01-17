@@ -6,11 +6,17 @@ export function LogoutButton() {
   const handleLogout = async () => {
     setIsLoggingOut(true);
     try {
-      await fetch("/api/logout", { method: "POST" });
+      const response = await fetch("/api/logout", { method: "POST" });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+        throw new Error(`Logout failed: ${errorText.length > 100 ? response.status : errorText}`);
+      }
       window.location.href = "/login";
     } catch (error) {
       console.error("Logout failed:", error);
       setIsLoggingOut(false);
+      // Optionally show error to user
+      alert("Logout failed. Please try again.");
     }
   };
 
