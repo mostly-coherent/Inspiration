@@ -35,7 +35,17 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ success: false, error: "Prompt file not found" }, { status: 404 });
       }
 
-      const content = fs.readFileSync(filePath, "utf-8");
+      let content: string;
+      try {
+        content = fs.readFileSync(filePath, "utf-8");
+      } catch (readError) {
+        console.error("Failed to read prompt file:", readError);
+        return NextResponse.json(
+          { success: false, error: "Failed to read prompt file" },
+          { status: 500 }
+        );
+      }
+      
       return NextResponse.json({
         success: true,
         prompt: {
@@ -70,7 +80,25 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await request.json().catch((parseError) => {
+      return NextResponse.json(
+        { success: false, error: `Invalid JSON in request body: ${parseError.message}` },
+        { status: 400 }
+      );
+    });
+    
+    // If body is a NextResponse (from catch above), return it
+    if (body instanceof NextResponse) {
+      return body;
+    }
+    
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json(
+        { success: false, error: "Invalid request body" },
+        { status: 400 }
+      );
+    }
+    
     const { id, content, action } = body;
 
     // Handle reset action
@@ -98,6 +126,12 @@ export async function POST(request: NextRequest) {
       
       let backups: string[] = [];
       try {
+        if (!fs.existsSync(backupDir)) {
+          return NextResponse.json(
+            { success: false, error: "No backup found to restore" },
+            { status: 404 }
+          );
+        }
         const files = fs.readdirSync(backupDir);
         backups = files
           .filter((f) => f.startsWith(`${backupName}.backup.`) && f.endsWith(".md"))
@@ -171,20 +205,41 @@ export async function POST(request: NextRequest) {
 
     // Create backup before overwriting (only if this is the first edit)
     if (fs.existsSync(filePath)) {
-      const backupDir = path.dirname(filePath);
-      const backupName = path.basename(filePath, ".md");
-      const files = fs.readdirSync(backupDir);
-      const backups = files.filter((f) => f.startsWith(`${backupName}.backup.`));
-      
-      // Only create backup if no backups exist (preserve original)
-      if (backups.length === 0) {
-        const backupPath = filePath.replace(".md", `.backup.${Date.now()}.md`);
-        fs.copyFileSync(filePath, backupPath);
+      try {
+        const backupDir = path.dirname(filePath);
+        const backupName = path.basename(filePath, ".md");
+        
+        if (fs.existsSync(backupDir)) {
+          const files = fs.readdirSync(backupDir);
+          const backups = files.filter((f) => f.startsWith(`${backupName}.backup.`));
+          
+          // Only create backup if no backups exist (preserve original)
+          if (backups.length === 0) {
+            const backupPath = filePath.replace(".md", `.backup.${Date.now()}.md`);
+            fs.copyFileSync(filePath, backupPath);
+          }
+        }
+      } catch (backupError) {
+        console.warn("Failed to create backup (continuing anyway):", backupError);
+        // Continue with save even if backup fails
       }
     }
 
     // Write new content
-    fs.writeFileSync(filePath, content, "utf-8");
+    try {
+      // Ensure directory exists
+      const promptDir = path.dirname(filePath);
+      if (!fs.existsSync(promptDir)) {
+        fs.mkdirSync(promptDir, { recursive: true });
+      }
+      fs.writeFileSync(filePath, content, "utf-8");
+    } catch (writeError) {
+      console.error("Failed to write prompt file:", writeError);
+      return NextResponse.json(
+        { success: false, error: "Failed to save prompt file" },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,

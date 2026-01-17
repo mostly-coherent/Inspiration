@@ -78,10 +78,26 @@ export async function GET() {
       });
     }
     
-    const content = fs.readFileSync(THEME_MAP_FILE, "utf-8");
+    let content: string;
+    try {
+      content = fs.readFileSync(THEME_MAP_FILE, "utf-8");
+    } catch (readError) {
+      console.error("[theme-map] Failed to read Theme Map file:", readError);
+      return NextResponse.json(
+        { success: false, error: "Failed to read Theme Map file" },
+        { status: 500 }
+      );
+    }
+    
     let saved: SavedThemeMap;
     try {
-      saved = JSON.parse(content);
+      const parsed = JSON.parse(content);
+      // Validate structure
+      if (parsed && typeof parsed === 'object' && parsed.data && typeof parsed.savedAt === 'string') {
+        saved = parsed as SavedThemeMap;
+      } else {
+        throw new Error("Invalid Theme Map structure");
+      }
     } catch (parseError) {
       console.error("[theme-map] Failed to parse Theme Map file:", parseError);
       return NextResponse.json(
@@ -151,7 +167,15 @@ export async function POST(request: Request) {
       version: "1.0",
     };
     
-    fs.writeFileSync(THEME_MAP_FILE, JSON.stringify(saved, null, 2), "utf-8");
+    try {
+      fs.writeFileSync(THEME_MAP_FILE, JSON.stringify(saved, null, 2), "utf-8");
+    } catch (writeError) {
+      console.error("[theme-map] Failed to write Theme Map file:", writeError);
+      return NextResponse.json(
+        { success: false, error: "Failed to save Theme Map file" },
+        { status: 500 }
+      );
+    }
     
     return NextResponse.json({
       success: true,
@@ -173,7 +197,15 @@ export async function POST(request: Request) {
 export async function DELETE() {
   try {
     if (fs.existsSync(THEME_MAP_FILE)) {
-      fs.unlinkSync(THEME_MAP_FILE);
+      try {
+        fs.unlinkSync(THEME_MAP_FILE);
+      } catch (unlinkError) {
+        console.error("[theme-map] Failed to delete Theme Map file:", unlinkError);
+        return NextResponse.json(
+          { success: false, error: "Failed to delete Theme Map file" },
+          { status: 500 }
+        );
+      }
     }
     
     return NextResponse.json({

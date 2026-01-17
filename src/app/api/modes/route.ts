@@ -40,9 +40,17 @@ async function loadThemes(): Promise<ThemesConfig> {
   if (existsSync(THEMES_PATH)) {
     try {
       const content = await readFile(THEMES_PATH, "utf-8");
-      return JSON.parse(content);
+      const parsed = JSON.parse(content);
+      // Validate structure
+      if (parsed && typeof parsed === 'object' && typeof parsed.version === 'number' && Array.isArray(parsed.themes)) {
+        return parsed as ThemesConfig;
+      } else {
+        console.error("[Modes] Invalid themes.json structure");
+        throw new Error("Invalid themes.json structure");
+      }
     } catch (error) {
       console.error("[Modes] Failed to load themes:", error);
+      // Return default structure on error
     }
   }
   
@@ -90,7 +98,17 @@ export async function GET() {
 // POST /api/modes - Create a new mode
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await request.json().catch((parseError) => {
+      throw new Error(`Invalid JSON in request body: ${parseError.message}`);
+    });
+    
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json(
+        { success: false, error: "Invalid request body" },
+        { status: 400 }
+      );
+    }
+    
     const { themeId, mode } = body;
     
     if (!themeId || !mode || !mode.id || !mode.name) {
@@ -159,7 +177,17 @@ export async function POST(request: NextRequest) {
 // PUT /api/modes - Update an existing mode
 export async function PUT(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await request.json().catch((parseError) => {
+      throw new Error(`Invalid JSON in request body: ${parseError.message}`);
+    });
+    
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json(
+        { success: false, error: "Invalid request body" },
+        { status: 400 }
+      );
+    }
+    
     const { themeId, modeId, updates } = body;
     
     if (!themeId || !modeId) {
