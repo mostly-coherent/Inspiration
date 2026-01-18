@@ -2,14 +2,23 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { isFeatureEnabled } from "@/lib/featureFlags";
 import GraphView from "@/components/GraphView";
 
 function GraphPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [selectedEntityName, setSelectedEntityName] = useState<string | null>(null);
   const isMountedRef = useRef(true);
+
+  // Feature flag: Redirect to home if KG is disabled
+  useEffect(() => {
+    if (!isFeatureEnabled("KNOWLEDGE_GRAPH")) {
+      router.push("/");
+    }
+  }, [router]);
 
   // Load selected entity from URL params
   useEffect(() => {

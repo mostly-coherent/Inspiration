@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, memo, useRef } from "react";
+import { isFeatureEnabled } from "@/lib/featureFlags";
+import { isFeatureEnabled } from "@/lib/featureFlags";
 
 interface MemoryStats {
   localSize: string | null;
@@ -360,7 +362,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       {/* UNIFIED INSPIRATION PANEL                                         */}
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-slate-800/60 to-slate-900/80 border border-slate-700/50 rounded-2xl p-5">
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-900/90 to-slate-950/95 border border-slate-700/70 rounded-2xl p-5">
         {/* Subtle gradient glow */}
         <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-bl from-emerald-500/5 via-indigo-500/5 to-transparent rounded-full blur-3xl" />
         
@@ -374,11 +376,11 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">🧠</span>
-                  <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+                  <h2 className="text-sm font-semibold text-slate-100 uppercase tracking-wide">
                     Your Thinking
                   </h2>
                 </div>
-                <p className="text-xs text-slate-500 ml-8">
+                <p className="text-xs text-slate-300 ml-8">
                   Patterns from AI conversations
                 </p>
               </div>
@@ -399,7 +401,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 <button
                   onClick={onSyncClick}
                   disabled={isSyncing}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                  className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all min-w-[85px] ${
                     isSyncing
                       ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait"
                       : isCloudMode
@@ -424,30 +426,30 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
             <div className="flex flex-wrap items-center gap-2 text-xs">
               {/* Date Coverage: First → Most Recent */}
               {memoryStats.earliestDate && memoryStats.latestDate && (
-                <div className="flex items-center gap-1 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
+                <div className="flex items-center gap-1 text-slate-200 bg-slate-800/70 px-2 py-1 rounded-full">
                   <span>📅</span>
                   <span>{memoryStats.earliestDate}</span>
-                  <span className="text-slate-600">→</span>
+                  <span className="text-slate-400">→</span>
                   <span>{memoryStats.latestDate}</span>
                 </div>
               )}
 
               {/* Source Breakdown: Cursor | Claude Code */}
               {sourceBreakdown && (sourceBreakdown.cursor > 0 || sourceBreakdown.claudeCode > 0) && (
-                <div className="flex items-center gap-1.5 text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full">
+                <div className="flex items-center gap-1.5 text-slate-200 bg-slate-800/70 px-2 py-1 rounded-full">
                   {sourceBreakdown.cursor > 0 && (
                     <>
-                      <span className="text-blue-400">Cursor</span>
-                      <span className="font-medium text-slate-300">{sourceBreakdown.cursor.toLocaleString()}</span>
+                      <span className="text-blue-300">Cursor</span>
+                      <span className="font-medium text-slate-100">{sourceBreakdown.cursor.toLocaleString()}</span>
                     </>
                   )}
                   {sourceBreakdown.cursor > 0 && sourceBreakdown.claudeCode > 0 && (
-                    <span className="text-slate-600">|</span>
+                    <span className="text-slate-400">|</span>
                   )}
                   {sourceBreakdown.claudeCode > 0 && (
                     <>
-                      <span className="text-purple-400">Claude Code</span>
-                      <span className="font-medium text-slate-300">{sourceBreakdown.claudeCode.toLocaleString()}</span>
+                      <span className="text-purple-300">Claude Code</span>
+                      <span className="font-medium text-slate-100">{sourceBreakdown.claudeCode.toLocaleString()}</span>
                     </>
                   )}
                 </div>
@@ -461,36 +463,36 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 {(memoryStats.localSize || memoryStats.vectorSize) ? (
                   <>
                     <div className="text-center">
-                      <div className="text-lg font-bold text-slate-400">
+                      <div className="text-lg font-bold text-slate-200">
                         {memoryStats.localSize || "—"}
                       </div>
-                      <div className="text-[10px] text-slate-500">raw</div>
+                      <div className="text-[10px] text-slate-300">raw</div>
                     </div>
-                    <span className="text-slate-600">→</span>
+                    <span className="text-slate-400">→</span>
                     <div className="text-center">
-                      <div className="text-lg font-bold text-emerald-400">
+                      <div className="text-lg font-bold text-emerald-300">
                         {memoryStats.vectorSize || "—"}
                       </div>
-                      <div className="text-[10px] text-slate-500">indexed</div>
+                      <div className="text-[10px] text-slate-300">indexed</div>
                     </div>
-                    <span className="text-slate-600">→</span>
+                    <span className="text-slate-400">→</span>
                     <div className="text-center">
-                      <div className="text-lg font-bold text-indigo-400">
+                      <div className="text-lg font-bold text-indigo-300">
                         {memoryStats.librarySize || "—"}
                       </div>
-                      <div className="text-[10px] text-slate-500">extracted</div>
+                      <div className="text-[10px] text-slate-300">extracted</div>
                     </div>
-                    <span className="text-slate-600">→</span>
+                    <span className="text-slate-400">→</span>
                     {/* Themes */}
                     {libraryStats.themeCount > 0 && (
                       <>
                         <div className="text-center">
-                          <div className="text-lg font-semibold text-indigo-400">
+                          <div className="text-lg font-semibold text-indigo-300">
                             {libraryStats.themeCount}
                           </div>
-                          <div className="text-[10px] text-slate-500">themes</div>
+                          <div className="text-[10px] text-slate-300">themes</div>
                         </div>
-                        <span className="text-slate-600">→</span>
+                        <span className="text-slate-400">→</span>
                       </>
                     )}
                     {/* Items */}
@@ -498,12 +500,12 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                       <div className="text-lg font-bold text-white">
                         {isLoading ? "—" : libraryStats.totalItems}
                       </div>
-                      <div className="text-[10px] text-slate-500">items</div>
+                      <div className="text-[10px] text-slate-300">items</div>
                     </div>
                     {/* View All link */}
                     <a
                       href="#library-section"
-                      className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors ml-2 self-center"
+                      className="text-xs text-indigo-300 hover:text-indigo-200 transition-colors ml-2 self-center"
                       onClick={(e) => {
                         e.preventDefault();
                         document.getElementById("library-section")?.scrollIntoView({ behavior: "smooth" });
@@ -532,22 +534,26 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
             </div>
 
             {/* Knowledge Graph Section (separate mental model) */}
-            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-700/30">
-              <span className="text-xs text-slate-500 uppercase tracking-wide">Knowledge Graph:</span>
-              <a
-                href="/entities"
-                className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
-              >
-                📋 Entities
-              </a>
-              <a
-                href="/graph"
-                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-              >
-                🔮 Graph
-              </a>
-              {/* Lenny's KG will be added here later */}
-            </div>
+            {/* Feature flag: Hide KG UI unless flag is enabled */}
+            {/* Routes remain accessible via direct URL navigation */}
+            {isFeatureEnabled("KNOWLEDGE_GRAPH") && (
+              <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-700/30">
+                <span className="text-xs text-slate-500 uppercase tracking-wide">Knowledge Graph:</span>
+                <a
+                  href="/entities"
+                  className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                >
+                  📋 Entities
+                </a>
+                <a
+                  href="/graph"
+                  className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                >
+                  🔮 Graph
+                </a>
+                {/* Lenny's KG will be added here later */}
+              </div>
+            )}
           </div>
 
           {/* ─────────────────────────────────────────────────────────────── */}
@@ -559,7 +565,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <span className="text-xl">🎙️</span>
-                <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+                <h2 className="text-sm font-semibold text-slate-100 uppercase tracking-wide">
                   Wisdom from Lenny&apos;s
                 </h2>
               </div>
@@ -576,9 +582,9 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                       <span className="text-amber-300/70 text-xs">episodes</span>
                     </div>
                     {lennyStats.embeddingsSizeMB && (
-                      <div className="flex items-center gap-1.5 text-slate-400 bg-slate-800/50 px-2.5 py-1 rounded-full">
-                        <span className="font-medium text-slate-300">{lennyStats.embeddingsSizeMB} MB</span>
-                        <span className="text-slate-500 text-xs">indexed</span>
+                      <div className="flex items-center gap-1.5 text-slate-200 bg-slate-800/70 px-2.5 py-1 rounded-full">
+                        <span className="font-medium text-slate-100">{lennyStats.embeddingsSizeMB} MB</span>
+                        <span className="text-slate-300 text-xs">indexed</span>
                       </div>
                     )}
                   </>
@@ -608,10 +614,10 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 <button
                   onClick={downloadLennyEmbeddings}
                   disabled={lennyDownloadStatus === "downloading"}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-all ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                     lennyDownloadStatus === "downloading"
-                      ? "bg-blue-500/20 text-blue-300 animate-pulse cursor-wait"
-                      : "bg-indigo-600/80 text-white hover:bg-indigo-500"
+                      ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait"
+                      : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30"
                   }`}
                   title={
                     lennyStats.cloudMode
@@ -636,10 +642,10 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 <button
                   onClick={updateLennyEmbeddings}
                   disabled={lennyUpdateStatus === "updating"}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-all ${
+                  className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all min-w-[85px] ${
                     lennyUpdateStatus === "updating"
-                      ? "bg-indigo-500/20 text-indigo-300 animate-pulse cursor-wait"
-                      : "bg-indigo-600/80 text-white hover:bg-indigo-500"
+                      ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait"
+                      : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30"
                   }`}
                   title="Update from GitHub Release (free, fast ~2 min)"
                 >

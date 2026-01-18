@@ -12,6 +12,7 @@ import {
   VectorDBSection,
   VoiceStyleSection,
   LLMSettingsSection,
+  ChatHistorySection,
 } from "@/components/settings";
 import { ThemeSynthesisSection } from "@/components/config/ThemeSynthesisSection";
 import { DebugReportSection } from "@/components/DebugReportButton";
@@ -80,9 +81,11 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   
   // Chat history detection state
-  const [chatHistoryPath, setChatHistoryPath] = useState<string | null>(null);
+  const [chatHistoryCursor, setChatHistoryCursor] = useState<string | null>(null);
+  const [chatHistoryClaudeCode, setChatHistoryClaudeCode] = useState<string | null>(null);
   const [chatHistoryPlatform, setChatHistoryPlatform] = useState<"darwin" | "win32" | null>(null);
-  const [chatHistoryExists, setChatHistoryExists] = useState(false);
+  const [chatHistoryCursorExists, setChatHistoryCursorExists] = useState(false);
+  const [chatHistoryClaudeCodeExists, setChatHistoryClaudeCodeExists] = useState(false);
   const [detectingChatHistory, setDetectingChatHistory] = useState(false);
   
   // Form state
@@ -203,14 +206,17 @@ export default function SettingsPage() {
       if (!isMountedRef.current) return;
       
       if (data.success) {
-        setChatHistoryPath(data.path);
+        setChatHistoryCursor(data.cursor || null);
+        setChatHistoryClaudeCode(data.claudeCode || null);
         setChatHistoryPlatform(data.platform);
-        setChatHistoryExists(data.exists);
+        setChatHistoryCursorExists(data.cursorExists || false);
+        setChatHistoryClaudeCodeExists(data.claudeCodeExists || false);
         
-        if (data.path && config && (!config.chatHistory || !config.chatHistory.path)) {
+        // Save Cursor path if detected and not already saved
+        if (data.cursor && config && (!config.chatHistory || !config.chatHistory.path)) {
           await saveConfig({
             chatHistory: {
-              path: data.path,
+              path: data.cursor,
               platform: data.platform,
               autoDetected: true,
               lastChecked: data.lastChecked,
@@ -396,7 +402,7 @@ export default function SettingsPage() {
         )}
 
         {/* Workspaces Section */}
-        {(currentStep === "workspaces" || (config.setupComplete && activeTab === "general")) && (
+        {((!config.setupComplete && currentStep === "workspaces") || (config.setupComplete && activeTab === "general")) && (
           <SettingsSection title="📁 Workspaces" description="Directories containing Cursor projects to analyze">
             <WorkspacesSection
               workspaces={config.workspaces}
@@ -414,15 +420,34 @@ export default function SettingsPage() {
           </SettingsSection>
         )}
 
+        {/* Chat History Locations Section */}
+        {((!config.setupComplete && currentStep === "vectordb") || (config.setupComplete && activeTab === "general")) && (
+          <SettingsSection title="📁 Chat History Locations" description="Auto-detected paths to your Cursor and Claude Code chat history">
+            <ChatHistorySection
+              chatHistory={{
+                cursor: chatHistoryCursor,
+                claudeCode: chatHistoryClaudeCode,
+                platform: chatHistoryPlatform,
+                cursorExists: chatHistoryCursorExists,
+                claudeCodeExists: chatHistoryClaudeCodeExists,
+                isDetecting: detectingChatHistory,
+                onRefresh: detectChatHistory,
+              }}
+            />
+          </SettingsSection>
+        )}
+
         {/* VectorDB Setup Section */}
-        {(currentStep === "vectordb" || (config.setupComplete && activeTab === "general")) && (
+        {((!config.setupComplete && currentStep === "vectordb") || (config.setupComplete && activeTab === "general")) && (
           <SettingsSection title="🧠 Vector Database (Memory)" description="Set up Supabase Vector DB for efficient chat history search">
             <VectorDBSection
               vectordb={config.vectordb}
               chatHistory={{
-                path: chatHistoryPath,
+                cursor: chatHistoryCursor,
+                claudeCode: chatHistoryClaudeCode,
                 platform: chatHistoryPlatform,
-                exists: chatHistoryExists,
+                cursorExists: chatHistoryCursorExists,
+                claudeCodeExists: chatHistoryClaudeCodeExists,
                 isDetecting: detectingChatHistory,
                 onRefresh: detectChatHistory,
               }}
@@ -437,7 +462,7 @@ export default function SettingsPage() {
         )}
 
         {/* Voice & Style Section */}
-        {(currentStep === "voice" || (config.setupComplete && activeTab === "general")) && (
+        {((!config.setupComplete && currentStep === "voice") || (config.setupComplete && activeTab === "general")) && (
           <SettingsSection title="✍️ Your Voice & Style" description="Configure how Inspiration captures your authentic writing voice">
             <VoiceStyleSection
               authorName={localAuthorName}
@@ -460,7 +485,7 @@ export default function SettingsPage() {
         )}
 
         {/* LLM Settings */}
-        {(currentStep === "llm" || (config.setupComplete && activeTab === "general")) && (
+        {((!config.setupComplete && currentStep === "llm") || (config.setupComplete && activeTab === "general")) && (
           <SettingsSection title="🤖 LLM Provider" description="Configure your AI model for generation">
             <LLMSettingsSection
               llm={config.llm}

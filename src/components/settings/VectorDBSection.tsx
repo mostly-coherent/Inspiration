@@ -12,16 +12,18 @@ interface VectorDBConfig {
 }
 
 interface ChatHistoryInfo {
-  path: string | null;
+  cursor: string | null;
+  claudeCode: string | null;
   platform: "darwin" | "win32" | null;
-  exists: boolean;
+  cursorExists: boolean;
+  claudeCodeExists: boolean;
   isDetecting: boolean;
   onRefresh: () => void;
 }
 
 interface VectorDBSectionProps {
   vectordb?: VectorDBConfig;
-  chatHistory: ChatHistoryInfo;
+  chatHistory?: ChatHistoryInfo; // Made optional since it's now in a separate section
 }
 
 export function VectorDBSection({ vectordb, chatHistory }: VectorDBSectionProps) {
@@ -30,8 +32,7 @@ export function VectorDBSection({ vectordb, chatHistory }: VectorDBSectionProps)
       <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/30">
         <h4 className="text-blue-400 font-medium mb-2">Why Vector DB?</h4>
         <p className="text-sm text-slate-400 mb-2">
-          Vector DB enables fast semantic search across your entire chat history, 
-          even with 2GB+ of conversations. It&apos;s required for Inspiration v1.
+          Vector DB enables fast semantic search across your entire chat history.
         </p>
         <p className="text-xs text-slate-500">
           💡 <strong>Setup:</strong> Create a free Supabase project, run the SQL script 
@@ -42,56 +43,58 @@ export function VectorDBSection({ vectordb, chatHistory }: VectorDBSectionProps)
       {/* Supabase Credentials */}
       <SupabaseCredentialsSection vectordb={vectordb} />
 
-      {/* Chat History Auto-Detection */}
-      <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
-        <div className="flex items-start justify-between mb-2">
-          <h4 className="text-slate-200 font-medium">📁 Chat History Location</h4>
-          <button
-            onClick={chatHistory.onRefresh}
-            disabled={chatHistory.isDetecting}
-            className="text-xs px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-slate-300 disabled:opacity-50 transition-colors"
-          >
-            {chatHistory.isDetecting ? "Detecting..." : "Refresh"}
-          </button>
-        </div>
-        {chatHistory.isDetecting ? (
-          <p className="text-sm text-slate-500">Detecting chat history location...</p>
-        ) : chatHistory.path ? (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              {chatHistory.exists ? (
-                <span className="text-emerald-400">✓</span>
-              ) : (
-                <span className="text-yellow-400">⚠</span>
-              )}
-              <code className="flex-1 px-2 py-1 bg-slate-900 rounded text-xs text-slate-300 break-all">
-                {chatHistory.path}
-              </code>
-            </div>
-            <div className="flex items-center gap-4 text-xs text-slate-500">
-              <span>Platform: {chatHistory.platform === "darwin" ? "macOS" : chatHistory.platform === "win32" ? "Windows" : "Unknown"}</span>
-              {chatHistory.exists ? (
-                <span className="text-emerald-400">File exists</span>
-              ) : (
-                <span className="text-yellow-400">File not found (Cursor may not be installed)</span>
-              )}
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-slate-500">
-            Click &quot;Refresh&quot; to auto-detect your Cursor chat history location.
-          </p>
-        )}
-      </div>
-
       {/* Setup Instructions */}
       <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
         <h4 className="text-slate-200 font-medium mb-2">📋 Setup Instructions</h4>
-        <ol className="text-sm text-slate-400 space-y-2 list-decimal list-inside">
-          <li>Create a free Supabase project at <a href="https://supabase.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">supabase.com</a></li>
-          <li>Run the SQL script: <code className="px-1.5 py-0.5 bg-slate-900 rounded text-xs">engine/scripts/init_vector_db.sql</code></li>
-          <li>Copy your Project URL and Anon Key from Project Settings → API</li>
-          <li>Enter them above and click &quot;Test Connection&quot;</li>
+        <ol className="text-sm text-slate-400 space-y-3 list-decimal list-inside">
+          <li>
+            Create a free Supabase project at{" "}
+            <a href="https://supabase.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+              supabase.com
+            </a>
+            {" "}(sign up → New Project → choose a name and database password)
+          </li>
+          <li>
+            <div className="mb-1.5">Run the SQL script in Supabase:</div>
+            <div className="ml-4 space-y-2.5 text-xs text-slate-500">
+              <div>
+                <strong className="text-slate-400">Find the script:</strong> In your Inspiration project folder, open{" "}
+                <code className="px-1.5 py-0.5 bg-slate-900 rounded text-xs text-amber-400 font-mono">
+                  engine/scripts/init_vector_db.sql
+                </code>
+                {" "}(relative to the project root)
+              </div>
+              <div>
+                <strong className="text-slate-400">In Supabase Dashboard:</strong>
+                <ol className="ml-4 mt-1.5 space-y-1.5 list-decimal list-inside">
+                  <li>Open your project dashboard (after creating the project)</li>
+                  <li>In the left sidebar, click <span className="text-slate-300">&quot;SQL Editor&quot;</span></li>
+                  <li>Click the <span className="text-slate-300">&quot;New query&quot;</span> button (top right)</li>
+                  <li>Open <code className="px-1 py-0.5 bg-slate-900 rounded text-xs font-mono">init_vector_db.sql</code> in a text editor and copy <strong className="text-slate-300">all</strong> its contents</li>
+                  <li>Paste the SQL into the Supabase query editor</li>
+                  <li>Click <span className="text-slate-300">&quot;Run&quot;</span> (or press <kbd className="px-1 py-0.5 bg-slate-900 rounded text-xs">Cmd/Ctrl + Enter</kbd>)</li>
+                  <li>You should see <span className="text-emerald-400">&quot;Success. No rows returned&quot;</span> — this is correct! The script creates tables and functions, so no data rows are returned.</li>
+                </ol>
+              </div>
+            </div>
+          </li>
+          <li>
+            Get your credentials:
+            <ol className="ml-4 mt-1.5 space-y-1 text-xs text-slate-500 list-decimal list-inside">
+              <li>In Supabase, go to <span className="text-slate-300">Project Settings</span> (gear icon in left sidebar)</li>
+              <li>Click <span className="text-slate-300">&quot;API&quot;</span> in the settings menu</li>
+              <li>Copy your <span className="text-slate-300">&quot;Project URL&quot;</span> (under Project URL section)</li>
+              <li>Copy your <span className="text-slate-300">&quot;anon public&quot;</span> key (under Project API keys section)</li>
+            </ol>
+          </li>
+          <li>
+            Enter the credentials above:
+            <ol className="ml-4 mt-1.5 space-y-1 text-xs text-slate-500 list-decimal list-inside">
+              <li>Add them to your <code className="px-1 py-0.5 bg-slate-900 rounded text-xs font-mono">.env.local</code> file as <code className="px-1 py-0.5 bg-slate-900 rounded text-xs font-mono">SUPABASE_URL</code> and <code className="px-1 py-0.5 bg-slate-900 rounded text-xs font-mono">SUPABASE_ANON_KEY</code></li>
+              <li>Restart your dev server if it&apos;s running</li>
+              <li>Come back to this page and click <span className="text-slate-300">&quot;Test Connection&quot;</span></li>
+            </ol>
+          </li>
         </ol>
       </div>
 

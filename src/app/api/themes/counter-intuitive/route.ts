@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { spawn } from "child_process";
 import path from "path";
 import { getPythonPath } from "@/lib/pythonPath";
+import { isCloudEnvironment, getCloudErrorMessage } from "@/lib/vercel";
 
 export const maxDuration = 120; // 120 seconds for LLM calls
 
@@ -22,6 +23,19 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const minSize = parseInt(searchParams.get("minSize") || "5");
   const max = parseInt(searchParams.get("max") || "3");
+
+  // Check if running in cloud environment
+  if (isCloudEnvironment()) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: getCloudErrorMessage("Counter-Intuitive Perspectives"),
+        suggestions: [],
+        cloudMode: true,
+      },
+      { status: 400 }
+    );
+  }
 
   try {
     const pythonPath = getPythonPath();

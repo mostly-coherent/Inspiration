@@ -88,14 +88,19 @@ def enhance_themes_with_lenny(theme_map: dict) -> dict:
     
     # Enhance themes
     for theme in theme_map.get("themes", []):
+        # Handle both field name variations: title/summary (onboarding-fast) and name/description (theme-map)
+        theme_title = theme.get("title") or theme.get("name", "")
+        theme_summary = theme.get("summary") or theme.get("description", "")
+        
         quotes = search_lenny_for_theme(
-            theme.get("title", ""),
-            theme.get("summary", ""),
+            theme_title,
+            theme_summary,
             top_k=2
         )
         theme["expertPerspectives"] = quotes
         if quotes:
-            print(f"   ✓ {theme.get('title', 'Theme')}: {len(quotes)} expert quotes", file=sys.stderr)
+            theme_display_name = theme.get("title") or theme.get("name", "Theme")
+            print(f"   ✓ {theme_display_name}: {len(quotes)} expert quotes", file=sys.stderr)
     
     # Enhance counter-intuitive items
     for item in theme_map.get("counterIntuitive", []):

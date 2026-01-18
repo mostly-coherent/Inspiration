@@ -63,6 +63,31 @@ interface ThemeMapData {
   };
 }
 
+// Valid days options (must match Fast Start workflow options)
+const VALID_DAYS_OPTIONS = [7, 14, 28, 42];
+
+/**
+ * Normalize days value to ensure it's always a valid option.
+ * 
+ * This ensures the displayed days value always reflects a valid user selection,
+ * even if old theme maps have invalid values (e.g., 12 days from old versions).
+ * 
+ * @param days - Days value from theme map (may be invalid)
+ * @returns Valid days value (7, 14, 28, or 42), defaults to 14
+ */
+function normalizeDays(days: number | undefined | null): number {
+  if (!days || days < 1) return 14; // Default fallback
+  // If not a valid option, round to nearest valid option
+  if (!VALID_DAYS_OPTIONS.includes(days)) {
+    // Find closest valid option (e.g., 12 → 14, 10 → 7)
+    const closest = VALID_DAYS_OPTIONS.reduce((prev, curr) => 
+      Math.abs(curr - days) < Math.abs(prev - days) ? curr : prev
+    );
+    return closest;
+  }
+  return days;
+}
+
 export default function ThemeMapPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -82,7 +107,12 @@ export default function ThemeMapPage() {
         const data = await res.json();
         
         if (data.success && data.exists) {
-          setThemeMap(data.data);
+          // Normalize days value to ensure it's valid
+          const normalizedData = {
+            ...data.data,
+            time_window_days: normalizeDays(data.data.time_window_days),
+          };
+          setThemeMap(normalizedData);
           setSavedAt(data.savedAt);
         } else if (!data.exists) {
           // No saved Theme Map - redirect to fast onboarding
@@ -120,7 +150,7 @@ export default function ThemeMapPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          days: themeMap?.time_window_days || 14,
+          days: normalizeDays(themeMap?.time_window_days),
           provider,
         }),
       });
@@ -145,20 +175,21 @@ export default function ThemeMapPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            themes: data.result.themes.map((t: { title: string; summary: string; evidence: Array<{ chatId: string; snippet: string }> }) => ({
+            themes: data.result.themes.map((t: { title: string; summary: string; evidence: Array<{ chatId: string; snippet: string }>; expertPerspectives?: ExpertQuote[] }) => ({
               name: t.title,
               description: t.summary,
               evidence: t.evidence.map((e) => ({
                 conversation_id: e.chatId,
                 snippet: e.snippet,
               })),
+              expertPerspectives: t.expertPerspectives || [], // Preserve Lenny's wisdom
             })),
             counter_intuitive: data.result.counterIntuitive || [],
             unexplored_territory: data.result.unexploredTerritory || [],
             generated_at: data.result.generatedAt,
             conversations_analyzed: data.result.analyzed.conversationsUsed,
             conversations_considered: data.result.analyzed.conversationsConsidered,
-            time_window_days: data.result.analyzed.days,
+            time_window_days: normalizeDays(data.result.analyzed.days),
             meta: {
               llm_provider: provider,
             },
@@ -169,7 +200,12 @@ export default function ThemeMapPage() {
         const reloadRes = await fetch("/api/theme-map");
         const reloadData = await reloadRes.json();
         if (reloadData.success && reloadData.exists) {
-          setThemeMap(reloadData.data);
+          // Normalize days value to ensure it's valid
+          const normalizedData = {
+            ...reloadData.data,
+            time_window_days: normalizeDays(reloadData.data.time_window_days),
+          };
+          setThemeMap(normalizedData);
           setSavedAt(reloadData.savedAt);
         }
       } else {
@@ -290,28 +326,21 @@ export default function ThemeMapPage() {
             <div className="flex items-center gap-2">
               <span>📊</span>
               <span>
-                <strong className="text-white">{themeMap.conversations_analyzed}</strong> conversations analyzed
-                {themeMap.conversations_considered && themeMap.conversations_considered > themeMap.conversations_analyzed && (
-                  <span className="text-slate-500 ml-1">
-                    (of {themeMap.conversations_considered} — capped for speed)
-                  </span>
+                {themeMap.conversations_considered && themeMap.conversations_considered > themeMap.conversations_analyzed ? (
+                  <>
+                    Up to <strong className="text-white">{themeMap.conversations_considered}</strong> conversations fetched, <strong className="text-white">{themeMap.conversations_analyzed}</strong> analyzed
+                  </>
+                ) : (
+                  <>
+                    <strong className="text-white">{themeMap.conversations_analyzed}</strong> conversations analyzed
+                  </>
                 )}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <span>📅</span>
-              <span>Last <strong className="text-white">{themeMap.time_window_days}</strong> days</span>
+              <span>Last <strong className="text-white">{normalizeDays(themeMap.time_window_days)}</strong> days</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span>🎯</span>
-              <span><strong className="text-white">{themeMap.themes.length}</strong> themes found</span>
-            </div>
-            {themeMap.meta?.llm_provider && (
-              <div className="flex items-center gap-2">
-                <span>🤖</span>
-                <span>{themeMap.meta.llm_provider}</span>
-              </div>
-            )}
           </div>
         )}
 
@@ -319,15 +348,16 @@ export default function ThemeMapPage() {
         {themeMap && (
           <div className="space-y-4">
             <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-              <span>🎯</span> Top Themes
+              <span>🎯</span> Top {themeMap.themes.length} {themeMap.themes.length === 1 ? 'Theme' : 'Themes'}
             </h2>
             {themeMap.themes.map((theme, i) => (
               <div key={i} className="bg-slate-800/50 border border-slate-700 rounded-xl p-5 space-y-3">
                 <div className="flex items-start gap-3">
                   <span className="text-2xl font-bold text-indigo-400">{i + 1}</span>
                   <div>
-                    <h3 className="font-semibold text-white text-lg">{theme.name}</h3>
-                    <p className="text-slate-400 text-sm">{theme.description}</p>
+                    {/* Handle both field name variations: name/description (saved) and title/summary (generated) */}
+                    <h3 className="font-semibold text-white text-lg">{(theme as any).name || (theme as any).title}</h3>
+                    <p className="text-slate-400 text-sm">{(theme as any).description || (theme as any).summary}</p>
                   </div>
                 </div>
                 

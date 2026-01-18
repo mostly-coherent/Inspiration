@@ -391,23 +391,22 @@ inspiration/
 
 ---
 
-## 🎯 NEXT FOCUS
+## 🎯 CURRENT STATUS (2026-01-16)
 
-**Priority:** Testing Unexplored Territory Enrich feature and preparing for public release.
+**Priority:** v2.0 Knowledge Graph release — Lenny's KG baseline indexing in progress.
 
 **Current Status:**
-- ✅ v1 implementation complete (all phases done)
-- ✅ v2 Item-Centric Architecture complete
-- ✅ Vector DB architecture stable (2.1GB indexed)
-- ✅ All E2E tests passing (12/12)
-- ✅ v3 Complete — Library-centric UI with Scoreboard, Two-Panel Layout, Settings Hub
-- ✅ v3.1 Complete — View Modes (Library View / Comprehensive View)
-- ✅ v4 Complete — Library Enhancements (Merge Similar, Auto-Archive, Bulk Actions)
-- ✅ v5 Complete — Coverage Intelligence → **Removed 2026-01-13** (replaced by Unexplored Territory Enrich)
+- ✅ v1-v5 Complete — All core features operational (Library, Theme Explorer, Generate, Seek)
+- ✅ v2.0 KG Foundation Complete — Entity/relation extraction, Entity Explorer, Graph View, Evolution Timeline, Intelligence features
+- 🔄 v2.0 Lenny's KG Baseline — Indexing in progress (20.3% complete, ~4.1 hours remaining)
 - ✅ Performance Optimizations — IMP-15 (pgvector RPC), IMP-16 (Batch+Parallel), IMP-17 (Topic Filter)
-- ✅ Unexplored Territory Enrich — Topic-based generation from Theme Explorer
+- ✅ Fast Start — Cost estimation complete, Theme Map generation operational
 
-**v5 Pivot!** Coverage Intelligence removed. Replaced by Unexplored Territory with "Enrich Library" feature.
+**v2.0 Knowledge Graph Status:**
+- ✅ All 6 phases complete (Foundation, Entity Explorer, Relations, Graph View, Evolution, Intelligence)
+- ✅ Lenny's KG baseline indexing running (3,949 entities extracted so far, target: 3,000-5,000)
+- ✅ Pro features complete (Provenance tracking, Confidence scoring, Deduplication)
+- ⏳ User chat KG indexing — Not started (Iteration 2)
 
 ---
 
@@ -579,38 +578,221 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 | LENNY-6 | **"Related Experts" for each theme** — Show which guests have talked most about a topic | LOW | MEDIUM | Pending |
 | LENNY-7 | **Last synced timestamp** — Show when Lenny archive was last synced in UI | LOW | LOW | Pending |
 
-**Knowledge Graph Integration (v6-v7 Vision - 2026-01-14):**
+**Knowledge Graph Integration (v2.0 - 2026-01-16):**
 
-> **Architecture Document:** See `KNOWLEDGE_GRAPH_ARCHITECTURE.md` for complete technical specification.
+> **Build Plan:** See `INSPIRATION_V2_PLAN.md` for detailed v2.0 implementation tracking.
+> **Architecture:** See `ARCHITECTURE.md` Knowledge Graph Architecture section for technical details.
 
 | ID | Feature | Priority | Effort | Status |
 |----|---------|----------|--------|--------|
-| KG-1 | **Entity Extraction** — Extract entities (tools, patterns, problems, concepts) from conversations using LLM | HIGH | HIGH | 📐 Architecture Done |
-| KG-2 | **Relation Extraction** — Extract relationships (SOLVES, CAUSES, ENABLES, PART_OF, USED_WITH) between entities | HIGH | HIGH | 📐 Architecture Done |
-| KG-3 | **Entity Explorer** — Browse all entities with frequency, first/last seen dates | MEDIUM | MEDIUM | 📐 Architecture Done |
-| KG-4 | **Graph View in Theme Explorer** — Interactive visualization of entity connections | MEDIUM | HIGH | 📐 Architecture Done |
-| KG-5 | **Evolution Timeline** — See how focus has shifted over months (entity frequency over time) | MEDIUM | MEDIUM | 📐 Architecture Done |
-| KG-6 | **Pattern Alerts** — "You've implemented auth 4 times with the same edge case" | LOW | MEDIUM | Planned |
-| KG-7 | **Missing Link Detection** — "You discuss A and C frequently, but never B (which connects them)" | LOW | HIGH | Planned |
-| KG-8 | **Connect the Dots** — Select multiple ideas → see how they relate via graph paths | LOW | HIGH | Planned |
+| KG-1 | **Entity Extraction** — Extract entities (tools, patterns, problems, concepts) from conversations using LLM | HIGH | HIGH | ✅ Done (Phase 1, 2026-01-14) |
+| KG-2 | **Relation Extraction** — Extract relationships (SOLVES, CAUSES, ENABLES, PART_OF, USED_WITH) between entities | HIGH | HIGH | ✅ Done (Phase 3, 2026-01-15) |
+| KG-3 | **Entity Explorer** — Browse all entities with frequency, first/last seen dates | MEDIUM | MEDIUM | ✅ Done (Phase 2, 2026-01-14) |
+| KG-4 | **Graph View** — Interactive visualization of entity connections | MEDIUM | HIGH | ✅ Done (Phase 4, 2026-01-15) |
+| KG-5 | **Evolution Timeline** — See how focus has shifted over months (entity frequency over time) | MEDIUM | MEDIUM | ✅ Done (Phase 5, 2026-01-15) |
+| KG-6 | **Pattern Alerts** — "You've implemented auth 4 times with the same edge case" | LOW | MEDIUM | ✅ Done (Phase 6, 2026-01-15) |
+| KG-7 | **Missing Link Detection** — "You discuss A and C frequently, but never B (which connects them)" | LOW | HIGH | ✅ Done (Phase 6, 2026-01-15) |
+| KG-8 | **Connect the Dots** — Select multiple ideas → see how they relate via graph paths | LOW | HIGH | ✅ Done (Phase 6, 2026-01-15) |
 
-**Vision:** Transform Inspiration from "find patterns in conversations" to "understand connections in your thinking"—enabling multi-hop reasoning, evolution tracking, and cross-project insights. Shift from "what's similar?" to "how does it connect?"
-
-**Implementation Phases:**
-1. **Phase 1 (Foundation):** KG-1 + KG-2 — Entity/relation extraction, SQL schema, backfill script
-2. **Phase 2 (Entity Explorer):** KG-3 — Browse entities with filtering, detail view
-3. **Phase 3 (Graph View):** KG-4 — Interactive visualization with react-force-graph
-4. **Phase 4 (Evolution):** KG-5 — Temporal analysis, rising/declining indicators
-5. **Phase 5 (Intelligence):** KG-6, KG-7, KG-8 — Pattern detection, gap analysis
+**v2.0 Status (2026-01-16):**
+- ✅ **All 6 phases complete** — Foundation, Entity Explorer, Relations, Graph View, Evolution, Intelligence
+- 🔄 **Lenny's KG Baseline** — Indexing in progress (20.3% complete, 3,949 entities extracted, target: 3,000-5,000)
+- ✅ **Pro Features** — Provenance tracking (YouTube links), Confidence scoring (High/Medium/Low filter), Multi-stage deduplication
+- ⏳ **User Chat KG** — Not started (Iteration 2, requires incremental indexing)
 
 **Technical Approach:**
 - PostgreSQL CTEs for graph queries (upgrade to Neo4j if needed at 100k+ entities)
-- LLM-based extraction with GPT-4o-mini (structured output, ~$10-15 for full backfill)
+- LLM-based extraction with Claude Haiku 4.5 + GPT-4o fallback (domain-agnostic quality filter)
 - Embedding-based deduplication (cosine > 0.85 → candidate merge)
-- User corrections interface for improving extraction quality
+- react-force-graph-2d for interactive visualization
+- Playwright E2E tests for all features (27/27 passing)
 
-**Entity Types:** tool, pattern, problem, concept, person, project, workflow
+**Entity Types:** tool, pattern, problem, concept, person, project, workflow  
 **Relation Types:** SOLVES, CAUSES, ENABLES, PART_OF, USED_WITH, ALTERNATIVE_TO, REQUIRES, IMPLEMENTS, MENTIONED_BY
+
+---
+
+## Cross-Knowledge Graph Intelligence (v8 Vision - Expert Insights Integration)
+
+**Status:** 🔮 Future Vision — Infrastructure exists, product vision pending
+
+### Core Insight
+
+Users have TWO knowledge graphs:
+1. **Personal KG:** Entities/relations from their own chat history (what they've built, problems encountered, patterns used)
+2. **Expert KG:** Entities/relations from 280+ Lenny podcast episodes (what experts recommend, industry best practices)
+
+**The Gap:** These graphs exist in isolation. No way to compare, contrast, or learn from the intersection.
+
+**The Opportunity:** Transform Inspiration from "reflect on your work" to "reflect on your work IN CONTEXT of expert wisdom"—enabling pattern comparison, gap detection, and expert-guided learning.
+
+### Vision Use Cases
+
+**UC-1: "Show me experts who've discussed what I'm working on"**
+- User working with "React Server Components" + "caching" + "auth flow"
+- System finds Lenny episodes where guests discussed these entities
+- Shows: Which episodes, which guests, what they said (with timestamps)
+
+**UC-2: "How do my patterns compare to expert patterns?"**
+- User solves "API timeout" with "retry logic" + "exponential backoff"
+- Experts solve "API timeout" with "circuit breaker" + "fallback cache"
+- System highlights: You're missing "circuit breaker" — here's why experts use it
+
+**UC-3: "What am I missing that connects the dots?"**
+- User frequently discusses "auth" and "caching" but never mentions "session storage"
+- Experts consistently use "session storage" to bridge "auth" → "caching"
+- System suggests: "Experts link these with session storage — explore?"
+
+**UC-4: "My problem, expert solutions"**
+- User hits "race condition" problem repeatedly (5 mentions across 3 months)
+- Query: "What tools/patterns do experts recommend for race conditions?"
+- Returns: Expert entities that SOLVE this problem, with episode evidence
+
+**UC-5: "Evolution comparison — my learning trajectory vs industry trends"**
+- User's timeline: "jQuery → React → Vue → React again"
+- Expert timeline (aggregated): "jQuery → React → Server Components"
+- Insight: "Your path diverged at Vue; experts doubled down on React ecosystem"
+
+### Feature Breakdown
+
+**Phase 1: Foundation (Lenny KG Indexing)**
+
+| ID | Feature | Description | Priority | Effort | Status |
+|----|---------|-------------|----------|--------|--------|
+| XKG-1 | **Index Lenny into KG** | Run `index_lenny_kg.py` on all 280+ episodes to extract entities/relations | HIGH | LOW | Infrastructure exists |
+| XKG-2 | **Source Attribution** | Use `source` column to distinguish user vs expert entities (`source='lenny'` vs `source='cursor'`) | HIGH | LOW | Schema supports it |
+| XKG-3 | **Entity Type Mapping** | Ensure Lenny entities use same types (tool, pattern, problem, concept, person) | HIGH | LOW | Pending |
+| XKG-4 | **Cross-Source Deduplication** | Merge identical entities across sources (e.g., "React" from user + "React" from Lenny) | MEDIUM | MEDIUM | Pending |
+
+**Phase 2: Entity Intersection (UC-1)**
+
+| ID | Feature | Description | Priority | Effort |
+|----|---------|-------------|----------|--------|
+| XKG-5 | **"Experts Discussed This" API** | Given user entity IDs, return Lenny episodes/guests who mentioned same entities | HIGH | MEDIUM |
+| XKG-6 | **Entity Detail: Expert Tab** | Add "Expert Perspectives" tab to Entity Explorer showing Lenny mentions | HIGH | LOW |
+| XKG-7 | **Episode Deep-Links** | Convert Lenny timestamps to YouTube `?t=` deep-links for instant playback | MEDIUM | LOW |
+| XKG-8 | **Guest Attribution** | Show which guest said what (use `person` entities + `MENTIONED_BY` relations) | LOW | MEDIUM |
+
+**Phase 3: Pattern Comparison (UC-2, UC-3)**
+
+| ID | Feature | Description | Priority | Effort |
+|----|---------|-------------|----------|--------|
+| XKG-9 | **Cross-Source Pattern Detection** | Extend `detect_problem_solution_patterns()` RPC to compare user vs expert patterns | HIGH | MEDIUM |
+| XKG-10 | **Missing Expert Links** | "You connect A→C directly, but experts use A→B→C with intermediate entity B" | HIGH | HIGH |
+| XKG-11 | **Alternative Approaches** | "You use X to solve Y; experts also use Z (with trade-offs)" | MEDIUM | MEDIUM |
+| XKG-12 | **Pattern Divergence Alerts** | "Your approach differs from 80% of expert patterns for this problem" | LOW | MEDIUM |
+
+**Phase 4: Expert-Guided Search (UC-4)**
+
+| ID | Feature | Description | Priority | Effort |
+|----|---------|-------------|----------|--------|
+| XKG-13 | **"Ask the Experts" Query** | Natural language query → search Lenny KG for relevant entities/relations | HIGH | HIGH |
+| XKG-14 | **Problem → Expert Solutions** | Given problem entity, return all expert tools/patterns that SOLVE it | HIGH | MEDIUM |
+| XKG-15 | **Consensus vs Outliers** | Show: "5 experts recommend X, 1 expert recommends Y" | MEDIUM | MEDIUM |
+| XKG-16 | **Recency Weighting** | Prioritize recent episodes (2023-2024) over older ones for tech recommendations | LOW | LOW |
+
+**Phase 5: Temporal Comparison (UC-5)**
+
+| ID | Feature | Description | Priority | Effort |
+|----|---------|-------------|----------|--------|
+| XKG-17 | **Evolution Timeline: Compare Mode** | Side-by-side view of user timeline vs expert timeline for same entity | MEDIUM | MEDIUM |
+| XKG-18 | **Trend Divergence Detection** | "You're exploring X while industry shifted to Y 6 months ago" | MEDIUM | HIGH |
+| XKG-19 | **Learning Gap Analysis** | "Experts discuss A, B, C; you only discuss A and B" | LOW | MEDIUM |
+
+### Technical Considerations
+
+**1. Entity Deduplication Strategy (XKG-4):**
+- **Exact Match:** "React" from user + "React" from Lenny → merge
+- **Alias Match:** "RSC" from user + "React Server Components" from Lenny → merge
+- **Embedding Similarity:** Cosine > 0.85 → candidate merge
+- **Source Tracking:** Keep `kg_entity_mentions.source` to preserve provenance
+
+**2. Data Volume:**
+- **Current:** 9 user entities (1 episode test)
+- **After Lenny Index:** ~2,000-5,000 expert entities (estimated)
+- **After Full User Index:** ~10,000-50,000 user entities (estimated for 2.1GB chat history)
+- **Total:** ~12,000-55,000 entities + relations
+- **Performance:** PostgreSQL CTEs sufficient; consider Neo4j if >100k entities
+
+**3. Cost Estimation:**
+- **Lenny KG Indexing:** ~$15-25 (GPT-4o-mini, 280 episodes × 44K chunks)
+- **Cross-Graph Queries:** $0 (SQL only, no LLM calls)
+- **Pattern Comparison:** ~$0.01-0.05 per query (LLM synthesis of differences)
+
+**4. Schema Additions:**
+```sql
+-- Add source_type column to distinguish merged entities
+ALTER TABLE kg_entities ADD COLUMN source_type TEXT DEFAULT 'user';
+-- Values: 'user' | 'expert' | 'both' (merged)
+
+-- Add source_breakdown JSONB for multi-source entities
+ALTER TABLE kg_entities ADD COLUMN source_breakdown JSONB;
+-- Example: {"user": 5, "lenny": 12} = 5 user mentions, 12 expert mentions
+```
+
+**5. UI Integration Points:**
+- **Entity Explorer:** Add "Source" filter (User / Expert / Both)
+- **Graph View:** Color-code nodes by source (blue=user, gold=expert, purple=both)
+- **Intelligence Panel:** Add "Expert Insights" tab alongside Patterns/Missing Links
+- **Theme Explorer:** Show expert quotes for each theme (already exists via LENNY-1)
+
+### Value Proposition
+
+**For Individual Users:**
+- "Am I missing industry best practices?" → Gap detection
+- "What would experts do in my situation?" → Expert-guided problem solving
+- "Is my learning path aligned with industry trends?" → Career development insights
+
+**For Inspiration as a Product:**
+- **Differentiation:** No other tool connects personal chat history to expert knowledge graphs
+- **Viral Loop:** Users share "My patterns vs Expert patterns" comparisons on social media
+- **Premium Feature:** "Expert Insights" as paid tier (free tier = personal KG only)
+
+### Dependencies
+
+**Blockers (MUST complete first):**
+- None — Infrastructure exists, schema supports it
+
+**Nice-to-Have (Improves quality):**
+- User corrections interface (improve extraction accuracy before comparison)
+- Entity clustering (group similar entities for cleaner comparisons)
+
+### Risks & Mitigations
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| **Lenny KG quality low** (extraction errors) | Users see irrelevant expert suggestions | Start with manual validation of 10 episodes, tune extraction prompts |
+| **Entity dedup fails** (too many false merges) | "React" merges with "React Native" incorrectly | Strict threshold (0.9+ similarity), require manual confirmation for cross-source merges |
+| **Performance degradation** (queries slow with 50k+ entities) | UI lags, bad UX | Profile queries early, add indexes, plan Neo4j migration path |
+| **Expert recommendations outdated** (2020 episodes suggest old tech) | Users follow stale advice | Add recency weighting, show episode dates prominently |
+
+### Success Metrics
+
+**Adoption:**
+- % of users who enable "Expert Insights" tab
+- % of users who click through to Lenny episodes from Entity Explorer
+
+**Engagement:**
+- Avg. time spent comparing patterns (user vs expert)
+- % of users who watch Lenny episodes after discovering via KG
+
+**Value:**
+- User survey: "Expert Insights helped me improve my approach" (target: >70% agree)
+- Social shares: "My patterns vs Expert patterns" screenshot shares
+
+### Implementation Sequencing
+
+**Recommended Order:**
+1. **XKG-1, XKG-2, XKG-3** (Phase 1) — Index Lenny, establish source attribution (~1 week)
+2. **XKG-5, XKG-6, XKG-7** (Phase 2) — "Experts Discussed This" feature (~1 week)
+3. **User Testing** — Validate value before building Phase 3-5 (~1 week)
+4. **XKG-9, XKG-10** (Phase 3) — Pattern comparison (~2 weeks)
+5. **XKG-13, XKG-14** (Phase 4) — Expert-guided search (~2 weeks)
+6. **Phase 5** — Temporal comparison (backlog, 3+ months of user data needed)
+
+**Total Effort:** ~6-8 weeks for Phases 1-4 (if prioritized)
+
+---
 
 **Coverage Intelligence (v5 Enhancements):**
 | ID | Improvement | Priority | Effort |

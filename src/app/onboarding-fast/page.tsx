@@ -136,6 +136,22 @@ function FastOnboardingContent() {
   const [dbMetrics, setDbMetrics] = useState<DbMetrics | null>(null);
   const [detectingDb, setDetectingDb] = useState(true);
   
+  // Valid days options
+  const VALID_DAYS_OPTIONS = [7, 14, 28, 42];
+  
+  // Normalize days value to ensure it's valid
+  const normalizeDays = (days: number | undefined | null): number => {
+    if (!days || days < 1) return 14; // Default fallback
+    // If not a valid option, round to nearest valid option
+    if (!VALID_DAYS_OPTIONS.includes(days)) {
+      const closest = VALID_DAYS_OPTIONS.reduce((prev, curr) => 
+        Math.abs(curr - days) < Math.abs(prev - days) ? curr : prev
+      );
+      return closest;
+    }
+    return days;
+  };
+  
   // Time window state
   const [selectedDays, setSelectedDays] = useState(14);
   
@@ -696,12 +712,13 @@ function FastOnboardingContent() {
                   conversation_id: e.chatId,
                   snippet: e.snippet,
                 })),
+                expertPerspectives: t.expertPerspectives || [], // Preserve Lenny's wisdom
               })),
               unexplored_territory: data.result.unexploredTerritory.map((u: UnexploredTerritory) => u.title),
               generated_at: data.result.generatedAt,
               conversations_analyzed: data.result.analyzed.conversationsUsed,
               conversations_considered: data.result.analyzed.conversationsConsidered,
-              time_window_days: data.result.analyzed.days,
+              time_window_days: normalizeDays(data.result.analyzed.days),
               meta: {
                 llm_provider: selectedProvider,
               },
@@ -1224,11 +1241,14 @@ function FastOnboardingContent() {
                   <span className="text-4xl">🎉</span>
                   <h1 className="text-3xl font-bold text-white">Your Theme Map</h1>
                   <p className="text-slate-400">
-                    Analyzed {themeMap.analyzed.conversationsUsed} conversations from the last {themeMap.analyzed.days} days
-                    {themeMap.analyzed.conversationsConsidered > themeMap.analyzed.conversationsUsed && (
-                      <span className="text-slate-500 ml-1">
-                        (of {themeMap.analyzed.conversationsConsidered} — capped for speed)
-                      </span>
+                    {themeMap.analyzed.conversationsConsidered > themeMap.analyzed.conversationsUsed ? (
+                      <>
+                        Up to {themeMap.analyzed.conversationsConsidered} conversations fetched, {themeMap.analyzed.conversationsUsed} analyzed from the last {themeMap.analyzed.days} days
+                      </>
+                    ) : (
+                      <>
+                        Analyzed {themeMap.analyzed.conversationsUsed} conversations from the last {themeMap.analyzed.days} days
+                      </>
                     )}
                   </p>
                 </div>
@@ -1236,7 +1256,7 @@ function FastOnboardingContent() {
                 {/* Themes */}
                 <div className="space-y-4">
                   <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                    <span>🎯</span> Top Themes
+                    <span>🎯</span> Top {themeMap.themes.length} {themeMap.themes.length === 1 ? 'Theme' : 'Themes'}
                   </h2>
                   {themeMap.themes.map((theme, i) => (
                     <div key={theme.id} className="bg-slate-800/50 border border-slate-700 rounded-xl p-5 space-y-3">

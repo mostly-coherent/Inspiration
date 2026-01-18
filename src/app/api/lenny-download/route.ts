@@ -65,7 +65,7 @@ async function downloadFromSupabaseStorage(): Promise<{ success: boolean; messag
       return { 
         success: false, 
         message: "Embeddings not found in Supabase Storage", 
-        error: "Please upload embeddings to Supabase Storage bucket 'lenny-embeddings' first. See LENNY_CLOUD_IMPLEMENTATION.md" 
+        error: "Please upload embeddings to Supabase Storage bucket 'lenny-embeddings' first. See ARCHITECTURE.md Lenny's Podcast Integration section for setup instructions." 
       };
     }
 

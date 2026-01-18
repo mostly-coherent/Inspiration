@@ -5,6 +5,11 @@ Supports:
 - Anthropic Claude (primary)
 - OpenAI GPT (fallback)
 - OpenRouter (500+ models from 60+ providers)
+
+Features:
+- Circuit breaker for permanent failures (budget exhaustion)
+- Quality-aware fallback chains (baseline vs user KG)
+- Cost tracking per provider/model
 """
 
 import os
@@ -25,6 +30,117 @@ try:
 except ImportError:
     openai = None
     OPENAI_AVAILABLE = False
+
+
+# ============================================================================
+# Circuit Breaker - Permanent Failure Detection
+# ============================================================================
+
+class PermanentAPIFailure(Exception):
+    """
+    Raised when API failure is permanent (budget/quota exhausted).
+    
+    Distinguishes from transient failures (rate limits, timeouts) that can be retried.
+    """
+    pass
+
+
+def is_permanent_failure(error: Exception) -> bool:
+    """
+    Detect if error is permanent (budget/quota) vs transient (rate limit/timeout).
+    
+    Permanent failures:
+    - Monthly quota exhausted
+    - Billing issues
+    - Subscription expired
+    - Usage limits reached
+    
+    Transient failures:
+    - Rate limits (429)
+    - Timeouts
+    - Connection errors
+    - Server errors (5xx)
+    
+    Args:
+        error: Exception from LLM API call
+        
+    Returns:
+        True if error is permanent (should stop), False if transient (can retry)
+    """
+    error_msg = str(error).lower()
+    
+    # Permanent failure indicators
+    permanent_indicators = [
+        "usage limits",           # Anthropic: "You have reached your specified API usage limits"
+        "monthly limit",          # Generic quota message
+        "billing issue",          # Payment problems
+        "subscription",           # Subscription expired
+        "quota exceeded",         # Generic quota message
+        "payment required",       # Need to add payment method
+        "insufficient funds",     # Out of credits
+        "account suspended",      # Account issues
+    ]
+    
+    return any(indicator in error_msg for indicator in permanent_indicators)
+
+
+# ============================================================================
+# Quality-Aware Fallback Chains
+# ============================================================================
+
+# Cost per 1M tokens (as of 2026-01)
+COST_PER_1M_TOKENS = {
+    # Anthropic
+    ('anthropic', 'claude-haiku-4-5', 'input'): 0.25,
+    ('anthropic', 'claude-haiku-4-5', 'output'): 1.25,
+    ('anthropic', 'claude-sonnet-4-20250514', 'input'): 3.00,
+    ('anthropic', 'claude-sonnet-4-20250514', 'output'): 15.00,
+    
+    # OpenAI
+    ('openai', 'gpt-4o', 'input'): 2.50,
+    ('openai', 'gpt-4o', 'output'): 10.00,
+    ('openai', 'gpt-3.5-turbo', 'input'): 0.50,
+    ('openai', 'gpt-3.5-turbo', 'output'): 1.50,
+}
+
+# Baseline KG: High quality only (for Lenny's podcast baseline)
+BASELINE_FALLBACK_CHAIN = [
+    ("anthropic", "claude-haiku-4-5"),     # $0.25 / 1M input tokens
+    ("openai", "gpt-4o"),                  # $2.50 / 1M input tokens
+    # NO GPT-3.5 - quality over cost for baseline
+]
+
+# User KG: Cost-conscious fallback (for user's personal KG)
+USER_FALLBACK_CHAIN = [
+    ("anthropic", "claude-haiku-4-5"),     # $0.25 / 1M input tokens
+    ("openai", "gpt-4o"),                  # $2.50 / 1M input tokens
+    ("openai", "gpt-3.5-turbo"),           # $0.50 / 1M input tokens (user choice)
+]
+
+
+def get_fallback_chain(context: str = "user") -> list[tuple[str, str]]:
+    """
+    Get appropriate fallback chain based on context.
+    
+    Args:
+        context: "baseline" for high-quality baseline KG (Lenny's podcast)
+                 "user" for user's personal KG (cost-conscious OK)
+    
+    Returns:
+        List of (provider, model) tuples to try in order
+        
+    Raises:
+        ValueError: If context is not "baseline" or "user"
+    """
+    if context == "baseline":
+        return BASELINE_FALLBACK_CHAIN
+    elif context == "user":
+        return USER_FALLBACK_CHAIN
+    else:
+        raise ValueError(
+            f"Invalid context: {context!r}. Must be 'baseline' or 'user'. "
+            f"This ensures quality standards are preserved."
+        )
 
 
 # Default models

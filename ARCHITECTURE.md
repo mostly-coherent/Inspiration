@@ -343,7 +343,7 @@ Supports optional source filtering for targeted queries.
 
 280+ expert podcast episodes from Lenny's Podcast, pre-indexed and searchable. Provides expert validation for user's themes in the Theme Explorer.
 
-**Key Design Decision:** Pre-computed embeddings are **committed to the repo** (~74MB) so new users get expert perspectives immediately with zero setup and zero API cost.
+**Key Design Decision:** Pre-computed embeddings are **hosted on GitHub Releases** (not in repo due to 219MB size limit). For cloud deployments, **Supabase Storage** is used as primary source (faster, 5-10s) with GitHub Releases as fallback (30-60s). Local development downloads automatically via `scripts/download-lenny-embeddings.sh`.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -360,14 +360,26 @@ Supports optional source filtering for targeted queries.
 │           │                                               │                │
 │           │  git pull                                     ▼                │
 │           ▼                                      ┌──────────────────┐      │
-│  ┌──────────────────┐                            │ lenny_embeddings │      │
-│  │ data/lenny-      │                            │ .npz (~74MB)     │      │
-│  │ transcripts/     │                            │ (COMMITTED)      │      │
-│  │ (GITIGNORED)     │                            └──────────────────┘      │
-│  └──────────────────┘                            ┌──────────────────┐      │
+│  ┌──────────────────┐                            │ GitHub Releases  │      │
+│  │ data/lenny-      │                            │ v1.0.0-lenny     │      │
+│  │ transcripts/     │                            │                  │      │
+│  │ (GITIGNORED)     │                            │ • lenny_embeddi..│      │
+│  └──────────────────┘                            │   .npz (219MB)   │      │
+│                                                  │   [DOWNLOAD]     │      │
+│                                                  │ • lenny_metadata │      │
+│                                                  │   .json (28MB)   │      │
+│                                                  │   [DOWNLOAD]     │      │
+│                                                  └────────┬─────────┘      │
+│                                                           │                │
+│                                                   download-lenny-          │
+│                                                   embeddings.sh            │
+│                                                           │                │
+│                                                           ▼                │
+│                                                  ┌──────────────────┐      │
+│                                                  │ data/ (local)    │      │
+│                                                  │ lenny_embeddings │      │
 │                                                  │ lenny_metadata   │      │
-│                                                  │ .json (~5MB)     │      │
-│                                                  │ (COMMITTED)      │      │
+│                                                  │ (GITIGNORED)     │      │
 │                                                  └────────┬─────────┘      │
 │                                                           │                │
 │           ┌───────────────────────────────────────────────┘                │
@@ -389,14 +401,30 @@ Supports optional source filtering for targeted queries.
 | File | Size | Git Status | Purpose |
 |------|------|------------|---------|
 | `data/lenny-transcripts/` | ~25MB | **GITIGNORED** | Raw transcript source (cloned repo) |
-| `data/lenny_embeddings.npz` | ~74MB | **COMMITTED** | Pre-computed embeddings for instant search |
-| `data/lenny_metadata.json` | ~5MB | **COMMITTED** | Episode metadata + chunk content (lossless) |
+| `data/lenny_embeddings.npz` | ~219MB | **GITIGNORED** | Pre-computed embeddings (local: downloaded from GitHub Releases; cloud: downloaded from Supabase Storage or GitHub) |
+| `data/lenny_metadata.json` | ~28MB | **GITIGNORED** | Episode metadata + chunk content (local: downloaded from GitHub Releases; cloud: downloaded from Supabase Storage or GitHub) |
 
-**Why Commit Embeddings?**
-- Zero setup for new users (clone → run → works)
+**Download Strategy:**
+
+**Local Development:**
+- Downloads from GitHub Releases to `data/` directory
+- Auto-downloaded on first run via `scripts/download-lenny-embeddings.sh`
+- Zero setup required
+
+**Cloud Deployments (Vercel/Railway):**
+- **Primary:** Supabase Storage bucket `lenny-embeddings` (5-10s download, requires one-time setup)
+- **Fallback:** GitHub Releases (30-60s download, no setup needed)
+- Files stored in `/tmp/lenny-embeddings/` (ephemeral, persists during warm function invocations)
+
+**Why Not in Git?**
+- Files too large for Git (219MB + 28MB = 247MB total, exceeds GitHub's 100MB file limit)
 - No OpenAI API cost for first-time indexing ($0.20+)
-- Instant "time to value" — expert perspectives appear immediately
-- Trade-off: +79MB repo size (acceptable for UX benefit)
+- Instant "time to value" — expert perspectives appear immediately after one-time download
+
+**Cloud Setup (Optional):** Upload embeddings to Supabase Storage for faster cloud downloads:
+1. Create bucket `lenny-embeddings` (public, 500MB limit)
+2. Upload `lenny_embeddings.npz` (~219MB) and `lenny_metadata.json` (~28KB)
+3. Cloud deployments automatically prefer Supabase Storage over GitHub Releases
 
 ### Data Schema
 
@@ -436,8 +464,9 @@ Supports optional source filtering for targeted queries.
 | File | Purpose |
 |------|---------|
 | `engine/common/lenny_parser.py` | Parse transcripts (YAML frontmatter + markdown), split into chunks |
-| `engine/common/lenny_search.py` | NumPy-based cosine similarity search over embeddings |
+| `engine/common/lenny_search.py` | NumPy-based cosine similarity search over embeddings (checks `/tmp` first for cloud, then `data/` for local) |
 | `engine/scripts/index_lenny_local.py` | Re-index if transcripts updated (incremental via file hashing) |
+| `src/app/api/lenny-download/route.ts` | Download API (Supabase Storage primary, GitHub Releases fallback, local filesystem for dev) |
 | `src/app/api/lenny-stats/route.ts` | GET stats (episode count, chunk count, indexed date) |
 | `src/app/api/lenny-sync/route.ts` | POST to git pull + re-index |
 | `src/app/api/expert-perspectives/route.ts` | GET search results for a theme |
@@ -576,8 +605,8 @@ inspiration/
     ├── items_bank.json         # Unified Library storage (gitignored)
     ├── themes.json             # Theme/Mode configuration (gitignored)
     ├── vector_db_sync_state.json # Sync state tracking (gitignored)
-    ├── lenny_embeddings.npz    # Pre-computed Lenny embeddings (COMMITTED ~74MB)
-    ├── lenny_metadata.json     # Lenny episode/chunk metadata (COMMITTED ~5MB)
+    ├── lenny_embeddings.npz    # Pre-computed Lenny embeddings (GITIGNORED, downloaded from GitHub Releases ~219MB)
+    ├── lenny_metadata.json     # Lenny episode/chunk metadata (GITIGNORED, downloaded from GitHub Releases ~28MB)
     └── lenny-transcripts/      # Cloned Lenny repo (gitignored)
 ```
 
@@ -1405,7 +1434,7 @@ User        UI          API            Python Engine      Supabase (PgVector)
 | **UI Framework** | Next.js 15 | Modern, React Server Components |
 | **Engine** | Python | Rich ecosystem for DB/AI tasks |
 | **Lenny Embeddings** | Local NumPy (.npz) | 12K vectors easily handled locally; no cloud cost; works offline |
-| **Lenny Embeddings Git** | Committed to repo | Zero-setup for new users; instant "time to value"; acceptable +79MB |
+| **Lenny Embeddings Git** | Downloaded from GitHub Releases | Too large for Git (247MB); auto-download on first run; zero-setup after download |
 | **Multi-Source** | Cursor + Claude Code | Users may use both tools; unified Memory merges both sources |
 
 ---
@@ -2066,3 +2095,282 @@ python3 engine/common/db_health_check.py
 - **API Errors:** `src/app/api/sync/route.ts`
 
 **Last Updated:** 2026-01-09
+
+---
+
+## Knowledge Graph Architecture (v6-v7)
+
+> **Complete Specification:** See `KNOWLEDGE_GRAPH_ARCHITECTURE.md` for full technical details
+> **Build Plan:** See `KNOWLEDGE_GRAPH_BUILD_PLAN.md` for phase-by-phase implementation tracking
+
+### Vision
+
+Transform Inspiration from "find patterns in conversations" to "understand connections in your thinking"—enabling multi-hop reasoning, evolution tracking, and cross-project insights.
+
+**Shift:** From "what's similar?" to "how does it connect?"
+
+### Core Concepts
+
+| Concept | Definition | Example |
+|---------|------------|---------|
+| **Entity** | A distinct concept extracted from conversations | "React Server Components", "caching", "auth flow" |
+| **Entity Type** | Category of entity | tool, pattern, problem, concept, person, project, workflow |
+| **Relation** | Named connection between entities | SOLVES, CAUSES, ENABLES, PART_OF, USED_WITH |
+| **Mention** | Instance where entity appears in conversation | Message ID + timestamp + context snippet |
+| **Entity Cluster** | Group of semantically similar entities (deduplication) | "RSC", "React Server Components", "server components" → single entity |
+
+### Data Model
+
+**Tables:**
+- `kg_entities` — Unique entities with embeddings, aliases, mention counts
+- `kg_relations` — Relationships between entities with evidence snippets
+- `kg_entity_mentions` — Links entities to specific messages
+- `kg_entity_items` — Links entities to Library items
+- `kg_user_corrections` — User feedback on extraction
+
+**Entity Types:**
+- `tool` — Technologies, frameworks, libraries (React, Supabase, Prisma)
+- `pattern` — Design patterns, architectural patterns (caching, retry logic)
+- `problem` — Issues, bugs, challenges (auth timeout, race condition)
+- `concept` — Abstract ideas, principles (DRY, composition over inheritance)
+- `person` — People mentioned (Lenny, Dan Abramov, team members)
+- `project` — Projects, codebases, repos (Inspiration, dad-aura)
+- `workflow` — Processes, methodologies (TDD, code review, pair programming)
+
+**Relation Types:**
+- `SOLVES` — tool/pattern SOLVES problem
+- `CAUSES` — problem CAUSES problem (cascade)
+- `ENABLES` — pattern/tool ENABLES capability
+- `PART_OF` — entity is component of larger entity
+- `USED_WITH` — entities commonly used together
+- `ALTERNATIVE_TO` — entities serve similar purpose
+- `REQUIRES` — entity depends on another
+- `IMPLEMENTS` — pattern/tool IMPLEMENTS concept
+- `MENTIONED_BY` — person MENTIONED entity (expert attribution)
+
+### System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        KNOWLEDGE GRAPH PIPELINE                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────┐     ┌──────────────┐     ┌──────────────┐                  │
+│  │   Cursor    │────▶│   Entity     │────▶│   Entity     │                  │
+│  │  Messages   │     │  Extractor   │     │ Deduplicator │                  │
+│  └─────────────┘     └──────────────┘     └──────────────┘                  │
+│        │                   │                    │                           │
+│        │                   ▼                    ▼                           │
+│        │             ┌──────────────┐     ┌──────────────┐                  │
+│        │             │  Relation    │     │  kg_entities │                  │
+│        │             │  Extractor   │────▶│  (Supabase)  │                  │
+│        │             └──────────────┘     └──────────────┘                  │
+│        │                   │                    ▲                           │
+│        │                   ▼                    │                           │
+│        │             ┌──────────────┐           │                           │
+│        │             │kg_relations  │───────────┘                           │
+│        │             │  (Supabase)  │                                       │
+│        │             └──────────────┘                                       │
+│        │                                                                    │
+│        └──────────────────────────────────────────────────────────────────▶│
+│                                                                             │
+│                      ┌──────────────┐                                       │
+│                      │kg_entity_    │                                       │
+│                      │  mentions    │                                       │
+│                      │  (Supabase)  │                                       │
+│                      └──────────────┘                                       │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        KNOWLEDGE GRAPH UI                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────┐     ┌──────────────┐     ┌──────────────┐                  │
+│  │   Entity    │────▶│   Graph      │────▶│  Evolution   │                  │
+│  │  Explorer   │     │    View      │     │   Timeline   │                  │
+│  └─────────────┘     └──────────────┘     └──────────────┘                  │
+│        │                   │                    │                           │
+│        ▼                   ▼                    ▼                           │
+│  ┌─────────────┐     ┌──────────────┐     ┌──────────────┐                  │
+│  │ /entities   │     │   /graph     │     │Intelligence  │                  │
+│  │   page      │     │    page      │     │    Panel     │                  │
+│  └─────────────┘     └──────────────┘     └──────────────┘                  │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Extraction Pipeline
+
+**1. Entity Extraction (`engine/common/entity_extractor.py`)**
+- LLM-based extraction using GPT-4o-mini
+- Structured JSON output with confidence scoring
+- Blacklist for common uninteresting terms (KG_SKIP_LIST)
+- Cost: ~$0.01 per 1000 messages
+
+**2. Entity Deduplication (`engine/common/entity_deduplicator.py`)**
+- **Exact match:** Lowercase comparison
+- **Alias match:** Check against known aliases
+- **Embedding similarity:** Cosine > 0.85 → candidate merge
+- Automatic alias addition for near-duplicates
+
+**3. Relation Extraction (`engine/common/relation_extractor.py`)**
+- LLM-based extraction using GPT-4o-mini
+- Handles multiple JSON response formats
+- 30s timeout, improved error handling
+- Relation type mapping (e.g., "USES" → "USED_WITH")
+
+**4. Indexing (`engine/scripts/index_entities.py`)**
+- CLI with `--dry-run`, `--limit`, `--with-relations`, `--verbose` flags
+- Batch processing with progress reporting
+- Incremental mode (skips already-processed messages)
+- Saves entities, mentions, and relations to Supabase
+
+### Query Patterns
+
+**Graph Traversal (PostgreSQL CTEs):**
+```sql
+-- Find all tools that SOLVE a specific problem
+WITH RECURSIVE tool_chain AS (
+  SELECT e.id, e.canonical_name, r.relation_type, 1 as depth
+  FROM kg_entities e
+  JOIN kg_relations r ON e.id = r.source_entity_id
+  WHERE r.target_entity_id = :problem_id
+    AND r.relation_type = 'SOLVES'
+  
+  UNION ALL
+  
+  SELECT e.id, e.canonical_name, r.relation_type, tc.depth + 1
+  FROM kg_entities e
+  JOIN kg_relations r ON e.id = r.source_entity_id
+  JOIN tool_chain tc ON r.target_entity_id = tc.id
+  WHERE tc.depth < 5
+)
+SELECT * FROM tool_chain;
+```
+
+**Temporal Analysis (RPC Functions):**
+- `get_entity_evolution()` — Single entity timeline
+- `get_entities_evolution()` — Multi-entity comparison
+- `get_trending_entities()` — Trending with trend score
+- `get_kg_activity_timeline()` — Overall activity
+
+**Intelligence Features (RPC Functions):**
+- `detect_problem_solution_patterns()` — Recurring problem+solution pairs
+- `detect_missing_links()` — Co-occurring entities without relations
+- `find_entity_path()` — Shortest path between entities (max 5 hops)
+- `find_entity_clusters()` — Entity clustering
+
+### API Endpoints
+
+| Endpoint | Purpose | Key Features |
+|----------|---------|--------------|
+| `/api/kg/stats` | KG statistics | Total entities, mentions, breakdown by type |
+| `/api/kg/entities` | Entity list | Filtering by type, sorting, search by name |
+| `/api/kg/relations` | Relations for entity | Incoming/outgoing relations with evidence |
+| `/api/kg/subgraph` | Graph data | Centered or top entities with relations |
+| `/api/kg/evolution` | Temporal analysis | Trending, activity, entity timeline, comparison |
+| `/api/kg/intelligence` | Intelligence features | Patterns, missing links, path finding, clusters |
+
+### UI Components
+
+| Component | Purpose | Key Features |
+|-----------|---------|--------------|
+| `EntityExplorer` | Browse entities | Filter by type, search, sort, detail panel |
+| `GraphView` | Interactive graph | Force-directed layout, node click, zoom |
+| `EvolutionTimeline` | Temporal analysis | Trending entities, activity chart, timeline |
+| `IntelligencePanel` | Intelligence features | Pattern alerts, missing links, path finding |
+
+### Performance Considerations
+
+**Current Approach (PostgreSQL CTEs):**
+- Suitable for < 100k entities
+- Graph queries use recursive CTEs
+- Indexes on entity_type, mention_count, last_seen
+- HNSW index on embeddings for similarity search
+
+**Future Scaling (Neo4j):**
+- Migrate to Neo4j if > 100k entities
+- Native graph traversal (faster than CTEs)
+- Cypher queries for complex patterns
+- Keep PostgreSQL for entity metadata
+
+### Cost Estimation
+
+**Full Backfill (10k messages):**
+- Entity extraction: ~$10-15 (GPT-4o-mini)
+- Relation extraction: ~$5-10 (GPT-4o-mini)
+- Embedding generation: ~$1 (text-embedding-3-small)
+- **Total:** ~$16-26 for full backfill
+
+**Incremental Updates:**
+- ~$0.01 per 100 new messages
+- Runs automatically during sync
+
+### Implementation Status
+
+**All Phases Complete (2026-01-15):**
+- ✅ Phase 1: Foundation (SQL schema, entity extraction, deduplication, indexing)
+- ✅ Phase 2: Entity Explorer UI (browse, filter, search, detail view)
+- ✅ Phase 3: Relation Extraction (relation extractor, API, UI integration)
+- ✅ Phase 4: Graph View (interactive visualization with react-force-graph-2d)
+- ✅ Phase 5: Evolution Timeline (temporal analysis, trending, charts)
+- ✅ Phase 6: Intelligence Features (patterns, missing links, path finding)
+
+**v2.0 Status (2026-01-16):**
+- ✅ All 6 phases complete (Foundation, Entity Explorer, Relations, Graph View, Evolution, Intelligence)
+- 🔄 Lenny's KG baseline indexing in progress (20.3% complete, 3,949 entities extracted, target: 3,000-5,000)
+- ✅ Pro features complete (Provenance tracking with YouTube links, Confidence scoring, Multi-stage deduplication)
+- ✅ All UI components working
+- ✅ All API endpoints functional
+- ✅ All SQL RPC functions deployed
+- ✅ 27/27 Playwright E2E tests passing
+
+**Next Steps:**
+- Complete Lenny's KG baseline indexing (~4.1 hours remaining)
+- Export baseline to GitHub Release (JSON + SQL formats)
+- User chat KG indexing (Iteration 2, requires incremental indexing)
+- Monitor performance at scale (100k+ entities)
+
+### Related Files
+
+**SQL Schemas:**
+- `engine/scripts/init_knowledge_graph.sql` — Core KG schema
+- `engine/scripts/add_relations_schema.sql` — Relations schema
+- `engine/scripts/add_evolution_schema.sql` — Evolution RPC functions
+- `engine/scripts/add_intelligence_schema.sql` — Intelligence RPC functions
+
+**Python Modules:**
+- `engine/common/knowledge_graph.py` — Entity/relation type definitions
+- `engine/common/entity_extractor.py` — LLM-based entity extraction
+- `engine/common/entity_deduplicator.py` — Deduplication logic
+- `engine/common/relation_extractor.py` — LLM-based relation extraction
+
+**Indexing Scripts:**
+- `engine/scripts/index_entities.py` — CLI indexing script
+- `engine/scripts/index_lenny_kg.py` — Lenny-specific KG indexing
+
+**API Routes:**
+- `src/app/api/kg/stats/route.ts` — KG stats API
+- `src/app/api/kg/entities/route.ts` — Entities API
+- `src/app/api/kg/relations/route.ts` — Relations API
+- `src/app/api/kg/subgraph/route.ts` — Graph data API
+- `src/app/api/kg/evolution/route.ts` — Evolution API
+- `src/app/api/kg/intelligence/route.ts` — Intelligence API
+
+**UI Components:**
+- `src/components/EntityExplorer.tsx` — Entity browser component
+- `src/components/GraphView.tsx` — Interactive graph visualization
+- `src/components/EvolutionTimeline.tsx` — Temporal analysis component
+- `src/components/IntelligencePanel.tsx` — Intelligence features component
+- `src/app/entities/page.tsx` — Entity Explorer page
+- `src/app/graph/page.tsx` — Graph View page
+
+**Tests:**
+- `e2e/entities.spec.ts` — Entity Explorer E2E tests (7/7 passing)
+- `e2e/graph.spec.ts` — Graph View E2E tests (7/7 passing)
+- `e2e/evolution.spec.ts` — Evolution Timeline E2E tests (10/10 passing)
+
+<!-- Merged from KNOWLEDGE_GRAPH_ARCHITECTURE.md on 2026-01-15 -->
+
+**Last Updated:** 2026-01-15

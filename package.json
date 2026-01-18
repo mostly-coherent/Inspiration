@@ -22,6 +22,7 @@
     "@anthropic-ai/sdk": "^0.71.2",
     "@supabase/supabase-js": "^2.89.0",
     "next": "^16.1.0",
+    "openai": "^6.16.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-force-graph": "^1.48.1",

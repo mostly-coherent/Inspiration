@@ -35,7 +35,7 @@ export function VoiceStyleSection({
             type="text"
             value={authorName}
             onChange={(e) => setAuthorName(e.target.value)}
-            onBlur={() => onSave("authorName", authorName)}
+            onBlur={(e) => onSave("authorName", e.target.value)}
             placeholder="e.g., JM"
             className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
           />
@@ -48,7 +48,7 @@ export function VoiceStyleSection({
             type="text"
             value={authorContext}
             onChange={(e) => setAuthorContext(e.target.value)}
-            onBlur={() => onSave("authorContext", authorContext)}
+            onBlur={(e) => onSave("authorContext", e.target.value)}
             placeholder="e.g., PM at a tech company who builds with AI"
             className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
           />
@@ -69,7 +69,7 @@ export function VoiceStyleSection({
               type="text"
               value={goldenExamplesDir}
               onChange={(e) => setGoldenExamplesDir(e.target.value)}
-              onBlur={() => onSave("goldenExamplesDir", goldenExamplesDir)}
+              onBlur={(e) => onSave("goldenExamplesDir", e.target.value)}
               placeholder="/path/to/your/social-posts"
               className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
             />
@@ -94,7 +94,7 @@ export function VoiceStyleSection({
               type="text"
               value={voiceGuideFile}
               onChange={(e) => setVoiceGuideFile(e.target.value)}
-              onBlur={() => onSave("voiceGuideFile", voiceGuideFile)}
+              onBlur={(e) => onSave("voiceGuideFile", e.target.value)}
               placeholder="/path/to/voice-guide.md"
               className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
             />

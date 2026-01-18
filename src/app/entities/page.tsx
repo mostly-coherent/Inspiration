@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { isFeatureEnabled } from "@/lib/featureFlags";
 import EntityExplorer from "@/components/EntityExplorer";
 import EvolutionTimeline from "@/components/EvolutionTimeline";
 import IntelligencePanel from "@/components/IntelligencePanel";
@@ -16,11 +18,19 @@ interface KGStats {
 type ViewTab = "entities" | "trends" | "intelligence";
 
 export default function EntitiesPage() {
+  const router = useRouter();
   const [stats, setStats] = useState<KGStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewTab, setViewTab] = useState<ViewTab>("entities");
   const isMountedRef = useRef(true);
+
+  // Feature flag: Redirect to home if KG is disabled
+  useEffect(() => {
+    if (!isFeatureEnabled("KNOWLEDGE_GRAPH")) {
+      router.push("/");
+    }
+  }, [router]);
 
   useEffect(() => {
     isMountedRef.current = true;

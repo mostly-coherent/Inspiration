@@ -6,7 +6,7 @@
 
 ## What This Is
 
-A web UI for extracting ideas and insights from Cursor chat history using Claude Sonnet 4. Now powered by **Supabase Vector DB** for massive scale support (>2GB chat history). **v3** introduces a Library-centric UI where the accumulated items are the core value proposition.
+A web UI for extracting ideas and insights from Cursor chat history using Claude Sonnet 4. Now powered by **Supabase Vector DB** for massive scale support (>2GB chat history). **v2.0** introduces Knowledge Graphs for longitudinal intelligence—extracting entities and relations from conversations to reveal connections in your thinking.
 
 ### Core Concepts
 
@@ -29,14 +29,17 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 - **Unexplored Territory (LIB-10)** — Find topics discussed in Memory but missing from Library
 - **Counter-Intuitive (LIB-11)** — LLM-generated reflection prompts for "good opposite" perspectives
 - **Expert Perspectives (Lenny's Podcast)** — 280+ expert episodes integrated into Theme Explorer (Patterns + Counter-Intuitive tabs)
+- **Knowledge Graph (v2.0)** — Entity/relation extraction from conversations, Entity Explorer, Graph View, Evolution Timeline, Intelligence features
 
-**Longitudinal Intelligence Status (v4 Phase 3):** 3/3 complete — Theme Explorer with Patterns, Unexplored, and Counter-Intuitive tabs operational.
+**Longitudinal Intelligence Status:**
+- ✅ Theme Explorer (v4 Phase 3) — Patterns, Unexplored, Counter-Intuitive tabs operational
+- ✅ Knowledge Graph (v2.0) — All 6 phases complete, Lenny's KG baseline indexing in progress
 
 ### Lenny's Podcast Integration
 
 **What:** 280+ expert podcast episodes from Lenny's Podcast, pre-indexed and searchable.
 
-**Key Design Decision:** Pre-computed embeddings are **hosted on GitHub Releases** (not in repo due to 219MB size limit). Downloaded automatically on first run via `scripts/download-lenny-embeddings.sh`.
+**Key Design Decision:** Pre-computed embeddings are **hosted on GitHub Releases** (not in repo due to 219MB size limit). For cloud deployments, **Supabase Storage** is used as primary source (faster, 5-10s) with GitHub Releases as fallback (30-60s). Local development downloads automatically via `scripts/download-lenny-embeddings.sh`.
 
 | File | Size | Purpose |
 |------|------|---------|
@@ -46,11 +49,22 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 
 **Key Files:**
 - `engine/common/lenny_parser.py` — Parse transcripts (YAML frontmatter + markdown)
-- `engine/common/lenny_search.py` — Local semantic search over embeddings
+- `engine/common/lenny_search.py` — Local semantic search over embeddings (checks `/tmp` first for cloud, then `data/` for local)
 - `engine/scripts/index_lenny_local.py` — Re-index if transcripts updated
+- `src/app/api/lenny-download/route.ts` — Download API (Supabase Storage primary, GitHub fallback)
 - `src/app/api/lenny-stats/route.ts` — Stats API
 - `src/app/api/lenny-sync/route.ts` — Git pull + re-index API
 - `src/app/api/expert-perspectives/route.ts` — Search API for Theme Explorer
+
+**Download Strategy (Cloud Deployments):**
+- **Primary:** Supabase Storage bucket `lenny-embeddings` (5-10s download, requires setup)
+- **Fallback:** GitHub Releases (30-60s download, no setup needed)
+- **Local:** Downloads to `data/` directory via bash script
+
+**Cloud Setup (Optional):** Upload embeddings to Supabase Storage for faster cloud downloads:
+1. Create bucket `lenny-embeddings` (public, 500MB limit)
+2. Upload `lenny_embeddings.npz` (~219MB) and `lenny_metadata.json` (~28KB)
+3. Cloud deployments will automatically use Supabase Storage
 
 **Sync Flow:** When user clicks "Refresh Memory", Lenny archive auto-syncs via `git pull` and re-indexes if new episodes detected.
 
@@ -215,6 +229,54 @@ npm run dev
 | `engine/scripts/sync_messages.py` | Incremental sync service |
 | `engine/scripts/optimize_harmonization.sql` | pgvector optimization schema |
 | `data/themes.json` | Theme/Mode configuration (v1) |
+
+---
+
+## Knowledge Graph (v2.0)
+
+**Status:** ✅ All 6 phases complete | 🔄 Lenny's KG baseline indexing in progress (20.3% complete)
+
+**What It Does:**
+- Extracts entities (tools, patterns, problems, concepts) and relations from conversations
+- Builds a knowledge graph showing how your thinking connects over time
+- Lenny's Podcast integration: 280+ expert episodes indexed for cross-source insights
+
+**Key Features:**
+- **Entity Explorer** — Browse all entities with filtering, search, detail view
+- **Graph View** — Interactive visualization of entity connections
+- **Evolution Timeline** — See how focus shifts over time (trending entities, activity charts)
+- **Intelligence Panel** — Pattern detection, missing links, path finding
+- **Provenance Tracking** — Link entities to source messages/episodes (YouTube links for Lenny)
+- **Confidence Scoring** — Filter by High/Medium/Low confidence (0-1.0 score)
+
+**Key Files:**
+- `src/app/entities/page.tsx` — Entity Explorer page
+- `src/app/graph/page.tsx` — Graph View page
+- `src/components/EntityExplorer.tsx` — Entity browser component
+- `src/components/GraphView.tsx` — Interactive graph visualization
+- `src/components/EvolutionTimeline.tsx` — Temporal analysis component
+- `src/app/api/kg/*` — All KG API endpoints (entities, relations, evolution, intelligence)
+- `engine/common/entity_extractor.py` — LLM-based entity extraction
+- `engine/common/relation_extractor.py` — LLM-based relation extraction
+- `engine/scripts/index_lenny_kg_parallel.py` — Lenny's KG baseline indexing (in progress)
+- `engine/scripts/init_knowledge_graph.sql` — KG schema
+
+**Database Tables:**
+- `kg_entities` — Unique entities with embeddings, aliases, mention counts, confidence scores
+- `kg_relations` — Relationships between entities (SOLVES, ENABLES, USED_WITH, etc.)
+- `kg_entity_mentions` — Links entities to specific messages/episodes
+- `kg_episode_metadata` — Lenny episode metadata (YouTube URLs, titles, guest names)
+
+**Current State (2026-01-16):**
+- ✅ All UI components working
+- ✅ All API endpoints functional
+- ✅ All SQL RPC functions deployed
+- 🔄 Lenny's KG baseline: 3,949 entities extracted (target: 3,000-5,000), ~4.1 hours remaining
+- ⏳ User chat KG indexing: Not started (Iteration 2)
+
+**See Also:**
+- `INSPIRATION_V2_PLAN.md` — Detailed v2.0 build plan
+- `ARCHITECTURE.md` — Knowledge Graph Architecture section
 
 ---
 

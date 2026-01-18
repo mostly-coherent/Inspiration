@@ -92,3 +92,11 @@ engine/data/output/
 
 # Archive folder (historical planning docs, not needed for app functionality)
 _archive/
+
+# Knowledge Graph Documentation (experimental features - hidden from public repo)
+KG_FEATURE_FLAG_GUIDE.md
+EVOLVING_KG_RESEARCH.md
+KG_BASELINE_EXPORT_PLAN.md
+LENNY_KG_BUILD_STATUS.md
+engine/KG_USER_GUIDE.md
+engine/KG_QUALITY_DEFINITION.md

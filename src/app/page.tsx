@@ -1067,7 +1067,7 @@ export default function Home() {
                   </div>
 
                   {!showAdvanced ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       {PRESET_MODES.map((mode) => (
                         <ModeCard
                           key={mode.id}
