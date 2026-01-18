@@ -4,7 +4,7 @@
 > 
 > If you've used Cursor or Claude Code for months, you've reasoned through problems, explored trade-offs, had breakthroughs. That thinking is scattered across hundreds of conversations, but it contains patterns (what you keep circling back to) and relationships (how different projects connect).
 >
-> Inspiration uses semantic search to find patterns and builds a knowledge graph to reveal relationships: what you keep circling back to, how your thinking has evolved, what connects across different projects.
+> Inspiration uses semantic search to find patterns and reveals relationships: what you keep circling back to, how your thinking has evolved, what connects across different projects.
 
 ![Type](https://img.shields.io/badge/Type-Tool-purple)
 ![Status](https://img.shields.io/badge/Status-Active-green)
@@ -13,7 +13,7 @@
 
 <img src="https://raw.githubusercontent.com/mostly-coherent/Inspiration/main/public/screenshots/homepage.png" alt="Inspiration - Main Interface" width="800">
 
-**New:** [Lenny's Podcast Integration](#whats-new) — Your knowledge graph connects with 280+ expert episodes. Semantic search across both your thinking and expert wisdom to inspire outward exploration.
+**New:** [Lenny's Podcast Integration](#whats-new) — Connect your thinking with 280+ expert episodes. Semantic search across both your conversations and expert wisdom to inspire outward exploration.
 
 ---
 
@@ -26,7 +26,7 @@ Questions I couldn't answer:
 - "How has my approach to architecture evolved over time?"
 - "What connects this project to work I did three months ago?"
 
-Every conversation with Claude is you reasoning through problems. Before AI assistants, that thinking was invisible. Now it's captured—but without structure, you can't see the relationships. Inspiration builds a knowledge graph from your conversations so you can see how your thinking connects over time.
+Every conversation with Claude is you reasoning through problems. Before AI assistants, that thinking was invisible. Now it's captured—but without structure, you can't see the relationships. Inspiration analyzes your conversations to reveal how your thinking connects over time.
 
 What you can discover:
 - *"I've been circling this problem for months without realizing it"*
@@ -76,7 +76,7 @@ After several months of use, your Inspiration contains patterns specific to your
 | **Ideas** | Surface recurring pain points worth building solutions for |
 | **Insights** | Extract learnings worth sharing (blogs, tweets, notes) |
 | **Seek** | "I want to build X"—find similar examples from your own history |
-| **Expert Perspectives** | Connect your knowledge graph with 280+ Lenny's Podcast episodes via semantic search |
+| **Expert Perspectives** | Connect your thinking with 280+ Lenny's Podcast episodes via semantic search |
 
 ---
 
@@ -86,7 +86,7 @@ After several months of use, your Inspiration contains patterns specific to your
 |----------|-----------------|
 | **Day 1** | Semantic search across 280+ Lenny's Podcast episodes for expert insights |
 | **Month 1** | See patterns across your conversations; discover how your themes relate to expert discussions |
-| **Month 6** | Your knowledge graph connects with expert knowledge—relationships you didn't know existed |
+| **Month 6** | Your patterns connect with expert knowledge—relationships you didn't know existed |
 
 The more you use Inspiration, the more useful it becomes. Your Library accumulates, patterns emerge, connections between your thinking and expert knowledge become visible.
 
@@ -132,7 +132,7 @@ Open `http://localhost:3000/onboarding-fast`
 
 **Value on Day 1:** Even with zero personal conversations, Inspiration includes 280+ Lenny's Podcast episodes (product leaders, engineers, founders). You can immediately ask: *"What do experts say about pricing strategy?"* or *"How did successful PMs approach their first PM role?"*
 
-As you add your own conversations, your knowledge graph connects with expert knowledge—discovering how your thinking relates to industry expertise.
+As you add your own conversations, your patterns connect with expert knowledge—discovering how your thinking relates to industry expertise.
 
 **API Keys:** Anthropic required. OpenAI optional (enables expert perspectives). Supabase optional (for 500MB+ histories).
 
@@ -142,7 +142,7 @@ As you add your own conversations, your knowledge graph connects with expert kno
 
 ## How It Works
 
-Inspiration indexes your Cursor and Claude Code conversations (optionally to a Vector DB for large histories). It uses semantic search to recognize patterns and builds a knowledge graph to reveal relationships. Claude synthesizes these into structured ideas or insights. Your Library grows over time, the Theme Explorer surfaces patterns, and Unexplored Territory shows topics you've discussed but haven't captured yet.
+Inspiration indexes your Cursor and Claude Code conversations (optionally to a Vector DB for large histories). It uses semantic search to recognize patterns and reveals relationships through semantic analysis. Claude synthesizes these into structured ideas or insights. Your Library grows over time, the Theme Explorer surfaces patterns, and Unexplored Territory shows topics you've discussed but haven't captured yet.
 
 ---
 
@@ -155,8 +155,8 @@ Your conversations with AI capture reasoning at the moment you're working throug
 **1. Pattern recognition (semantic search):**  
 Find recurring themes across conversations. You keep hitting the same edge case. Your focus shifted from frontend to systems design. You've been circling the same architectural challenge from different angles.
 
-**2. Relationship forming (knowledge graph):**  
-Conversations become nodes, conceptual relationships become edges. A discussion from March connects to work you're doing now. Three different projects link through a common problem you didn't notice.
+**2. Relationship forming (semantic connections):**  
+Conversations connect through semantic similarity. A discussion from March connects to work you're doing now. Three different projects link through a common problem you didn't notice.
 
 **What this reveals:**
 
@@ -174,7 +174,7 @@ More conversations mean more patterns and more nodes in the graph. The value isn
 | Aspect | Details |
 |--------|---------|
 | **Multi-Source Extraction** | Reverse-engineered Cursor's "Bubble" format (SQLite) and Claude Code's JSONL |
-| **Knowledge Graph Construction** | RAG over your own chat history to find conceptual relationships |
+| **Relationship Discovery** | RAG over your own chat history to find conceptual relationships |
 | **Dedup Before Presentation** | Generate N×1.5 items, deduplicate via embedding similarity |
 | **Hybrid Local/Cloud** | Local SQLite → Supabase Vector DB sync; works offline, scales to 2GB+ |
 
@@ -182,7 +182,7 @@ More conversations mean more patterns and more nodes in the graph. The value isn
 
 - Standard RAG pipeline (embed → analyze → retrieve → synthesize)
 - Semantic search for pattern recognition
-- Cosine similarity for knowledge graph relationships
+- Cosine similarity for relationship discovery
 - Anthropic Claude for synthesis, OpenAI for embeddings
 - pgvector for server-side similarity search (275x fewer API calls)
 
@@ -196,7 +196,7 @@ The novelty is longitudinal intelligence: pattern recognition + relationship for
 
 **Lenny's Podcast Integration**
 
-Your knowledge graph now connects with expert knowledge. Semantic search across both your conversations and 280+ Lenny's Podcast episodes—**Claire Vo** (ChatPRD), **Dylan Field** (Figma), **Elena Verna** (Lovable, Miro), and other product leaders, engineers, and founders. Discover how expert thinking relates to your own patterns, inspiring outward exploration. Click through to YouTube timestamps.
+Your patterns now connect with expert knowledge. Semantic search across both your conversations and 280+ Lenny's Podcast episodes—**Claire Vo** (ChatPRD), **Dylan Field** (Figma), **Elena Verna** (Lovable, Miro), and other product leaders, engineers, and founders. Discover how expert thinking relates to your own patterns, inspiring outward exploration. Click through to YouTube timestamps.
 
 How it works:
 - **One-time auto-download:** ~250MB embeddings downloaded from GitHub Releases on first run
