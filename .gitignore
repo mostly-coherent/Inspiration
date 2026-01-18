@@ -101,3 +101,10 @@ LENNY_KG_BUILD_STATUS.md
 INSPIRATION_V2_PLAN.md
 engine/KG_USER_GUIDE.md
 engine/KG_QUALITY_DEFINITION.md
+
+# Knowledge Graph Monitoring Scripts (local development tools)
+monitor-kg-build.sh
+monitor_kg_indexing.py
+check_kg_progress.py
+check_kg_status_simple.py
+monitor_lenny_kg.sh
