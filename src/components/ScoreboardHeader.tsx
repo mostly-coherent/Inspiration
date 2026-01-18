@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, memo, useRef } from "react";
 import { isFeatureEnabled } from "@/lib/featureFlags";
-import { isFeatureEnabled } from "@/lib/featureFlags";
 
 interface MemoryStats {
   localSize: string | null;
