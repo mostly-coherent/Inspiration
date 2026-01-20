@@ -70,6 +70,9 @@ function GraphPageContent() {
               <h1 className="text-xl font-semibold text-white flex items-center gap-2">
                 <span>🔮</span>
                 Knowledge Graph
+                <span className="text-xs bg-amber-900/50 text-amber-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  🚧 Experimental
+                </span>
               </h1>
             </div>
             <div className="flex items-center gap-3">
@@ -92,6 +95,19 @@ function GraphPageContent() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-6">
+        {/* Experimental Feature Banner */}
+        <div className="bg-amber-900/20 border border-amber-700/30 rounded-xl p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <span className="text-xl">🚧</span>
+            <div className="text-sm">
+              <p className="text-amber-200 font-medium mb-1">Experimental Feature</p>
+              <p className="text-slate-400">
+                The Knowledge Graph visualizes entities and relationships extracted from your conversations. This is an experimental feature — the graph structure and entity extraction are still being refined.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Selected Entity Info */}
         {selectedEntityName && (
           <div className="mb-4 flex items-center justify-between bg-slate-800/50 rounded-lg px-4 py-3">
@@ -120,11 +136,10 @@ function GraphPageContent() {
         )}
 
         {/* Graph Container */}
-        <div className="bg-slate-900/50 border border-slate-800 rounded-xl overflow-hidden">
+        <div className="bg-slate-900/50 border border-slate-800 rounded-xl overflow-hidden w-full" style={{ height: "calc(100vh - 280px)", minHeight: 600 }}>
           <GraphView
             centerEntityId={selectedEntityId || undefined}
             onEntityClick={handleEntityClick}
-            height={600}
           />
         </div>
 

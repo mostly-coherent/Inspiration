@@ -109,7 +109,17 @@ export default function EvolutionTimeline({
       if (!isMountedRef.current) return;
 
       if (!res.ok) {
-        throw new Error(`Failed to fetch evolution data: ${res.status}`);
+        // Try to get error message from response
+        let errorMessage = `Failed to fetch evolution data: ${res.status}`;
+        try {
+          const errorData = await res.json();
+          if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch {
+          // If JSON parse fails, use status code message
+        }
+        throw new Error(errorMessage);
       }
 
       let data;
@@ -430,6 +440,19 @@ export default function EvolutionTimeline({
 
   return (
     <div className={`space-y-4 ${className}`}>
+      {/* Experimental Feature Banner */}
+      <div className="bg-amber-900/20 border border-amber-700/30 rounded-xl p-3">
+        <div className="flex items-start gap-2">
+          <span className="text-lg">🚧</span>
+          <div className="text-xs">
+            <p className="text-amber-200 font-medium mb-1">Experimental Feature</p>
+            <p className="text-slate-400">
+              Evolution tracking and trend analysis are experimental. Data accuracy may vary.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Controls - only show if not in single entity mode */}
       {!entityId && (
         <div className="flex items-center justify-between flex-wrap gap-3">

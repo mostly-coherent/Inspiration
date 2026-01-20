@@ -28,10 +28,16 @@ interface GraphData {
  *
  * Query params:
  * - center_entity_id: Optional entity to center the graph around
- * - limit: Max nodes to return (default: 50, max: 200)
+ * - limit: Max nodes to return (default: 50, max: 2000)
  * - depth: How many hops from center entity (default: 2, max: 3)
  * - type: Filter by entity type
  * - source: Filter by data source (user, lenny, both, all) - default: all
+ *
+ * Prioritization Strategy:
+ * - Entities are ranked by composite score: 50% normalized mention_count + 50% normalized degree (relationship count)
+ * - This ensures we show entities that are BOTH frequently mentioned AND highly connected
+ * - More connected entities (hubs) are prioritized, revealing the graph structure better
+ * - Uses get_entity_degrees() RPC function for efficient degree computation (falls back to manual counting if RPC unavailable)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -55,9 +61,11 @@ export async function GET(request: NextRequest) {
     const sourceFilter = searchParams.get("source") || "all";
     const limitParam = searchParams.get("limit") || "50";
     const depthParam = searchParams.get("depth") || "2";
+    const weightMentionsParam = searchParams.get("weight_mentions") || "50"; // 0-100, default 50
 
-    const limit = Math.min(Math.max(parseInt(limitParam, 10) || 50, 1), 200);
+    const limit = Math.min(Math.max(parseInt(limitParam, 10) || 50, 1), 2000);
     const depth = Math.min(Math.max(parseInt(depthParam, 10) || 2, 1), 3);
+    const weightMentions = Math.min(Math.max(parseInt(weightMentionsParam, 10) || 50, 0), 100);
 
     // Validate centerEntityId format (UUID v4 pattern)
     if (centerEntityId) {
@@ -72,7 +80,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Otherwise, return the top entities and their relations
-    return await buildTopEntitiesGraph(supabase, limit, typeFilter, sourceFilter);
+    return await buildTopEntitiesGraph(supabase, limit, typeFilter, sourceFilter, weightMentions);
   } catch (error) {
     console.error("Error in /api/kg/subgraph:", error);
     return NextResponse.json(
@@ -225,21 +233,52 @@ async function buildCenteredSubgraph(
 }
 
 /**
- * Build a graph from top entities by mention count
+ * Build a graph from top entities prioritized by mention count AND relationship count (degree centrality)
+ * Uses a composite score: normalized mention_count + normalized degree (relationship count)
  */
 async function buildTopEntitiesGraph(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   limit: number,
   typeFilter: string | null,
-  sourceFilter: string
+  sourceFilter: string,
+  weightMentions: number = 50 // 0-100, default 50 (50/50 split)
 ): Promise<NextResponse> {
-  // Fetch top entities
+  // First, compute degree (relationship count) for all entities
+  // We'll use a subquery to count relationships where entity appears as source OR target
+  const { data: degreeData, error: degreeError } = await supabase.rpc("get_entity_degrees", {});
+  
+  // If RPC doesn't exist, fall back to computing degrees manually
+  let degreeMap = new Map<string, number>();
+  if (degreeError) {
+    // Fallback: fetch all relations and count manually (less efficient but works)
+    const { data: allRelations } = await supabase
+      .from("kg_relations")
+      .select("source_entity_id, target_entity_id");
+    
+    if (allRelations) {
+      for (const rel of allRelations) {
+        if (rel.source_entity_id) {
+          degreeMap.set(rel.source_entity_id, (degreeMap.get(rel.source_entity_id) || 0) + 1);
+        }
+        if (rel.target_entity_id) {
+          degreeMap.set(rel.target_entity_id, (degreeMap.get(rel.target_entity_id) || 0) + 1);
+        }
+      }
+    }
+  } else if (degreeData) {
+    // Use RPC result if available
+    for (const row of degreeData) {
+      if (row.entity_id && row.degree) {
+        degreeMap.set(row.entity_id, row.degree);
+      }
+    }
+  }
+
+  // Fetch entities with filters
   let entitiesQuery = supabase
     .from("kg_entities")
-    .select("id, canonical_name, entity_type, mention_count, source_type")
-    .order("mention_count", { ascending: false })
-    .limit(limit);
+    .select("id, canonical_name, entity_type, mention_count, source_type");
 
   if (typeFilter) {
     entitiesQuery = entitiesQuery.eq("entity_type", typeFilter);
@@ -264,18 +303,64 @@ async function buildTopEntitiesGraph(
     );
   }
 
-  const nodes: GraphNode[] = (entitiesData || []).map((entity: {
+  // Compute composite score: normalized mention_count + normalized degree
+  // Normalize both to 0-1 range, then combine (weighted equally by default)
+  interface EntityWithDegree {
     id: string;
     canonical_name: string;
     entity_type: string;
     mention_count: number;
     source_type?: string;
-  }) => ({
+    degree: number;
+  }
+
+  const entitiesWithScores: EntityWithDegree[] = (entitiesData || []).map((entity: {
+    id: string;
+    canonical_name: string;
+    entity_type: string;
+    mention_count: number;
+    source_type?: string;
+  }) => {
+    const degree = degreeMap.get(entity.id) || 0;
+    return {
+      ...entity,
+      degree,
+    };
+  });
+
+  // Find max values for normalization
+  const maxMentions = Math.max(...entitiesWithScores.map((e: EntityWithDegree) => e.mention_count || 1), 1);
+  const maxDegree = Math.max(...entitiesWithScores.map((e: EntityWithDegree) => e.degree), 1);
+
+  // Compute composite score and sort
+  interface EntityWithScore extends EntityWithDegree {
+    compositeScore: number;
+  }
+
+  const entitiesRanked: EntityWithScore[] = entitiesWithScores
+    .map((entity: EntityWithDegree) => {
+      const normalizedMentions = (entity.mention_count || 1) / maxMentions;
+      const normalizedDegree = entity.degree / maxDegree;
+      // Composite score: weighted combination of mentions and degree (both normalized)
+      // weightMentions is 0-100, so weightMentions/100 for mentions, (100-weightMentions)/100 for degree
+      const mentionsWeight = weightMentions / 100;
+      const degreeWeight = (100 - weightMentions) / 100;
+      const compositeScore = normalizedMentions * mentionsWeight + normalizedDegree * degreeWeight;
+      return {
+        ...entity,
+        compositeScore,
+      };
+    })
+    .sort((a: EntityWithScore, b: EntityWithScore) => b.compositeScore - a.compositeScore)
+    .slice(0, limit);
+
+  const nodes: GraphNode[] = entitiesRanked.map((entity: EntityWithScore) => ({
     id: entity.id,
     name: entity.canonical_name,
     type: entity.entity_type,
     mentionCount: entity.mention_count || 1,
-    val: Math.max(Math.log(entity.mention_count || 1) + 1, 1) * 2,
+    // Node size based on composite score (mentions + relationships)
+    val: Math.max(Math.log((entity.mention_count || 1) + entity.degree + 1) + 1, 1) * 2,
     source: entity.source_type || "unknown",
   }));
 

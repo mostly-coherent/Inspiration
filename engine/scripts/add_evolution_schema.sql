@@ -3,6 +3,14 @@
 -- Run this in Supabase SQL Editor
 
 -- =============================================================================
+-- Drop Old Function Versions (if they exist)
+-- =============================================================================
+
+-- Drop old UUID-based versions to avoid function signature conflicts
+DROP FUNCTION IF EXISTS get_entity_evolution(UUID, TEXT, INT);
+DROP FUNCTION IF EXISTS get_entities_evolution(UUID[], TEXT, INT);
+
+-- =============================================================================
 -- RPC Functions for Temporal Aggregation
 -- =============================================================================
 

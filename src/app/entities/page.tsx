@@ -78,8 +78,11 @@ function EntitiesPageContent() {
               >
                 ← Back
               </Link>
-              <h1 className="text-xl font-semibold text-slate-100">
+              <h1 className="text-xl font-semibold text-slate-100 flex items-center gap-2">
                 🔮 Knowledge Graph
+                <span className="text-xs bg-amber-900/50 text-amber-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  🚧 Experimental
+                </span>
               </h1>
             </div>
 
@@ -165,6 +168,19 @@ function EntitiesPageContent() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-6">
+        {/* Experimental Feature Banner */}
+        <div className="bg-amber-900/20 border border-amber-700/30 rounded-xl p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <span className="text-xl">🚧</span>
+            <div className="text-sm">
+              <p className="text-amber-200 font-medium mb-1">Experimental Feature</p>
+              <p className="text-slate-400">
+                Knowledge Graph features are experimental — entity extraction, relationship detection, and intelligence insights are still being refined. Data quality may vary.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {loading ? (
           <div className="flex items-center justify-center h-[60vh] text-slate-400">
             Loading Knowledge Graph...

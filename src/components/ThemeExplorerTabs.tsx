@@ -91,11 +91,6 @@ export function ThemeExplorerTabs({ activeTab, onTabChange }: ThemeExplorerTabsP
                       Soon
                     </span>
                   )}
-                  {isExperimental && (
-                    <span className="text-[10px] bg-amber-900/50 text-amber-400 px-1.5 py-0.5 rounded-full flex items-center gap-1">
-                      🚧 WIP
-                    </span>
-                  )}
                 </span>
               </button>
             );

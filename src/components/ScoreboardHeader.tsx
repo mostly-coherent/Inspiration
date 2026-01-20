@@ -808,6 +808,9 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 <h2 className="text-sm font-semibold text-slate-100 uppercase tracking-wide">
                   Your Knowledge Graph
                 </h2>
+                <span className="px-1.5 py-0.5 text-[9px] font-medium rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wide" title="Experimental feature - work in progress">
+                  Experimental
+                </span>
               </div>
               <p className="text-xs text-slate-300 ml-8">
                 Entities & relations from your AI conversations

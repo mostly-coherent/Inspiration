@@ -108,8 +108,16 @@ export async function GET(request: NextRequest) {
 
         if (error) {
           console.error("Error fetching entity evolution:", error);
+          // Check if RPC function doesn't exist
+          const errorMessage = error.message || String(error);
+          if (errorMessage.includes("function") && errorMessage.includes("does not exist")) {
+            return NextResponse.json(
+              { error: "Evolution functions not deployed. Please run add_evolution_schema.sql in Supabase SQL Editor." },
+              { status: 500 }
+            );
+          }
           return NextResponse.json(
-            { error: error.message },
+            { error: errorMessage },
             { status: 500 }
           );
         }
@@ -198,8 +206,16 @@ export async function GET(request: NextRequest) {
 
         if (error) {
           console.error("Error fetching entities evolution:", error);
+          // Check if RPC function doesn't exist
+          const errorMessage = error.message || String(error);
+          if (errorMessage.includes("function") && errorMessage.includes("does not exist")) {
+            return NextResponse.json(
+              { error: "Evolution functions not deployed. Please run add_evolution_schema.sql in Supabase SQL Editor." },
+              { status: 500 }
+            );
+          }
           return NextResponse.json(
-            { error: error.message },
+            { error: errorMessage },
             { status: 500 }
           );
         }
@@ -261,8 +277,16 @@ export async function GET(request: NextRequest) {
 
         if (error) {
           console.error("Error fetching trending entities:", error);
+          // Check if RPC function doesn't exist
+          const errorMessage = error.message || String(error);
+          if (errorMessage.includes("function") && errorMessage.includes("does not exist")) {
+            return NextResponse.json(
+              { error: "Evolution functions not deployed. Please run add_evolution_schema.sql in Supabase SQL Editor." },
+              { status: 500 }
+            );
+          }
           return NextResponse.json(
-            { error: error.message },
+            { error: errorMessage },
             { status: 500 }
           );
         }
@@ -309,8 +333,16 @@ export async function GET(request: NextRequest) {
 
         if (error) {
           console.error("Error fetching activity timeline:", error);
+          // Check if RPC function doesn't exist
+          const errorMessage = error.message || String(error);
+          if (errorMessage.includes("function") && errorMessage.includes("does not exist")) {
+            return NextResponse.json(
+              { error: "Evolution functions not deployed. Please run add_evolution_schema.sql in Supabase SQL Editor." },
+              { status: 500 }
+            );
+          }
           return NextResponse.json(
-            { error: error.message },
+            { error: errorMessage },
             { status: 500 }
           );
         }

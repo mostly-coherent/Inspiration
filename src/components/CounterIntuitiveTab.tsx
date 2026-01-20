@@ -351,9 +351,6 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
         <div>
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
             <span className="text-2xl">🔄</span> Counter-Intuitive Thinking
-            <span className="text-xs bg-purple-900/50 text-purple-400 px-2 py-0.5 rounded-full flex items-center gap-1">
-              🚧 Experimental
-            </span>
           </h2>
           <p className="text-slate-400 text-sm mt-1">
             What if the opposite of what you believe is also true?
@@ -451,20 +448,6 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
             <span>Checking for updates...</span>
           </div>
         )}
-      </div>
-
-      {/* Info Banner */}
-      <div className="bg-purple-900/20 border border-purple-700/30 rounded-xl p-4">
-        <div className="flex items-start gap-3">
-          <span className="text-xl">🚧</span>
-          <div className="text-sm">
-            <p className="text-purple-200 font-medium mb-1">Experimental Feature</p>
-            <p className="text-slate-400">
-              These are <strong className="text-slate-300">thinking prompts</strong>, not items for your Library.
-              Your Library only contains ideas from your actual conversations — these are AI-generated &quot;what if&quot; questions to spark new thinking.
-            </p>
-          </div>
-        </div>
       </div>
 
       {/* Error State */}
