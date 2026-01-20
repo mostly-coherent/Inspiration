@@ -20,7 +20,7 @@ class EntityType(str, Enum):
     PERSON = "person"       # People mentioned (Lenny, Dan Abramov, team members)
     PROJECT = "project"     # Projects, codebases, repos (Inspiration, dad-aura)
     WORKFLOW = "workflow"   # Processes, methodologies (TDD, code review, pair programming)
-    UNKNOWN = "unknown"     # Entities that don't fit other categories (companies, metrics, events, etc.)
+    OTHER = "other"         # Entities that don't fit other categories (companies, metrics, events, etc.)
     
     @classmethod
     def from_string(cls, value: str) -> "EntityType":

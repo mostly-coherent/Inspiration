@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { requireFeature } from "@/lib/featureFlags";
 
 /**
  * GET /api/kg/entities
@@ -13,10 +12,6 @@ import { requireFeature } from "@/lib/featureFlags";
  * - source: Filter by data source (user, lenny, both, all) - default: all
  */
 export async function GET(request: NextRequest) {
-  // Feature flag: Return 404 if KG is disabled
-  const featureCheck = requireFeature("KNOWLEDGE_GRAPH");
-  if (featureCheck) return featureCheck;
-
   try {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey =
@@ -134,10 +129,6 @@ export async function GET(request: NextRequest) {
  * Get single entity with mentions
  */
 export async function POST(request: NextRequest) {
-  // Feature flag: Return 404 if KG is disabled
-  const featureCheck = requireFeature("KNOWLEDGE_GRAPH");
-  if (featureCheck) return featureCheck;
-
   try {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey =

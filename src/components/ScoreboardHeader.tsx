@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, memo, useRef } from "react";
-import { isFeatureEnabled } from "@/lib/featureFlags";
 
 interface MemoryStats {
   localSize: string | null;
@@ -558,26 +557,21 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
             </div>
 
             {/* Knowledge Graph Section (separate mental model) */}
-            {/* Feature flag: Hide KG UI unless flag is enabled */}
-            {/* Routes remain accessible via direct URL navigation */}
-            {isFeatureEnabled("KNOWLEDGE_GRAPH") && (
-              <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-700/30">
-                <span className="text-xs text-slate-500 uppercase tracking-wide">Knowledge Graph:</span>
-                <a
-                  href="/entities"
-                  className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
-                >
-                  📋 Entities
-                </a>
-                <a
-                  href="/graph"
-                  className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-                >
-                  🔮 Graph
-                </a>
-                {/* Lenny's KG will be added here later */}
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-700/30">
+              <span className="text-xs text-slate-500 uppercase tracking-wide">Knowledge Graph:</span>
+              <a
+                href="/entities"
+                className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+              >
+                📋 Entities
+              </a>
+              <a
+                href="/graph"
+                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+              >
+                🔮 Graph
+              </a>
+            </div>
           </div>
 
           {/* ─────────────────────────────────────────────────────────────── */}

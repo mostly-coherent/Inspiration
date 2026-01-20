@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { requireFeature } from "@/lib/featureFlags";
 
 interface EpisodeStat {
   episodeSlug: string;
@@ -29,10 +28,6 @@ interface EpisodeStatsSummary {
  * - Quality percentage
  */
 export async function GET() {
-  // Feature flag: Return 404 if KG is disabled
-  const featureCheck = requireFeature("KNOWLEDGE_GRAPH");
-  if (featureCheck) return featureCheck;
-
   try {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey =

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { requireFeature } from "@/lib/featureFlags";
 
 interface PatternAlert {
   problemId: string;
@@ -53,10 +52,6 @@ interface EntityCluster {
  * - limit: Number of results (default: 20)
  */
 export async function GET(request: NextRequest) {
-  // Feature flag: Return 404 if KG is disabled
-  const featureCheck = requireFeature("KNOWLEDGE_GRAPH");
-  if (featureCheck) return featureCheck;
-
   try {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey =

@@ -23,7 +23,7 @@ Entity Types:
 - person: People mentioned by name (Lenny Rachitsky, Dan Abramov, specific team members)
 - project: Specific projects, codebases, repos mentioned (not generic terms)
 - workflow: Processes, methodologies (TDD, code review, pair programming, standup)
-- unknown: Entities that don't fit other categories (companies, organizations, metrics, KPIs, events, conferences, products, brands, etc.)
+- other: Entities that don't fit other categories (companies, organizations, metrics, KPIs, events, conferences, products, brands, etc.)
 
 Extraction Rules:
 1. Only extract SPECIFIC, NAMED entities (not generic terms like "the database" or "my code")
@@ -32,7 +32,7 @@ Extraction Rules:
 4. Assign confidence 0.7-1.0 based on how clearly the entity is referenced
 5. Skip very common/generic terms (JavaScript, Python, API, function, etc.) unless they're the main focus
 6. For tools, only include if it's clear the user is actively using or discussing it
-7. Use "unknown" type for entities that don't clearly fit other categories (companies, metrics, events, products, etc.)
+7. Use "other" type for entities that don't clearly fit other categories (companies, metrics, events, products, etc.)
 
 Conversation:
 {text}
@@ -41,7 +41,7 @@ Respond with a JSON array of entities. If no notable entities found, return empt
 
 Format:
 [
-  {{"name": "Entity Name", "type": "tool|pattern|problem|concept|person|project|workflow|unknown", "aliases": ["alias1"], "confidence": 0.9}},
+  {{"name": "Entity Name", "type": "tool|pattern|problem|concept|person|project|workflow|other", "aliases": ["alias1"], "confidence": 0.9}},
   ...
 ]
 

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireFeature } from "@/lib/featureFlags";
 
 /**
  * POST /api/kg/estimate-cost
@@ -36,10 +35,6 @@ import { requireFeature } from "@/lib/featureFlags";
  * }
  */
 export async function POST(request: NextRequest) {
-  // Feature flag: Return 404 if KG is disabled
-  const featureCheck = requireFeature("KNOWLEDGE_GRAPH");
-  if (featureCheck) return featureCheck;
-
   try {
     let body;
     try {

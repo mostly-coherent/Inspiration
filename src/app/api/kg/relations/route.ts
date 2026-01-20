@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { requireFeature } from "@/lib/featureFlags";
 
 /**
  * GET /api/kg/relations
@@ -11,10 +10,6 @@ import { requireFeature } from "@/lib/featureFlags";
  * - limit: Max results (default: 50)
  */
 export async function GET(request: NextRequest) {
-  // Feature flag: Return 404 if KG is disabled
-  const featureCheck = requireFeature("KNOWLEDGE_GRAPH");
-  if (featureCheck) return featureCheck;
-
   try {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey =

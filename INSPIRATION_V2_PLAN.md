@@ -1,11 +1,42 @@
 # Inspiration v2.0+ — Future Roadmap
 
-> **Version:** 2.0+ (Post-Knowledge Graphs Release)  
-> **Last Updated:** 2026-01-19  
-> **Status:** 🔮 Future Features (v2.0 Foundation Complete)  
+> **Version:** 2.0+ (Post-Knowledge Graphs Release)
+> **Last Updated:** 2026-01-19
+> **Status:** 🔮 Future Features (v2.0 Foundation Complete)
 > **Philosophy:** Ship incrementally, iterate based on user feedback
 
 > **Note:** This document describes **future features not yet implemented**. For completed v2.0 features, see `PLAN.md` Knowledge Graph section.
+
+---
+
+## 🎯 Recommended Priorities (Next Steps)
+
+Based on the current implementation state (15,449 entities, 10,898+ relations), here are the **recommended priorities** for future work:
+
+### Tier 1: High Impact, Medium Effort (Build First)
+
+| Priority | Feature | Rationale | Effort |
+|----------|---------|-----------|--------|
+| **P1** | **User Chat Indexing UX** (Iteration 2) | Let users build personal KG with progress UI, cost estimation, incremental sync | 6-8 hours |
+| **P2** | **Schema Evolution** (Phase 3) | Discover new entity types from 5,038 "other" entities without re-indexing | 2-3 weeks |
+
+### Tier 2: High Value, Requires Volume (Build After Tier 1)
+
+| Priority | Feature | Rationale | Effort |
+|----------|---------|-----------|--------|
+| **P3** | **Relationship Grouping** (Phase 4) | Canonicalize 10,898+ relations to prevent predicate explosion, improve queryability | 3-4 weeks |
+| **P4** | **Cross-KG Semantic Matching** | Embedding-based similarity across User ↔ Lenny KGs (since string overlap = 0) | 4-6 weeks |
+
+### Tier 3: Long-term Research (Defer Until Demand)
+
+| Priority | Feature | Rationale | Effort |
+|----------|---------|-----------|--------|
+| **P5** | **Open-Schema Extraction** (Phase 5) | Extract without type constraints, discover types from clusters | 4-6 weeks |
+| **P6** | **Fully Dynamic Schema** (Phase 6) | Automatic schema evolution with ML-based type classification | 8-12 weeks |
+
+### ⏸️ Deferred (No String Overlap Found)
+
+- **Cross-KG Connection (Phase 2)** — String-based deduplication found 0 overlaps. User and Lenny entities are named differently. Future alternative: semantic matching (P4 above).
 
 ---
 
@@ -72,11 +103,11 @@
 | **User's Chat KG** | Cursor + Claude Code chats | Context retrieval, decision tracking | Hierarchical & temporal schema | ✅ Complete (1,571 entities) |
 | **Cross-KG Connection** | Both sources | Cross-exploration, validation | Unified entities via deduplication | ⏸️ Deferred (semantic matching future) |
 
-**Key Principle:** Both KGs share the same base schema (7 types + "unknown") but use different extraction strategies based on content type.
+**Key Principle:** Both KGs share the same base schema (7 types + "other") but use different extraction strategies based on content type.
 
 ### Recommended Approach: Hybrid Schema Evolution with Triple-Based Foundation
 
-**Core Finding:** Start with triple-based extraction (Subject-Predicate-Object) as foundation, add fixed schema (7 types + "unknown"), explicitly canonicalize entities (CRITICAL), group relationships into dynamic ontology, periodically discover new types from content using 2025 methods, incrementally expand without full re-index.
+**Core Finding:** Start with triple-based extraction (Subject-Predicate-Object) as foundation, add fixed schema (7 types + "other"), explicitly canonicalize entities (CRITICAL), group relationships into dynamic ontology, periodically discover new types from content using 2025 methods, incrementally expand without full re-index.
 
 **Why Triple-Based?**
 - **LLM Native Language:** LLMs are trained on subject-verb-object structure, resulting in higher extraction accuracy
@@ -530,7 +561,7 @@ Save to Supabase KG tables
 ❌ **Multi-hop inference** — Too complex (Phase 5-6)  
 ❌ **Entity hierarchies** — Wait for user demand  
 ❌ **External linking (Wikipedia)** — Low ROI  
-❌ **Custom entity types** — 7 types + "unknown" cover 95% of cases (schema evolves in Phase 3)
+❌ **Custom entity types** — 7 types + "other" cover 95% of cases (schema evolves in Phase 3)
 
 ---
 

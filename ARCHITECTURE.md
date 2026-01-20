@@ -2114,7 +2114,7 @@ Transform Inspiration from "find patterns in conversations" to "understand conne
 | Concept | Definition | Example |
 |---------|------------|---------|
 | **Entity** | A distinct concept extracted from conversations | "React Server Components", "caching", "auth flow" |
-| **Entity Type** | Category of entity | tool, pattern, problem, concept, person, project, workflow |
+| **Entity Type** | Category of entity | tool, pattern, problem, concept, person, project, workflow, other |
 | **Relation** | Named connection between entities | SOLVES, CAUSES, ENABLES, PART_OF, USED_WITH |
 | **Mention** | Instance where entity appears in conversation | Message ID + timestamp + context snippet |
 | **Entity Cluster** | Group of semantically similar entities (deduplication) | "RSC", "React Server Components", "server components" → single entity |
@@ -2136,6 +2136,7 @@ Transform Inspiration from "find patterns in conversations" to "understand conne
 - `person` — People mentioned (Lenny, Dan Abramov, team members)
 - `project` — Projects, codebases, repos (Inspiration, dad-aura)
 - `workflow` — Processes, methodologies (TDD, code review, pair programming)
+- `other` — Entities that don't fit other categories (companies, organizations, metrics, events, products)
 
 **Relation Types:**
 - `SOLVES` — tool/pattern SOLVES problem
