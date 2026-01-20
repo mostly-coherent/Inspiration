@@ -17,6 +17,14 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // Limit bulk operations to prevent database overload
+    if (ids.length > 1000) {
+      return NextResponse.json(
+        { success: false, error: "Too many items. Maximum 1000 items per bulk operation." },
+        { status: 400 }
+      );
+    }
+
     if (!status || !["active", "archived"].includes(status)) {
       return NextResponse.json(
         { success: false, error: "Invalid status" },
@@ -78,6 +86,14 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    // Limit bulk operations to prevent database overload
+    if (ids.length > 1000) {
+      return NextResponse.json(
+        { success: false, error: "Too many items. Maximum 1000 items per bulk operation." },
+        { status: 400 }
+      );
+    }
+
     // Initialize Supabase client
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_ANON_KEY;
@@ -106,10 +122,13 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Update category itemIds (remove deleted items)
-    // First, fetch all categories
+    // Note: Items are already deleted above, so we clean up category references
+    // If category updates fail, items are still deleted (partial success)
     const { data: categories, error: categoriesError } = await supabase
       .from("library_categories")
       .select("*");
+    
+    const categoryUpdateErrors: string[] = [];
     
     if (!categoriesError && categories) {
       const idSet = new Set(ids);
@@ -117,20 +136,38 @@ export async function DELETE(request: NextRequest) {
         if (category.item_ids && category.item_ids.length > 0) {
           const updatedItemIds = category.item_ids.filter((id: string) => !idSet.has(id));
           if (updatedItemIds.length !== category.item_ids.length) {
-            await supabase
+            const { error: updateError } = await supabase
               .from("library_categories")
               .update({ item_ids: updatedItemIds })
               .eq("id", category.id);
+            
+            if (updateError) {
+              console.error(`Error updating category ${category.id}:`, updateError);
+              categoryUpdateErrors.push(`Category "${category.name || category.id}": ${updateError.message}`);
+            }
           }
         }
       }
     }
 
-    return NextResponse.json({
+    // Items are deleted successfully, but category cleanup may have had issues
+    const response: {
+      success: boolean;
+      deletedCount: number;
+      message: string;
+      warnings?: string[];
+    } = {
       success: true,
       deletedCount: ids.length,
       message: `Deleted ${ids.length} items`,
-    });
+    };
+    
+    if (categoryUpdateErrors.length > 0) {
+      response.warnings = categoryUpdateErrors;
+      console.warn("[Items Bulk DELETE] Category cleanup had errors:", categoryUpdateErrors);
+    }
+    
+    return NextResponse.json(response);
   } catch (error) {
     console.error("[Items Bulk DELETE] Error:", error);
     return NextResponse.json(

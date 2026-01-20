@@ -14,7 +14,7 @@ export const FEATURE_FLAGS = {
    * - API routes return 404 (not found)
    * - Routes remain accessible if flag is enabled
    */
-  KNOWLEDGE_GRAPH: false,
+  KNOWLEDGE_GRAPH: true,
 } as const;
 
 /**

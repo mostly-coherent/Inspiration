@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, memo, useMemo } from "react";
+import { useState, memo, useMemo, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { GenerateResult, TOOL_CONFIG } from "@/lib/types";
 import { copyToClipboard, downloadFile } from "@/lib/utils";
@@ -22,6 +22,22 @@ export const ResultsPanel = memo(function ResultsPanel({ result, onRetry, onRetr
   const [isHarmonizing, setIsHarmonizing] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const router = useRouter();
+  
+  // Track timeouts for cleanup
+  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+      if (errorTimeoutRef.current) {
+        clearTimeout(errorTimeoutRef.current);
+      }
+    };
+  }, []);
   
   // Validate stats in development mode
   validateAndLog(result, 'ResultsPanel');
@@ -101,9 +117,22 @@ export const ResultsPanel = memo(function ResultsPanel({ result, onRetry, onRetr
   };
 
   const handleCopy = async (content: string) => {
+    // Clear any existing timeouts
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = null;
+    }
+    if (errorTimeoutRef.current) {
+      clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = null;
+    }
+    
     if (!content) {
       setCopyError("Nothing to copy");
-      setTimeout(() => setCopyError(null), 3000);
+      errorTimeoutRef.current = setTimeout(() => {
+        setCopyError(null);
+        errorTimeoutRef.current = null;
+      }, 3000);
       return;
     }
     
@@ -112,12 +141,18 @@ export const ResultsPanel = memo(function ResultsPanel({ result, onRetry, onRetr
     try {
       await copyToClipboard(content);
       // Success - clear error after brief delay to show success state
-      setTimeout(() => setIsCopying(false), 500);
+      copyTimeoutRef.current = setTimeout(() => {
+        setIsCopying(false);
+        copyTimeoutRef.current = null;
+      }, 500);
     } catch (error) {
       console.error("Copy failed:", error);
       setCopyError("Failed to copy to clipboard. Please try again.");
       setIsCopying(false);
-      setTimeout(() => setCopyError(null), 5000);
+      errorTimeoutRef.current = setTimeout(() => {
+        setCopyError(null);
+        errorTimeoutRef.current = null;
+      }, 5000);
     }
   };
 
@@ -408,11 +443,12 @@ export const ResultsPanel = memo(function ResultsPanel({ result, onRetry, onRetr
                 <span aria-hidden="true">💾</span> Save
               </button>
               <button
-                onClick={() => result.content && copyToClipboard(result.content)}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                onClick={() => result.content && handleCopy(result.content)}
+                disabled={isCopying || !result.content}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 aria-label="Copy result to clipboard"
               >
-                <span aria-hidden="true">📋</span> Copy
+                <span aria-hidden="true">{isCopying ? "✓" : "📋"}</span> {isCopying ? "Copied!" : "Copy"}
               </button>
             </div>
           </div>

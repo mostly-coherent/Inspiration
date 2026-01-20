@@ -6,6 +6,137 @@
 
 ---
 
+## Progress - 2026-01-17 (Phase 1b: User's Chat KG — COMPLETE)
+
+**Done:**
+- ✅ **Temporal Tracker (`engine/common/temporal_tracker.py`)**
+  - Tracks temporal chains between chat conversations
+  - Infers "Chat A → followed by → Chat B" relationships
+  - Supports FOLLOWED_BY, REFERENCED_BY, OBSOLETES relationship types
+  - Builds chains from conversation timestamps and content
+  - File: `engine/common/temporal_tracker.py`
+
+- ✅ **Decision Extractor (`engine/common/decision_extractor.py`)**
+  - Extracts decision points from user chat history
+  - Identifies: TECHNOLOGY_CHOICE, ARCHITECTURE, DEPENDENCY, ASSUMPTION
+  - Extracts alternatives considered and rationale
+  - Extracts trace IDs from code comments (`# @trace-id: research_node_882`)
+  - File: `engine/common/decision_extractor.py`
+
+- ✅ **User Chat KG Indexing Script (`engine/scripts/index_user_kg_parallel.py`)**
+  - Parallel indexing of user's Cursor + Claude Code chat history
+  - Integrates Phase 0 triple extraction
+  - Entity canonicalization (CRITICAL STEP)
+  - Quality filtering (domain-agnostic, 0.35 threshold)
+  - Optional relation extraction
+  - Optional decision extraction
+  - Temporal chain building
+  - File: `engine/scripts/index_user_kg_parallel.py`
+
+- ✅ **Knowledge Graph Schema Update (`engine/common/knowledge_graph.py`)**
+  - Added temporal chain relation types: FOLLOWED_BY, REFERENCED_BY, OBSOLETES
+  - Supports Phase 1b temporal tracking requirements
+  - File: `engine/common/knowledge_graph.py`
+
+**In Progress:**
+- ✅ Testing user chat KG indexing on sample conversations — COMPLETE
+
+**Next:**
+- Plan Phase 2 (Cross-KG Connection)
+
+**Testing Results (2026-01-18):**
+- ✅ Triple extraction: Working (7 triples extracted from sample text)
+- ✅ Entity extraction: Working (6 entities extracted: Supabase, GPT-4o-mini, Circuit Breaker, etc.)
+- ✅ Decision extraction: Working (4 decisions extracted: TECHNOLOGY_CHOICE, ARCHITECTURE_DECISION)
+- ✅ Temporal chain building: Working (2 chains built: REFERENCED_BY, FOLLOWED_BY)
+- ✅ Entity type mapping: Fixed "unknown" entity type support (migration created)
+- ✅ Indexing script: Working correctly (skips already-indexed conversations)
+- ✅ All components verified with test script (`test_phase1b_components.py`)
+
+**Integration Complete (2026-01-18):**
+- ✅ **Temporal Chains Persistence**
+  - Created `get_or_create_conversation_entity()` to represent chats as entities
+  - Created `save_temporal_chain()` to save chains as relations (FOLLOWED_BY, REFERENCED_BY, OBSOLETES)
+  - Integrated into main indexing flow (saves chains after processing conversations)
+  - Database migration: `add_temporal_relation_types.sql` (adds temporal relation types to enum)
+  - Files: `index_user_kg_parallel.py` (lines 127-211), `add_temporal_relation_types.sql`
+
+- ✅ **Decisions Persistence**
+  - Created `kg_decisions` table schema (`add_decisions_schema.sql`)
+  - Created `save_decision()` function to store decision points
+  - Integrated trace ID extraction and storage
+  - Integrated into worker function (saves decisions during indexing)
+  - Files: `add_decisions_schema.sql`, `index_user_kg_parallel.py` (lines 213-252)
+
+**End-to-End Testing (2026-01-18):**
+- ✅ Temporal chains: Successfully saved to database (1 chain saved in test)
+- ✅ Database migrations: All 3 migrations applied successfully
+- ✅ Error handling: CodeFix review passed, all validation and error handling in place
+- ✅ Integration: All components working together correctly
+
+**Database Migrations:**
+- ✅ Run `add_unknown_entity_type.sql` in Supabase SQL Editor (adds "unknown" to enum) — DONE
+- ✅ Run `add_decisions_schema.sql` in Supabase SQL Editor (creates `kg_decisions` table) — DONE
+- ✅ Run `add_temporal_relation_types.sql` in Supabase SQL Editor (adds FOLLOWED_BY, REFERENCED_BY, OBSOLETES) — DONE
+
+**Evidence:**
+- Files created: `temporal_tracker.py`, `decision_extractor.py`, `index_user_kg_parallel.py`
+- Schema updated: `knowledge_graph.py` (temporal relations added)
+- All files pass linting
+- Script executable: `python3 engine/scripts/index_user_kg_parallel.py --dry-run`
+
+---
+
+## Progress - 2026-01-17 (Phase 0: Triple-Based Foundation — STARTED)
+
+**Done:**
+- ✅ **Triple Extractor (`engine/common/triple_extractor.py`)**
+  - LLM-based extraction of Subject-Predicate-Object triples from text
+  - Uses GPT-4o-mini for cost-efficient extraction
+  - Supports fallback chain (OpenAI → Anthropic → OpenRouter)
+  - Extracts up to 10 triples per conversation with confidence scores
+  - Helper functions: `triples_to_entities()`, `triples_to_relations()`
+  - File: `engine/common/triple_extractor.py`
+
+- ✅ **Entity Canonicalizer (`engine/common/entity_canonicalizer.py`)**
+  - Explicit canonicalization of semantically identical entities
+  - Builds on EntityDeduplicator for database operations
+  - Merges entities: "PM" → "Product Manager", "Next.js" → "NextJS"
+  - Batch canonicalization support
+  - Entity merge functionality (moves mentions/relations)
+  - File: `engine/common/entity_canonicalizer.py`
+
+- ✅ **Batch Canonicalization Script (`engine/scripts/canonicalize_entities.py`)**
+  - CLI tool to canonicalize existing entities in database
+  - Finds similar entities using embedding similarity (threshold: 0.85)
+  - Dry-run mode to preview merges
+  - Supports entity type filtering
+  - File: `engine/scripts/canonicalize_entities.py`
+
+- ✅ **Integration Example (`engine/scripts/example_triple_based_indexing.py`)**
+  - Demonstrates triple-based indexing pattern
+  - Shows workflow: Extract triples → Extract entities → Canonicalize → Save
+  - Example usage for Phase 0 integration
+  - File: `engine/scripts/example_triple_based_indexing.py`
+
+**In Progress:**
+- ⏳ Integration with existing indexing pipeline (`index_lenny_kg_parallel.py`)
+- ⏳ Testing triple extraction on sample chunks
+- ⏳ Relationship grouping (Dynamic Ontology) — Phase 4
+
+**Next:**
+- Test triple extraction on Lenny's podcast chunks
+- Integrate triples into indexing pipeline (optional enhancement)
+- Run batch canonicalization on existing entities
+- Plan Phase 1b (User Chat KG)
+
+**Evidence:**
+- Files created: `triple_extractor.py`, `entity_canonicalizer.py`, `canonicalize_entities.py`, `example_triple_based_indexing.py`
+- All files pass linting
+- Example script executable: `python3 engine/scripts/example_triple_based_indexing.py`
+
+---
+
 ## Progress - 2026-01-14 (FAST-2: Cost Estimation — COMPLETE)
 
 **Done:**
@@ -2582,3 +2713,81 @@ We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB**
 - CodeFix caught 80% of issues pre-production, real run revealed the rest
 
 <!-- Entry added: 2026-01-16 -->
+
+---
+
+## Progress - 2026-01-19 (KG Quality Improvements & Multi-Source Views)
+
+**Done:**
+- ✅ **'other' Entity Type Added**
+  - Migration: `003_add_other_entity_type.sql` created
+  - Allows emergent/uncategorized entities to be captured
+  - Examples: Events, Organizations, Metrics, Documents, Domains
+  - UI updated: GraphView, EntityExplorer now show 'other' with slate color
+  - File: `engine/scripts/migrations/003_add_other_entity_type.sql`
+
+- ✅ **Multi-Source KG Views (User vs Lenny vs Combined)**
+  - API: Added `source` filter to `/api/kg/entities` and `/api/kg/subgraph`
+  - Uses `source_type` field: "user" (chat), "expert" (Lenny podcast), "both"
+  - New component: `KGSourceSelector.tsx` - toggle between My KG / Lenny's KG / Combined
+  - GraphView: Visual distinction (solid=user, dashed=Lenny, ring=both)
+  - EntityExplorer: Source badges on entity cards
+  - Files: `KGSourceSelector.tsx`, `EntityExplorer.tsx`, `GraphView.tsx`, `route.ts` (entities + subgraph)
+
+- ✅ **Episode Quality Report**
+  - New API: `/api/kg/episode-stats` returns per-episode indexing stats
+  - New component: `EpisodeQualityReport.tsx` - table of all episodes with quality %
+  - Color coding: <30% red, 30-50% yellow, >50% green
+  - Sortable columns: Guest, Chunks, Indexed, Quality %
+  - Integrated into Entities page as "Episodes" tab
+  - Files: `episode-stats/route.ts`, `EpisodeQualityReport.tsx`, `page.tsx`
+
+- ✅ **Quality Filter Improvements**
+  - Lowered threshold: 0.35 → 0.25 (more chunks pass)
+  - Added sponsor ad exclusion patterns (13 patterns)
+  - Skips sponsor segments: "brought to you by", "sign up for free trial", etc.
+  - File: `engine/common/kg_quality_filter.py`
+
+- ✅ **Neo4j Export Path Documented**
+  - Added "Future: Neo4j Export Path" section to PLAN.md
+  - Covers: when to migrate, implementation steps, cost considerations
+  - Status: Future consideration (not blocking current work)
+  - File: `INSPIRATION_V2_PLAN.md` (lines 924-947)
+
+- ✅ **Final Indexing Run Complete**
+  - Duration: 9.4 hours (562 minutes)
+  - Chunks processed: 34,489
+  - New entities: 279
+  - Deduplicated: 920 (merged with existing)
+  - Relations: 238
+  - Skipped (low quality): 28,403 (82% filtered)
+  - Errors: 1 (non-critical)
+  - Rate: 61.3 chunks/min
+
+**Files Created/Modified:**
+- `engine/scripts/migrations/003_add_other_entity_type.sql` (new)
+- `src/components/KGSourceSelector.tsx` (new)
+- `src/components/EpisodeQualityReport.tsx` (new)
+- `src/app/api/kg/episode-stats/route.ts` (new)
+- `src/app/api/kg/entities/route.ts` (updated: source filter)
+- `src/app/api/kg/subgraph/route.ts` (updated: source filter)
+- `src/components/GraphView.tsx` (updated: source visual distinction)
+- `src/components/EntityExplorer.tsx` (updated: source badges + filter)
+- `src/app/entities/page.tsx` (updated: Episodes tab)
+- `engine/common/kg_quality_filter.py` (updated: lower threshold + sponsor exclusion)
+- `INSPIRATION_V2_PLAN.md` (updated: Neo4j export path)
+
+**Evidence:**
+- Indexing complete: 279 entities + 238 relations in production
+- API: Source filtering working (`?source=lenny`, `?source=user`, `?source=all`)
+- UI: Episode quality report shows all episodes with stats
+- GraphView: Visual distinction between user/Lenny entities
+- Quality filter: 82% filtered (sponsor ads excluded)
+
+**Key Learnings:**
+- Database uses `source_type` field (values: "user", "expert", "both"), not `source` (always "llm")
+- Sponsor ad patterns significantly improve signal-to-noise ratio
+- Quality threshold 0.25 balances coverage vs noise well
+- Multi-source views enable comparing personal knowledge vs expert knowledge
+
+<!-- Entry added: 2026-01-19 -->

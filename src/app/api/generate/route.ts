@@ -252,8 +252,9 @@ export async function POST(request: NextRequest) {
       }
       
       // Truncate if still too long
+      const stderrLength = result.stderr?.length ?? 0;
       const errorPreview = errorMessage.length > 2000 
-        ? `${errorMessage.slice(0, 2000)}\n... (truncated, ${result.stderr.length} total chars in stderr)`
+        ? `${errorMessage.slice(0, 2000)}\n... (truncated, ${stderrLength} total chars in stderr)`
         : errorMessage;
       
       return NextResponse.json(
@@ -262,7 +263,7 @@ export async function POST(request: NextRequest) {
           tool: resolvedTool,
           mode,
           error: `Script failed (exit ${result.exitCode}): ${errorPreview}`,
-          stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, candidatesGenerated: 0 },
+          stats: { daysProcessed: 0, daysWithActivity: 0, daysWithOutput: 0, itemsGenerated: 0, itemsAfterDedup: 0, itemsReturned: 0 },
           timestamp: new Date().toISOString(),
         },
         { status: 500 }

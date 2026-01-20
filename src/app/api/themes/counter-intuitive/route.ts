@@ -64,6 +64,22 @@ export async function GET(request: Request) {
 
       let stdout = "";
       let stderr = "";
+      let resolved = false;
+
+      // Timeout after maxDuration (120 seconds)
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          python.kill("SIGTERM");
+          // Force kill after 2 seconds if still running
+          setTimeout(() => {
+            if (!python.killed) {
+              python.kill("SIGKILL");
+            }
+          }, 2000);
+          reject(new Error("Python script timed out"));
+        }
+      }, 115000); // 115 seconds (5 seconds before maxDuration)
 
       python.stdout.on("data", (data) => {
         stdout += data.toString();
@@ -76,6 +92,9 @@ export async function GET(request: Request) {
       });
 
       python.on("close", (code) => {
+        clearTimeout(timeout);
+        if (resolved) return; // Already handled by timeout
+        resolved = true;
         if (code === 0) {
           resolve(stdout);
         } else {
@@ -85,11 +104,29 @@ export async function GET(request: Request) {
       });
 
       python.on("error", (err) => {
-        reject(err);
+        clearTimeout(timeout);
+        if (!resolved) {
+          resolved = true;
+          reject(err);
+        }
       });
     });
 
-    const suggestions: CounterIntuitiveSuggestion[] = JSON.parse(result);
+    // Validate stdout is not empty before parsing
+    if (!result || !result.trim()) {
+      throw new Error("Python script returned empty output");
+    }
+
+    let suggestions: CounterIntuitiveSuggestion[];
+    try {
+      suggestions = JSON.parse(result);
+      if (!Array.isArray(suggestions)) {
+        throw new Error("Python script returned invalid JSON format (expected array)");
+      }
+    } catch (parseError) {
+      console.error("Failed to parse Python output:", parseError);
+      throw new Error(`Failed to parse Python output: ${parseError instanceof Error ? parseError.message : "Invalid JSON"}`);
+    }
 
     return NextResponse.json({
       success: true,

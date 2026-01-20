@@ -1610,3 +1610,49 @@ python3 engine/generate.py --mode insights --days 30 --item-count 25
 
 ---
 
+
+## Decision: Defer Cross-Source Deduplication (Phase 2) - 2026-01-19
+
+**Decision:** Defer traditional cross-source deduplication (string matching to merge User KG + Lenny's KG entities). Keep the two KGs separate.
+
+**Rationale:**
+We analyzed the overlap between User KG (1,571 entities) and Lenny's KG (13,878 entities):
+
+| Analysis | Result |
+|----------|--------|
+| Exact name matches | **0** |
+| Case-insensitive matches | **0** |
+| Common significant words | **170** |
+
+The entities are named differently in each source:
+- User: "multi-agent systems", "browser-native", "explore and exploit"
+- Lenny: "AI agents", "native apps", "experimentation"
+
+String-based deduplication would find **zero merges** — effort with no value.
+
+**Alternatives Considered:**
+1. **String deduplication anyway** - Zero matches, pure overhead
+2. **Fuzzy string matching** - Would create false positives (e.g., "agent" ≠ "AI agent")
+3. **Semantic embedding matching** - High value but significant effort (future consideration)
+
+**Recommendation:**
+1. Keep KGs separate (already implemented)
+2. Source filtering works great (My KG / Lenny's KG / Combined views)
+3. Future: Add "Related Expert Insights" using embedding similarity
+   - When viewing a user entity, show semantically similar Lenny entities
+   - "You discussed X → Lenny talked about similar concept Y"
+
+**Impact:**
+- **Scope:** Phase 2 of v2.0 roadmap deferred
+- **Timeline:** No blocking effect on current features
+- **Architecture:** Multi-source views remain independent (clean separation)
+- **Future:** Semantic cross-referencing becomes the path forward
+
+**Status:** ⏸️ Deferred | **DRI:** User + AI Agent
+
+**Evidence:**
+- Database query: `SELECT COUNT(*) FROM kg_entities WHERE source_type = 'both'` → **0**
+- Python analysis: `user_names & expert_names` → **empty set**
+- Common words found: accessibility, agent, analytics, anthropic, chatgpt... (semantic overlap, not string overlap)
+
+---

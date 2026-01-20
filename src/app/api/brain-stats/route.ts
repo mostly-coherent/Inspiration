@@ -113,7 +113,13 @@ export async function GET() {
       const timeout = setTimeout(() => {
         if (!resolved) {
           resolved = true;
-          process.kill();
+          process.kill("SIGTERM");
+          // Force kill after 1 second if still running
+          setTimeout(() => {
+            if (!process.killed) {
+              process.kill("SIGKILL");
+            }
+          }, 1000);
           console.error("Brain stats timeout - likely no local DB");
           resolve(NextResponse.json(
             { 
@@ -162,8 +168,19 @@ export async function GET() {
           }
         } else {
           try {
+            // Validate stdout is not empty before parsing
+            if (!stdout || !stdout.trim()) {
+              throw new Error("Python script returned empty output");
+            }
+            
             // Parse JSON output from script
             const stats = JSON.parse(stdout.trim());
+            
+            // Validate stats structure
+            if (typeof stats !== "object" || stats === null) {
+              throw new Error("Python script returned invalid JSON format (expected object)");
+            }
+            
             resolve(NextResponse.json({ 
               success: true, 
               localSize: stats.localSize,
@@ -178,7 +195,7 @@ export async function GET() {
           } catch (parseError) {
             console.error("Failed to parse brain stats:", parseError);
             resolve(NextResponse.json(
-              { success: false, error: "Failed to parse stats", localSize: null, vectorSize: null, earliestDate: null, latestDate: null },
+              { success: false, error: `Failed to parse stats: ${parseError instanceof Error ? parseError.message : "Invalid JSON"}`, localSize: null, vectorSize: null, earliestDate: null, latestDate: null },
               { status: 500 }
             ));
           }

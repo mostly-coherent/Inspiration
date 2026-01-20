@@ -99,6 +99,29 @@ async function runHarmonize(
 
     let stdout = "";
     let stderr = "";
+    let resolved = false;
+
+    // Timeout after maxDuration (120 seconds)
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        proc.kill("SIGTERM");
+        // Force kill after 2 seconds if still running
+        setTimeout(() => {
+          if (!proc.killed) {
+            proc.kill("SIGKILL");
+          }
+        }, 2000);
+        resolve({
+          success: false,
+          mode,
+          filesProcessed: 0,
+          itemsAdded: 0,
+          itemsUpdated: 0,
+          error: "Harmonization script timed out",
+        });
+      }
+    }, 115000); // 115 seconds (5 seconds before maxDuration)
 
     proc.stdout.on("data", (data) => {
       stdout += data.toString();
@@ -109,6 +132,10 @@ async function runHarmonize(
     });
 
     proc.on("close", (code) => {
+      clearTimeout(timeout);
+      if (resolved) return; // Already handled by timeout
+      resolved = true;
+      
       if (code === 0) {
         // Parse stats from output
         const filesMatch = stdout.match(/Processed (\d+) file/);
@@ -135,14 +162,18 @@ async function runHarmonize(
     });
 
     proc.on("error", (error) => {
-      resolve({
-        success: false,
-        mode,
-        filesProcessed: 0,
-        itemsAdded: 0,
-        itemsUpdated: 0,
-        error: String(error),
-      });
+      clearTimeout(timeout);
+      if (!resolved) {
+        resolved = true;
+        resolve({
+          success: false,
+          mode,
+          filesProcessed: 0,
+          itemsAdded: 0,
+          itemsUpdated: 0,
+          error: String(error),
+        });
+      }
     });
   });
 }

@@ -8,6 +8,7 @@ interface GraphNode {
   type: string;
   mentionCount: number;
   val?: number; // Used for node sizing
+  source?: string; // Data source: user, lenny, both, unknown
 }
 
 interface GraphLink {
@@ -31,6 +32,7 @@ interface GraphData {
  * - limit: Max nodes to return (default: 50, max: 200)
  * - depth: How many hops from center entity (default: 2, max: 3)
  * - type: Filter by entity type
+ * - source: Filter by data source (user, lenny, both, all) - default: all
  */
 export async function GET(request: NextRequest) {
   // Feature flag: Return 404 if KG is disabled
@@ -55,9 +57,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const centerEntityId = searchParams.get("center_entity_id");
     const typeFilter = searchParams.get("type");
+    const sourceFilter = searchParams.get("source") || "all";
     const limitParam = searchParams.get("limit") || "50";
     const depthParam = searchParams.get("depth") || "2";
-    
+
     const limit = Math.min(Math.max(parseInt(limitParam, 10) || 50, 1), 200);
     const depth = Math.min(Math.max(parseInt(depthParam, 10) || 2, 1), 3);
 
@@ -70,11 +73,11 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
-      return await buildCenteredSubgraph(supabase, centerEntityId, depth, limit);
+      return await buildCenteredSubgraph(supabase, centerEntityId, depth, limit, sourceFilter);
     }
 
     // Otherwise, return the top entities and their relations
-    return await buildTopEntitiesGraph(supabase, limit, typeFilter);
+    return await buildTopEntitiesGraph(supabase, limit, typeFilter, sourceFilter);
   } catch (error) {
     console.error("Error in /api/kg/subgraph:", error);
     return NextResponse.json(
@@ -96,7 +99,8 @@ async function buildCenteredSubgraph(
   supabase: any,
   centerEntityId: string,
   depth: number,
-  limit: number
+  limit: number,
+  sourceFilter: string
 ): Promise<NextResponse> {
   const nodeIds = new Set<string>([centerEntityId]);
   const nodes: GraphNode[] = [];
@@ -125,8 +129,11 @@ async function buildCenteredSubgraph(
 
     const relError = sourceError || targetError;
     // Merge and deduplicate relations
-    const relationsMap = new Map<string, typeof sourceRelations[0]>();
+    const relationsMap = new Map<string, { source_entity_id: string; target_entity_id: string; relation_type: string; evidence_snippet: string | null; occurrence_count: number }>();
     [...(sourceRelations || []), ...(targetRelations || [])].forEach((rel) => {
+      if (!rel || !rel.source_entity_id || !rel.target_entity_id || !rel.relation_type) {
+        return; // Skip invalid relations
+      }
       const key = `${rel.source_entity_id}-${rel.target_entity_id}-${rel.relation_type}`;
       if (!relationsMap.has(key)) {
         relationsMap.set(key, rel);
@@ -167,7 +174,7 @@ async function buildCenteredSubgraph(
           target: rel.target_entity_id,
           type: rel.relation_type,
           strength: Math.min(rel.occurrence_count || 1, 10) / 10,
-          evidence: rel.evidence_snippet,
+          evidence: rel.evidence_snippet || undefined,
         });
       }
     }
@@ -177,10 +184,21 @@ async function buildCenteredSubgraph(
 
   // Fetch entity details for all collected node IDs
   if (nodeIds.size > 0) {
-    const { data: entitiesData, error: entError } = await supabase
+    let entitiesQuery = supabase
       .from("kg_entities")
-      .select("id, canonical_name, entity_type, mention_count")
+      .select("id, canonical_name, entity_type, mention_count, source_type")
       .in("id", Array.from(nodeIds));
+
+    // Apply source filter (use source_type column, not source)
+    if (sourceFilter === "user") {
+      entitiesQuery = entitiesQuery.eq("source_type", "user");
+    } else if (sourceFilter === "lenny") {
+      entitiesQuery = entitiesQuery.eq("source_type", "expert"); // Changed to 'expert' to match Python backend
+    } else if (sourceFilter === "both") {
+      entitiesQuery = entitiesQuery.eq("source_type", "both");
+    }
+
+    const { data: entitiesData, error: entError } = await entitiesQuery;
 
     if (entError) {
       console.error("Error fetching entities:", entError);
@@ -192,6 +210,7 @@ async function buildCenteredSubgraph(
           type: entity.entity_type,
           mentionCount: entity.mention_count || 1,
           val: Math.max(Math.log(entity.mention_count || 1) + 1, 1) * 2,
+          source: entity.source_type || "unknown",
         });
       }
     }
@@ -217,17 +236,27 @@ async function buildTopEntitiesGraph(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   limit: number,
-  typeFilter: string | null
+  typeFilter: string | null,
+  sourceFilter: string
 ): Promise<NextResponse> {
   // Fetch top entities
   let entitiesQuery = supabase
     .from("kg_entities")
-    .select("id, canonical_name, entity_type, mention_count")
+    .select("id, canonical_name, entity_type, mention_count, source_type")
     .order("mention_count", { ascending: false })
     .limit(limit);
 
   if (typeFilter) {
     entitiesQuery = entitiesQuery.eq("entity_type", typeFilter);
+  }
+
+  // Apply source filter (use source_type column, not source)
+  if (sourceFilter === "user") {
+    entitiesQuery = entitiesQuery.eq("source_type", "user");
+  } else if (sourceFilter === "lenny") {
+    entitiesQuery = entitiesQuery.eq("source_type", "expert"); // Changed to 'expert' to match Python backend
+  } else if (sourceFilter === "both") {
+    entitiesQuery = entitiesQuery.eq("source_type", "both");
   }
 
   const { data: entitiesData, error: entError } = await entitiesQuery;
@@ -245,12 +274,14 @@ async function buildTopEntitiesGraph(
     canonical_name: string;
     entity_type: string;
     mention_count: number;
+    source_type?: string;
   }) => ({
     id: entity.id,
     name: entity.canonical_name,
     type: entity.entity_type,
     mentionCount: entity.mention_count || 1,
     val: Math.max(Math.log(entity.mention_count || 1) + 1, 1) * 2,
+    source: entity.source_type || "unknown",
   }));
 
   const nodeIds = nodes.map((n) => n.id);

@@ -119,15 +119,39 @@ async function loadConfig(): Promise<AppConfig> {
         .single();
       
       if (!error && data?.value) {
-        return { ...DEFAULT_CONFIG, ...data.value };
+        // Validate that value is an object
+        if (typeof data.value === 'object' && data.value !== null && !Array.isArray(data.value)) {
+          return { ...DEFAULT_CONFIG, ...data.value };
+        } else {
+          console.warn("[Config] Invalid config value format in Supabase, using defaults");
+        }
       }
     }
 
     if (existsSync(CONFIG_PATH)) {
       const content = await readFile(CONFIG_PATH, "utf-8");
-      const userConfig = JSON.parse(content);
-      // Merge with defaults
-      return { ...DEFAULT_CONFIG, ...userConfig };
+      
+      // Validate content is not empty
+      if (!content || !content.trim()) {
+        console.warn("[Config] Config file is empty, using defaults");
+        return DEFAULT_CONFIG;
+      }
+      
+      try {
+        const userConfig = JSON.parse(content);
+        
+        // Validate that parsed config is an object
+        if (typeof userConfig !== 'object' || userConfig === null || Array.isArray(userConfig)) {
+          console.warn("[Config] Invalid config format in file, using defaults");
+          return DEFAULT_CONFIG;
+        }
+        
+        // Merge with defaults
+        return { ...DEFAULT_CONFIG, ...userConfig };
+      } catch (parseError) {
+        console.error("[Config] Failed to parse config file:", parseError);
+        return DEFAULT_CONFIG;
+      }
     }
   } catch (error) {
     console.error("[Config] Failed to load:", error);
@@ -172,7 +196,7 @@ async function saveConfig(config: AppConfig): Promise<boolean> {
         if (!existsSync(dataDir)) {
           await mkdir(dataDir, { recursive: true });
         }
-        await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
+        await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
         success = true;
       }
     } catch (fsError) {

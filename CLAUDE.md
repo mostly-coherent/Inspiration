@@ -33,7 +33,7 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 
 **Longitudinal Intelligence Status:**
 - ✅ Theme Explorer (v4 Phase 3) — Patterns, Unexplored, Counter-Intuitive tabs operational
-- ✅ Knowledge Graph (v2.0) — All 6 phases complete, Lenny's KG baseline indexing in progress
+- ✅ Knowledge Graph (v2.0) — Complete foundation: User chat KG (1,571 entities), Lenny's Expert KG (13,878 entities), Entity Explorer, Graph View, Evolution Timeline, Intelligence Panel
 
 ### Lenny's Podcast Integration
 
@@ -234,7 +234,7 @@ npm run dev
 
 ## Knowledge Graph (v2.0)
 
-**Status:** ✅ All 6 phases complete | 🔄 Lenny's KG baseline indexing in progress (20.3% complete)
+**Status:** ✅ **Complete Foundation** — Phase 0, 1a, 1b, 1c complete | ✅ User chat KG (1,571 entities) | ✅ Lenny's Expert KG (13,878 entities) | ✅ All UI components operational
 
 **What It Does:**
 - Extracts entities (tools, patterns, problems, concepts) and relations from conversations
@@ -258,25 +258,67 @@ npm run dev
 - `src/app/api/kg/*` — All KG API endpoints (entities, relations, evolution, intelligence)
 - `engine/common/entity_extractor.py` — LLM-based entity extraction
 - `engine/common/relation_extractor.py` — LLM-based relation extraction
-- `engine/scripts/index_lenny_kg_parallel.py` — Lenny's KG baseline indexing (in progress)
+- `engine/common/triple_extractor.py` — **Phase 0:** Triple-based extraction (SPO triples)
+- `engine/common/entity_canonicalizer.py` — **Phase 0:** Entity deduplication/canonicalization
+- `engine/common/temporal_tracker.py` — **Phase 1b:** Temporal chain building (FOLLOWED_BY, REFERENCED_BY, OBSOLETES)
+- `engine/common/decision_extractor.py` — **Phase 1b:** Decision point extraction (TECHNOLOGY_CHOICE, ARCHITECTURE, DEPENDENCY, ASSUMPTION)
+- `engine/scripts/index_user_kg_parallel.py` — **Phase 1b:** User chat KG indexing (COMPLETE: 1,571 entities)
+- `engine/scripts/index_lenny_kg_parallel.py` — **Phase 1a:** Lenny's KG baseline indexing (COMPLETE: 13,878 entities)
 - `engine/scripts/init_knowledge_graph.sql` — KG schema
 
 **Database Tables:**
 - `kg_entities` — Unique entities with embeddings, aliases, mention counts, confidence scores
-- `kg_relations` — Relationships between entities (SOLVES, ENABLES, USED_WITH, etc.)
+- `kg_relations` — Relationships between entities (SOLVES, ENABLES, USED_WITH, FOLLOWED_BY, REFERENCED_BY, OBSOLETES, etc.)
 - `kg_entity_mentions` — Links entities to specific messages/episodes
+- `kg_decisions` — **Phase 1b:** Decision points extracted from user chat (TECHNOLOGY_CHOICE, ARCHITECTURE, DEPENDENCY, ASSUMPTION)
 - `kg_episode_metadata` — Lenny episode metadata (YouTube URLs, titles, guest names)
 
-**Current State (2026-01-16):**
-- ✅ All UI components working
+**Current State (2026-01-19):**
+- ✅ **Phase 0 (Triple-Based Foundation):** Complete — Triple extraction + entity canonicalization implemented
+- ✅ **Phase 1a (Lenny's Expert KG):** Complete — 13,878 entities from 303 episodes indexed
+- ✅ **Phase 1b (User's Chat KG):** Complete — 1,571 entities from Cursor + Claude Code history indexed
+- ✅ **Phase 1c (Pro Features):** Complete — Provenance tracking, Confidence scoring, Deduplication operational
+- ✅ **Multi-Source Views:** Complete — Toggle between My KG / Lenny's KG / Combined views
+- ✅ **Episode Quality Report:** Complete — Per-episode indexing stats and quality metrics
+- ✅ All UI components working (Entity Explorer, Graph View, Evolution Timeline, Intelligence Panel)
 - ✅ All API endpoints functional
 - ✅ All SQL RPC functions deployed
-- 🔄 Lenny's KG baseline: 3,949 entities extracted (target: 3,000-5,000), ~4.1 hours remaining
-- ⏳ User chat KG indexing: Not started (Iteration 2)
+- ⏸️ **Phase 2 (Cross-KG Connection):** Deferred — 0 string overlap found, semantic matching future consideration
+- ⏳ **Phase 3+ (Future):** Schema Evolution, Relationship Grouping, Open-Schema Extraction (see `INSPIRATION_V2_PLAN.md`)
+
+**Critical Implementation Details for AI Assistants:**
+
+**Phase 0 (Triple-Based Foundation):**
+- **Triple Extraction:** Uses LLM (default: `claude-haiku-4-5`) to extract Subject-Predicate-Object triples from text
+- **Entity Canonicalization:** CRITICAL — Prevents graph fragmentation by merging semantically identical entities (e.g., "Next.js" = "NextJS")
+- **Entity Type "unknown":** Deliberate design choice for schema evolution (Phase 3). DO NOT map "unknown" to other types — it's needed for dynamic schema discovery.
+- **Files:** `triple_extractor.py`, `entity_canonicalizer.py`, `canonicalize_entities.py` (batch script)
+
+**Phase 1b (User's Chat KG):**
+- **Chunking Strategy:** Conversation-level (not speaker-turn) — each conversation = 1 processing unit
+- **Source Data:** Reads from local Cursor SQLite DB + Claude Code JSONL files (NOT Supabase — faster, avoids timeouts)
+- **Temporal Chains:** Tracks conversation relationships (FOLLOWED_BY, REFERENCED_BY, OBSOLETES) — saved as relations between conversation entities
+- **Decision Extraction:** Extracts TECHNOLOGY_CHOICE, ARCHITECTURE, DEPENDENCY, ASSUMPTION — stored in `kg_decisions` table
+- **Trace ID Extraction:** Extracts `# @trace-id: research_node_882` comments from code — links decisions to research
+- **Files:** `index_user_kg_parallel.py`, `temporal_tracker.py`, `decision_extractor.py`
+
+**Lenny's KG Indexing:**
+- **Chunking Strategy:** Speaker-turn based (not conversation-level) — each speaker turn = 1 chunk (~92 words avg)
+- **Total Chunks:** 50,815 chunks across 303 episodes
+- **LLM Model:** `claude-haiku-4-5` for both triple and entity extraction (baseline quality)
+- **Resume Capability:** Tracks indexed chunks, can safely pause/resume
+- **Rate Limiting:** Handles Anthropic rate limits with exponential backoff + circuit breaker
+- **Files:** `index_lenny_kg_parallel.py`, `lenny_parser.py`
+
+**Database Migrations (CRITICAL — Must be Applied):**
+- ✅ `add_unknown_entity_type.sql` — Adds "unknown" to `entity_type` enum
+- ✅ `add_temporal_relation_types.sql` — Adds FOLLOWED_BY, REFERENCED_BY, OBSOLETES to `relation_type` enum
+- ✅ `add_decisions_schema.sql` — Creates `kg_decisions` table
 
 **See Also:**
-- `INSPIRATION_V2_PLAN.md` — Detailed v2.0 build plan
+- `INSPIRATION_V2_PLAN.md` — Detailed v2.0 build plan (all 6 phases)
 - `ARCHITECTURE.md` — Knowledge Graph Architecture section
+- `BUILD_LOG.md` — Chronological progress diary
 
 ---
 

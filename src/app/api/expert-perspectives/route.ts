@@ -287,20 +287,33 @@ print(json.dumps({
         stderr += data.toString();
       });
 
+      let resolved = false;
+
       // Timeout after 25 seconds
       const timeout = setTimeout(() => {
-        pythonProcess.kill();
-        resolve({
-          success: false,
-          theme,
-          quotes: [],
-          indexed: false,
-          error: "Search timed out",
-        });
+        if (!resolved) {
+          resolved = true;
+          pythonProcess.kill("SIGTERM");
+          // Force kill after 1 second if still running
+          setTimeout(() => {
+            if (!pythonProcess.killed) {
+              pythonProcess.kill("SIGKILL");
+            }
+          }, 1000);
+          resolve({
+            success: false,
+            theme,
+            quotes: [],
+            indexed: false,
+            error: "Search timed out",
+          });
+        }
       }, 25000);
 
       pythonProcess.on("close", (code) => {
         clearTimeout(timeout);
+        if (resolved) return; // Already handled by timeout
+        resolved = true;
         
         if (code !== 0) {
           console.error("Expert perspectives script failed:", stderr);
@@ -320,10 +333,16 @@ print(json.dumps({
             throw new Error("Empty response from script");
           }
           const result = JSON.parse(trimmedStdout);
+          
+          // Validate result structure
+          if (typeof result !== "object" || result === null) {
+            throw new Error("Invalid response format (expected object)");
+          }
+          
           resolve({
             success: true,
             theme,
-            quotes: result.quotes || [],
+            quotes: Array.isArray(result.quotes) ? result.quotes : [],
             indexed: result.indexed ?? true,
           });
         } catch (parseError) {
@@ -333,7 +352,7 @@ print(json.dumps({
             theme,
             quotes: [],
             indexed: false,
-            error: "Failed to parse results",
+            error: `Failed to parse results: ${parseError instanceof Error ? parseError.message : "Invalid JSON"}`,
           });
         }
       });

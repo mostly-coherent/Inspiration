@@ -2317,20 +2317,37 @@ SELECT * FROM tool_chain;
 - ✅ Phase 5: Evolution Timeline (temporal analysis, trending, charts)
 - ✅ Phase 6: Intelligence Features (patterns, missing links, path finding)
 
-**v2.0 Status (2026-01-16):**
-- ✅ All 6 phases complete (Foundation, Entity Explorer, Relations, Graph View, Evolution, Intelligence)
-- 🔄 Lenny's KG baseline indexing in progress (20.3% complete, 3,949 entities extracted, target: 3,000-5,000)
-- ✅ Pro features complete (Provenance tracking with YouTube links, Confidence scoring, Multi-stage deduplication)
-- ✅ All UI components working
-- ✅ All API endpoints functional
-- ✅ All SQL RPC functions deployed
-- ✅ 27/27 Playwright E2E tests passing
+**v2.0 Status (2026-01-19) — COMPLETE:**
+
+| KG Source | Entities | Relations | Status |
+|-----------|----------|-----------|--------|
+| Lenny's KG (expert) | 13,878 | 10,898+ | ✅ Complete |
+| User's KG (chat) | 1,571 | TBD | ✅ Complete |
+| **Total** | **15,449** | **10,898+** | ✅ |
+
+**Multi-Source Architecture:**
+- ✅ Dual-KG system (User KG + Lenny's KG)
+- ✅ Source filtering APIs (`?source=user`, `?source=lenny`, `?source=all`)
+- ✅ Visual source distinction (solid=user, dashed=Lenny, ring=both)
+- ✅ KGSourceSelector component for UI toggling
+- ✅ SourceBadge for entity cards
+
+**Quality & Performance:**
+- ✅ Quality filter threshold: 0.25 (lowered from 0.35)
+- ✅ Sponsor ad exclusion (13 regex patterns)
+- ✅ HNSW embedding index (~0.08s queries)
+- ✅ 79% deduplication rate within each source
+
+**Cross-Source Analysis (2026-01-19):**
+- Exact string overlap between KGs: **0 entities**
+- Common concept words: **170**
+- Conclusion: String-based deduplication deferred (no value)
+- Future: Semantic cross-referencing ("Related Expert Insights")
 
 **Next Steps:**
-- Complete Lenny's KG baseline indexing (~4.1 hours remaining)
-- Export baseline to GitHub Release (JSON + SQL formats)
-- User chat KG indexing (Iteration 2, requires incremental indexing)
-- Monitor performance at scale (100k+ entities)
+- Phase 3: Schema Evolution (discover types from "other" entities)
+- Phase 4: Relationship Grouping (Dynamic Ontology)
+- Future: Semantic cross-referencing between KGs
 
 ### Related Files
 
@@ -2359,11 +2376,13 @@ SELECT * FROM tool_chain;
 - `src/app/api/kg/intelligence/route.ts` — Intelligence API
 
 **UI Components:**
-- `src/components/EntityExplorer.tsx` — Entity browser component
-- `src/components/GraphView.tsx` — Interactive graph visualization
+- `src/components/EntityExplorer.tsx` — Entity browser with source filtering
+- `src/components/GraphView.tsx` — Interactive graph with source visual distinction
 - `src/components/EvolutionTimeline.tsx` — Temporal analysis component
 - `src/components/IntelligencePanel.tsx` — Intelligence features component
-- `src/app/entities/page.tsx` — Entity Explorer page
+- `src/components/KGSourceSelector.tsx` — Multi-source toggle (My KG / Lenny's KG / Combined)
+- `src/components/EpisodeQualityReport.tsx` — Per-episode indexing quality stats
+- `src/app/entities/page.tsx` — Entity Explorer page with Episodes tab
 - `src/app/graph/page.tsx` — Graph View page
 
 **Tests:**
@@ -2373,4 +2392,4 @@ SELECT * FROM tool_chain;
 
 <!-- Merged from KNOWLEDGE_GRAPH_ARCHITECTURE.md on 2026-01-15 -->
 
-**Last Updated:** 2026-01-15
+**Last Updated:** 2026-01-19

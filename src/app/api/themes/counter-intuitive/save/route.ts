@@ -29,29 +29,63 @@ async function ensureDataDir() {
 async function loadSavedReflections(): Promise<SavedReflection[]> {
   try {
     const content = await fs.readFile(SAVED_FILE, "utf-8");
-    return JSON.parse(content);
-  } catch {
+    if (!content || !content.trim()) {
+      return [];
+    }
+    const parsed = JSON.parse(content);
+    if (!Array.isArray(parsed)) {
+      console.error("Invalid saved reflections format, expected array");
+      return [];
+    }
+    return parsed;
+  } catch (error) {
+    // File doesn't exist or is corrupted - return empty array
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.error("Error loading saved reflections:", error);
+    }
     return [];
   }
 }
 
 async function saveSavedReflections(reflections: SavedReflection[]) {
-  await ensureDataDir();
-  await fs.writeFile(SAVED_FILE, JSON.stringify(reflections, null, 2));
+  try {
+    await ensureDataDir();
+    await fs.writeFile(SAVED_FILE, JSON.stringify(reflections, null, 2), "utf-8");
+  } catch (error) {
+    console.error("Error saving reflections:", error);
+    throw new Error("Failed to save reflections");
+  }
 }
 
 async function loadDismissedIds(): Promise<string[]> {
   try {
     const content = await fs.readFile(DISMISSED_FILE, "utf-8");
-    return JSON.parse(content);
-  } catch {
+    if (!content || !content.trim()) {
+      return [];
+    }
+    const parsed = JSON.parse(content);
+    if (!Array.isArray(parsed)) {
+      console.error("Invalid dismissed IDs format, expected array");
+      return [];
+    }
+    return parsed;
+  } catch (error) {
+    // File doesn't exist or is corrupted - return empty array
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.error("Error loading dismissed IDs:", error);
+    }
     return [];
   }
 }
 
 async function saveDismissedIds(ids: string[]) {
-  await ensureDataDir();
-  await fs.writeFile(DISMISSED_FILE, JSON.stringify(ids, null, 2));
+  try {
+    await ensureDataDir();
+    await fs.writeFile(DISMISSED_FILE, JSON.stringify(ids, null, 2), "utf-8");
+  } catch (error) {
+    console.error("Error saving dismissed IDs:", error);
+    throw new Error("Failed to save dismissed IDs");
+  }
 }
 
 // POST - Save a reflection ("Keep in Mind")

@@ -91,9 +91,9 @@ export async function POST(request: NextRequest) {
       logger.error(`[Inspiration] Script error (exit ${result.exitCode}):`, result.stderr);
       
       // Try to extract error message from JSON output if available
-      let errorMessage = result.stderr.slice(0, 500);
+      let errorMessage = (result.stderr || "").slice(0, 500);
       try {
-        const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
+        const jsonMatch = result.stdout?.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const output = JSON.parse(jsonMatch[0]) as SeekResult;
           if (output.error) {
@@ -125,10 +125,10 @@ export async function POST(request: NextRequest) {
       
       if (process.env.PYTHON_ENGINE_URL) {
         // HTTP mode: stdout is JSON string
-        output = JSON.parse(result.stdout);
+        output = JSON.parse(result.stdout || "{}");
       } else {
         // Local mode: find JSON in stdout (may have stderr messages before it)
-        const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
+        const jsonMatch = (result.stdout || "").match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
           throw new Error("No JSON found in script output");
         }
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
       
       return NextResponse.json(seekResult);
     } catch (parseError) {
-      logger.error("[Inspiration] Failed to parse JSON output:", result.stdout);
+      logger.error("[Inspiration] Failed to parse JSON output:", result.stdout || "");
       return NextResponse.json(
         {
           success: false,

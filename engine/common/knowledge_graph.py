@@ -43,6 +43,10 @@ class RelationType(str, Enum):
     REQUIRES = "REQUIRES"           # entity depends on another
     IMPLEMENTS = "IMPLEMENTS"       # pattern/tool IMPLEMENTS concept
     MENTIONED_BY = "MENTIONED_BY"   # person MENTIONED entity (expert attribution)
+    # Temporal chain relations (Phase 1b: User Chat KG)
+    FOLLOWED_BY = "FOLLOWED_BY"     # chat A FOLLOWED_BY chat B (temporal sequence)
+    REFERENCED_BY = "REFERENCED_BY" # chat A REFERENCED_BY chat B (explicit reference)
+    OBSOLETES = "OBSOLETES"         # chat A OBSOLETES chat B (deprecated code)
 
 
 @dataclass

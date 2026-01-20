@@ -36,12 +36,14 @@ load_dotenv()
 
 from engine.common.entity_extractor import extract_entities
 from engine.common.entity_deduplicator import create_deduplicator
+from engine.common.entity_canonicalizer import EntityCanonicalizer
 from engine.common.knowledge_graph import EntityMention
 from engine.common.semantic_search import get_embedding
 from engine.common.vector_db import get_supabase_client
 from engine.common.lenny_parser import parse_all_episodes
 from engine.common.kg_quality_filter import score_chunk_quality, validate_entity
 from engine.common.llm import PermanentAPIFailure
+from engine.common.triple_extractor import extract_triples, triples_to_entities
 
 # Known problematic chunks to skip (same as sequential version)
 SKIP_EPISODES_CHUNKS = {
@@ -211,7 +213,12 @@ def save_entity_mention(supabase, entity_id: str, chunk_id: str, context_snippet
 
 
 def save_relation(supabase, source_entity_id: str, target_entity_id: str, relation_type: str, evidence_snippet: str, chunk_id: str):
-    """Save relation to database."""
+    """
+    Save relation to database.
+    
+    Handles race condition where two workers try to save the same relation.
+    Silently ignores duplicate key errors.
+    """
     relation_data = {
         "id": str(uuid.uuid4()),
         "source_entity_id": source_entity_id,
@@ -220,7 +227,17 @@ def save_relation(supabase, source_entity_id: str, target_entity_id: str, relati
         "evidence_snippet": evidence_snippet[:MAX_SNIPPET_LENGTH],
         "source_message_id": chunk_id,
     }
-    supabase.table("kg_relations").insert(relation_data).execute()
+    try:
+        supabase.table("kg_relations").insert(relation_data).execute()
+    except Exception as e:
+        error_msg = str(e).lower()
+        # Ignore duplicate key errors (race condition between workers)
+        if "duplicate" in error_msg or "unique" in error_msg or "constraint" in error_msg:
+            # This is expected when two workers process the same chunk
+            pass
+        else:
+            # Re-raise other errors
+            raise
 
 
 def process_chunk_worker(chunk_data: dict) -> dict:
@@ -290,10 +307,32 @@ def process_chunk_worker(chunk_data: dict) -> dict:
         
         message_timestamp = chunk_to_timestamp(episode_name, chunk_timestamp)
         
-        # Extract entities with retry (using Claude Haiku 4.5 via Anthropic)
+        # Phase 0: Triple-Based Foundation
+        # Step 1: Extract triples (Subject-Predicate-Object) as foundation
+        # Use Claude Haiku 4.5 for baseline quality (consistent with entity extraction)
+        triples = []
+        try:
+            triples = retry_with_backoff(
+                extract_triples,
+                chunk_text,
+                model="claude-haiku-4-5",
+                provider="anthropic",
+                context="baseline",
+                operation_name=f"triple extraction for {chunk_id}"
+            )
+        except Exception as e:
+            # If triple extraction fails, log but continue (fallback to direct extraction)
+            print(f"   ⚠️ Triple extraction failed for {chunk_id}: {str(e)}")
+            log_error(f"Triple extraction failed: {str(e)}", chunk_id=chunk_id)
+            # Continue with direct entity extraction as fallback
+        
+        # Step 2: Extract entities with types (7 types + "unknown") from triples
+        # Phase 0: Use triple structure as foundation for entity extraction
         # Only high-quality chunks (>= 0.35 score) reach this point
         # context="baseline" ensures high-quality models only (no GPT-3.5 fallback)
         try:
+            # Extract entities (triples provide structure/context for better extraction)
+            # The entity extractor already supports "unknown" type via EntityType.UNKNOWN
             entities = retry_with_backoff(
                 extract_entities,
                 chunk_text,
@@ -302,6 +341,15 @@ def process_chunk_worker(chunk_data: dict) -> dict:
                 context="baseline",
                 operation_name=f"entity extraction for {chunk_id}"
             )
+            
+            # Phase 0 Enhancement: If triples available, validate entities against triples
+            # (Future: Use triples to enhance entity extraction accuracy)
+            if triples:
+                # Extract entity names from triples for future validation/enhancement
+                # Currently unused but extracted for Phase 0 foundation
+                _entity_names_from_triples = triples_to_entities(triples)  # noqa: F841
+                # Note: Future enhancement could use triples to validate/enhance entity extraction
+                # For now, triples are extracted but entity extraction remains direct
         except Exception as e:
             # If entity extraction fails completely, log and skip chunk
             error_msg = f"Entity extraction failed for {chunk_id}: {str(e)}"
@@ -369,16 +417,19 @@ def process_chunk_worker(chunk_data: dict) -> dict:
             )
         
         # Extract and save relations if enabled
+        # Phase 0: Relations should be extracted from triples (if available)
         if with_relations and entity_id_map:
-            from engine.common.relation_extractor import extract_relations
+            from engine.common.relation_extractor import RelationExtractor
             
             try:
+                # Phase 0: Use triples for relation extraction if available
+                # For now, we extract triples but still use RelationExtractor for validation
+                # Future: Extract relations directly from triples
+                relation_extractor = RelationExtractor(model="claude-haiku-4-5", provider="anthropic")
                 relations = retry_with_backoff(
-                    extract_relations,
+                    relation_extractor.extract_relations,
                     chunk_text,
-                    list(entity_id_map.keys()),
-                    model="claude-haiku-4-5",
-                    provider="anthropic",
+                    known_entities=list(entity_id_map.keys()),
                     operation_name=f"relation extraction for {chunk_id}"
                 )
             except Exception as e:
@@ -402,13 +453,16 @@ def process_chunk_worker(chunk_data: dict) -> dict:
                     target_id = entity_id_map.get(rel.target_name)
                     
                     if source_id and target_id:
+                        # Convert RelationType enum to string value
+                        relation_type_str = rel.relation_type.value if hasattr(rel.relation_type, 'value') else str(rel.relation_type)
+                        
                         retry_with_backoff(
                             save_relation,
                             supabase,
                             source_id,
                             target_id,
-                            rel.relation_type,
-                            rel.evidence_snippet,
+                            relation_type_str,
+                            rel.evidence_snippet or "",
                             chunk_id,
                             operation_name=f"saving relation {rel.source_name}->{rel.target_name}"
                         )

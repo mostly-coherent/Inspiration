@@ -657,9 +657,27 @@ def detect_counter_intuitive(
     cluster_time = time.time() - start_time
     print(f"   Found {len(clusters)} clusters ({cluster_time:.1f}s)", file=sys.stderr)
     
-    # Filter to strong themes (min cluster size)
-    strong_clusters = [c for c in clusters if len(c) >= min_cluster_size]
-    print(f"   {len(strong_clusters)} strong themes (≥{min_cluster_size} items)", file=sys.stderr)
+    # Filter clusters by size range based on min_cluster_size
+    # This ensures each tab (New Ideas/Strong Opinions/Deep Convictions) shows unique beliefs
+    # New Ideas (minSize=3): clusters 3-4
+    # Strong Opinions (minSize=5): clusters 5-9
+    # Deep Convictions (minSize=10): clusters 10+
+    if min_cluster_size == 3:
+        # New Ideas: clusters with 3-4 items (emerging beliefs)
+        strong_clusters = [c for c in clusters if 3 <= len(c) <= 4]
+        print(f"   {len(strong_clusters)} new ideas (3-4 items)", file=sys.stderr)
+    elif min_cluster_size == 5:
+        # Strong Opinions: clusters with 5-9 items (moderate beliefs)
+        strong_clusters = [c for c in clusters if 5 <= len(c) <= 9]
+        print(f"   {len(strong_clusters)} strong opinions (5-9 items)", file=sys.stderr)
+    elif min_cluster_size >= 10:
+        # Deep Convictions: clusters with 10+ items (entrenched beliefs)
+        strong_clusters = [c for c in clusters if len(c) >= 10]
+        print(f"   {len(strong_clusters)} deep convictions (≥10 items)", file=sys.stderr)
+    else:
+        # Fallback: use original behavior for other values
+        strong_clusters = [c for c in clusters if len(c) >= min_cluster_size]
+        print(f"   {len(strong_clusters)} themes (≥{min_cluster_size} items)", file=sys.stderr)
     
     if not strong_clusters:
         return []
@@ -673,7 +691,7 @@ def detect_counter_intuitive(
     # Get saved reflections (to mark as saved)
     saved = {r.get("id") for r in load_saved_reflections()}
     
-    # Prepare clusters to process
+    # Prepare clusters to process (take top N from filtered range)
     clusters_to_process = strong_clusters[:max_suggestions]
     
     # Pre-filter dismissed clusters

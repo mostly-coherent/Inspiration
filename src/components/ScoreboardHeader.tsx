@@ -12,8 +12,14 @@ interface MemoryStats {
 }
 
 interface SourceBreakdown {
-  cursor: number;
-  claudeCode: number;
+  cursor: {
+    conversations: number;
+    messages: number;
+  };
+  claudeCode: {
+    conversations: number;
+    messages: number;
+  };
 }
 
 interface LibraryStats {
@@ -433,22 +439,41 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 </div>
               )}
 
-              {/* Source Breakdown: Cursor | Claude Code */}
-              {sourceBreakdown && (sourceBreakdown.cursor > 0 || sourceBreakdown.claudeCode > 0) && (
+              {/* Source Breakdown: Cursor: # conversations | # messages | Claude Code: # conversations | # messages */}
+              {sourceBreakdown && 
+                ((sourceBreakdown.cursor.conversations > 0 || sourceBreakdown.cursor.messages > 0) ||
+                 (sourceBreakdown.claudeCode.conversations > 0 || sourceBreakdown.claudeCode.messages > 0)) && (
                 <div className="flex items-center gap-1.5 text-slate-200 bg-slate-800/70 px-2 py-1 rounded-full">
-                  {sourceBreakdown.cursor > 0 && (
+                  {(sourceBreakdown.cursor.conversations > 0 || sourceBreakdown.cursor.messages > 0) && (
                     <>
-                      <span className="text-blue-300">Cursor</span>
-                      <span className="font-medium text-slate-100">{sourceBreakdown.cursor.toLocaleString()}</span>
+                      <span className="text-blue-300">Cursor:</span>
+                      <span className="font-medium text-slate-100">
+                        {sourceBreakdown.cursor.conversations.toLocaleString()}
+                      </span>
+                      <span className="text-[10px] text-slate-400">conv</span>
+                      <span className="text-slate-400">|</span>
+                      <span className="font-medium text-slate-100">
+                        {sourceBreakdown.cursor.messages.toLocaleString()}
+                      </span>
+                      <span className="text-[10px] text-slate-400">msgs</span>
                     </>
                   )}
-                  {sourceBreakdown.cursor > 0 && sourceBreakdown.claudeCode > 0 && (
-                    <span className="text-slate-400">|</span>
+                  {(sourceBreakdown.cursor.conversations > 0 || sourceBreakdown.cursor.messages > 0) &&
+                   (sourceBreakdown.claudeCode.conversations > 0 || sourceBreakdown.claudeCode.messages > 0) && (
+                    <span className="text-slate-400 mx-1">|</span>
                   )}
-                  {sourceBreakdown.claudeCode > 0 && (
+                  {(sourceBreakdown.claudeCode.conversations > 0 || sourceBreakdown.claudeCode.messages > 0) && (
                     <>
-                      <span className="text-purple-300">Claude Code</span>
-                      <span className="font-medium text-slate-100">{sourceBreakdown.claudeCode.toLocaleString()}</span>
+                      <span className="text-purple-300">Claude Code:</span>
+                      <span className="font-medium text-slate-100">
+                        {sourceBreakdown.claudeCode.conversations.toLocaleString()}
+                      </span>
+                      <span className="text-[10px] text-slate-400">conv</span>
+                      <span className="text-slate-400">|</span>
+                      <span className="font-medium text-slate-100">
+                        {sourceBreakdown.claudeCode.messages.toLocaleString()}
+                      </span>
+                      <span className="text-[10px] text-slate-400">msgs</span>
                     </>
                   )}
                 </div>

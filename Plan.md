@@ -578,9 +578,10 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 | LENNY-6 | **"Related Experts" for each theme** — Show which guests have talked most about a topic | LOW | MEDIUM | Pending |
 | LENNY-7 | **Last synced timestamp** — Show when Lenny archive was last synced in UI | LOW | LOW | Pending |
 
-**Knowledge Graph Integration (v2.0 - 2026-01-16):**
+**Knowledge Graph Integration (v2.0 - 2026-01-19):**
 
-> **Build Plan:** See `INSPIRATION_V2_PLAN.md` for detailed v2.0 implementation tracking.
+> **Current Implementation:** See details below.  
+> **Future Roadmap:** See `INSPIRATION_V2_PLAN.md` for future enhancements (Phases 3-6).  
 > **Architecture:** See `ARCHITECTURE.md` Knowledge Graph Architecture section for technical details.
 
 | ID | Feature | Priority | Effort | Status |
@@ -594,11 +595,16 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 | KG-7 | **Missing Link Detection** — "You discuss A and C frequently, but never B (which connects them)" | LOW | HIGH | ✅ Done (Phase 6, 2026-01-15) |
 | KG-8 | **Connect the Dots** — Select multiple ideas → see how they relate via graph paths | LOW | HIGH | ✅ Done (Phase 6, 2026-01-15) |
 
-**v2.0 Status (2026-01-16):**
-- ✅ **All 6 phases complete** — Foundation, Entity Explorer, Relations, Graph View, Evolution, Intelligence
-- 🔄 **Lenny's KG Baseline** — Indexing in progress (20.3% complete, 3,949 entities extracted, target: 3,000-5,000)
-- ✅ **Pro Features** — Provenance tracking (YouTube links), Confidence scoring (High/Medium/Low filter), Multi-stage deduplication
-- ⏳ **User Chat KG** — Not started (Iteration 2, requires incremental indexing)
+**v2.0 Knowledge Graph Status (2026-01-19):**
+- ✅ **Phase 0 Complete** — Triple-based foundation (Subject-Predicate-Object extraction)
+- ✅ **Phase 1a Complete** — Lenny's Expert KG baseline (13,878 entities from 303 episodes)
+- ✅ **Phase 1b Complete** — User's Chat KG (1,571 entities from Cursor + Claude Code history)
+- ✅ **Phase 1c Complete** — Pro features (Provenance tracking, Confidence scoring, Deduplication)
+- ✅ **Multi-Source Views** — Toggle between My KG / Lenny's KG / Combined views
+- ✅ **Episode Quality Report** — Per-episode indexing stats and quality metrics
+- ✅ **All UI Components** — Entity Explorer, Graph View, Evolution Timeline, Intelligence Panel
+- ⏸️ **Phase 2 Deferred** — Cross-KG Connection (0 string overlap found, semantic matching future consideration)
+- ⏳ **Phase 3+ Future** — Schema Evolution, Relationship Grouping, Open-Schema Extraction
 
 **Technical Approach:**
 - PostgreSQL CTEs for graph queries (upgrade to Neo4j if needed at 100k+ entities)
@@ -607,8 +613,14 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 - react-force-graph-2d for interactive visualization
 - Playwright E2E tests for all features (27/27 passing)
 
-**Entity Types:** tool, pattern, problem, concept, person, project, workflow  
-**Relation Types:** SOLVES, CAUSES, ENABLES, PART_OF, USED_WITH, ALTERNATIVE_TO, REQUIRES, IMPLEMENTS, MENTIONED_BY
+**Entity Types:** tool, pattern, problem, concept, person, project, workflow, other (emergent/uncategorized)  
+**Relation Types:** SOLVES, CAUSES, ENABLES, PART_OF, USED_WITH, ALTERNATIVE_TO, REQUIRES, IMPLEMENTS, MENTIONED_BY, FOLLOWED_BY, REFERENCED_BY, OBSOLETES
+
+**Current Database Stats (2026-01-19):**
+- **Total Entities:** 15,449 (1,571 user + 13,878 expert)
+- **Total Relations:** 10,898+
+- **Total Mentions:** 15,000-25,000+
+- **Quality Filter:** 0.25 threshold (82% filtered, sponsor ads excluded)
 
 ---
 

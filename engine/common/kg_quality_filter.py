@@ -55,6 +55,35 @@ COMPARATIVE_KEYWORDS = [
 # branding, AI/ML, startup strategy, tech history, psychology, etc.
 # Quality should be domain-agnostic: specific, actionable, reusable.
 
+# Sponsor ad patterns to exclude (podcast sponsor reads)
+SPONSOR_AD_PATTERNS = [
+    r'this episode is brought to you by',
+    r'sponsored by',
+    r'brought to you by',
+    r"today's sponsor",
+    r'special thanks to our sponsor',
+    r'check out \w+ at',
+    r'use code \w+ for',
+    r'get \d+% off',
+    r'sign up.*free trial',
+    r'visit \w+\.com\/\w+',
+    r'head to \w+\.com',
+    r'go to \w+\.com',
+    r'promo code',
+    r'discount code',
+    r'free trial at',
+    r'links in the show notes',
+]
+
+
+def is_sponsor_ad(chunk_text: str) -> bool:
+    """Check if chunk is primarily a sponsor ad."""
+    chunk_lower = chunk_text.lower()
+    # Count how many sponsor patterns match
+    matches = sum(1 for pattern in SPONSOR_AD_PATTERNS if re.search(pattern, chunk_lower))
+    # If 2+ patterns match, it's likely a sponsor read
+    return matches >= 2
+
 
 def score_chunk_quality(chunk_text: str, content_type: str = "general") -> ChunkQualityScore:
     """
@@ -72,6 +101,15 @@ def score_chunk_quality(chunk_text: str, content_type: str = "general") -> Chunk
     Returns:
         ChunkQualityScore with decision and reasoning
     """
+    # Early exit: Skip sponsor ads (especially for podcast content)
+    if content_type == "podcast" and is_sponsor_ad(chunk_text):
+        return ChunkQualityScore(
+            score=0.0,
+            should_index=False,
+            signals=["sponsor_ad"],
+            reason="Sponsor ad detected - skipped"
+        )
+
     score = 0.0
     signals = []
     chunk_lower = chunk_text.lower()
@@ -142,9 +180,10 @@ def score_chunk_quality(chunk_text: str, content_type: str = "general") -> Chunk
     
     # Cap at 1.0
     score = min(score, 1.0)
-    
-    # Threshold: 0.35+ is worth indexing (domain-agnostic)
-    threshold = 0.35
+
+    # Threshold: 0.30+ is worth indexing (lowered from 0.35 to capture more content)
+    # This allows borderline chunks (0.30-0.34) to be indexed while filtering noise
+    threshold = 0.30
     should_index = score >= threshold
     
     if should_index:

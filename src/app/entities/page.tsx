@@ -7,6 +7,7 @@ import { isFeatureEnabled } from "@/lib/featureFlags";
 import EntityExplorer from "@/components/EntityExplorer";
 import EvolutionTimeline from "@/components/EvolutionTimeline";
 import IntelligencePanel from "@/components/IntelligencePanel";
+import EpisodeQualityReport from "@/components/EpisodeQualityReport";
 
 interface KGStats {
   totalEntities: number;
@@ -15,7 +16,7 @@ interface KGStats {
   indexed: boolean;
 }
 
-type ViewTab = "entities" | "trends" | "intelligence";
+type ViewTab = "entities" | "trends" | "intelligence" | "episodes";
 
 export default function EntitiesPage() {
   const router = useRouter();
@@ -122,6 +123,16 @@ export default function EntitiesPage() {
                 >
                   🧠 Intelligence
                 </button>
+                <button
+                  onClick={() => setViewTab("episodes")}
+                  className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                    viewTab === "episodes"
+                      ? "bg-slate-700 text-white"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  📊 Episodes
+                </button>
               </div>
 
               {/* Graph View Link */}
@@ -212,6 +223,18 @@ export default function EntitiesPage() {
                 console.log("Entity clicked:", entityId, entityName);
                 setViewTab("entities");
                 // Could also pass selected entity to EntityExplorer
+              }}
+            />
+          </div>
+        ) : viewTab === "episodes" ? (
+          <div className="h-[calc(100vh-140px)] bg-slate-900/30 rounded-xl border border-slate-800/50 p-6 overflow-y-auto">
+            <h2 className="text-xl font-semibold text-slate-100 mb-4">
+              🎙️ Lenny&apos;s Podcast - Episode Quality Report
+            </h2>
+            <EpisodeQualityReport
+              onEpisodeClick={(episodeSlug, guestName) => {
+                console.log("Episode clicked:", episodeSlug, guestName);
+                // Could filter EntityExplorer by episode
               }}
             />
           </div>

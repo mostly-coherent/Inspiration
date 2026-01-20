@@ -92,8 +92,27 @@ export async function GET() {
   try {
     if (existsSync(THEMES_PATH)) {
       const content = await readFile(THEMES_PATH, "utf-8");
-      const themes = JSON.parse(content);
-      return NextResponse.json({ success: true, themes });
+      
+      // Validate content is not empty
+      if (!content || !content.trim()) {
+        console.warn("[Themes API] themes.json is empty, using default themes config");
+        return NextResponse.json({ success: true, themes: DEFAULT_THEMES });
+      }
+      
+      try {
+        const themes = JSON.parse(content);
+        
+        // Validate themes structure
+        if (typeof themes !== "object" || themes === null) {
+          throw new Error("Invalid themes format (expected object)");
+        }
+        
+        return NextResponse.json({ success: true, themes });
+      } catch (parseError) {
+        console.error("[Themes API] Failed to parse themes.json:", parseError);
+        // On parse error, return default themes so app doesn't break
+        return NextResponse.json({ success: true, themes: DEFAULT_THEMES });
+      }
     } else {
       // File not found (e.g., on Vercel where data/themes.json is gitignored)
       // Return default themes config so the app works

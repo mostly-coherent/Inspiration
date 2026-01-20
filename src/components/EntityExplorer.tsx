@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import EvolutionTimeline from "./EvolutionTimeline";
+import KGSourceSelector, { KGSource, SourceBadge } from "./KGSourceSelector";
 
 // Entity type icons and colors
 const ENTITY_TYPE_CONFIG: Record<
@@ -15,6 +16,7 @@ const ENTITY_TYPE_CONFIG: Record<
   person: { icon: "👤", label: "People", color: "text-pink-400" },
   project: { icon: "📁", label: "Projects", color: "text-cyan-400" },
   workflow: { icon: "🔄", label: "Workflows", color: "text-orange-400" },
+  other: { icon: "📌", label: "Other", color: "text-slate-400" },
 };
 
 interface Entity {
@@ -26,6 +28,7 @@ interface Entity {
   firstSeen: string | null;
   lastSeen: string | null;
   confidence: number;
+  source?: string; // "user", "lenny", "both", "unknown"
 }
 
 interface EntityMention {
@@ -106,6 +109,7 @@ export default function EntityExplorer({ onEntitySelect }: EntityExplorerProps) 
   const [sortBy, setSortBy] = useState<string>("mentions");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [confidenceFilter, setConfidenceFilter] = useState<string>("all"); // "all", "high", "medium", "low"
+  const [sourceFilter, setSourceFilter] = useState<KGSource>("all"); // "all", "user", "lenny"
 
   // Refs for cleanup and debouncing
   const isMountedRef = useRef(true);
@@ -130,6 +134,7 @@ export default function EntityExplorer({ onEntitySelect }: EntityExplorerProps) 
       params.set("limit", "100");
       if (searchQuery) params.set("search", searchQuery);
       if (confidenceFilter !== "all") params.set("confidence", confidenceFilter);
+      if (sourceFilter !== "all") params.set("source", sourceFilter);
 
       const res = await fetch(`/api/kg/entities?${params}`, {
         signal: abortControllerRef.current.signal,
@@ -165,7 +170,7 @@ export default function EntityExplorer({ onEntitySelect }: EntityExplorerProps) 
         setLoading(false);
       }
     }
-  }, [typeFilter, sortBy, searchQuery]);
+  }, [typeFilter, sortBy, searchQuery, sourceFilter]);
 
   // Fetch entity detail (mentions + relations)
   const fetchEntityDetail = useCallback(async (entity: Entity) => {
@@ -354,7 +359,7 @@ export default function EntityExplorer({ onEntitySelect }: EntityExplorerProps) 
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [typeFilter, sortBy, searchQuery, confidenceFilter, fetchEntities]);
+  }, [typeFilter, sortBy, searchQuery, confidenceFilter, sourceFilter, fetchEntities]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -444,6 +449,14 @@ export default function EntityExplorer({ onEntitySelect }: EntityExplorerProps) 
             ))}
           </div>
 
+          {/* Source Selector */}
+          <div className="mb-3">
+            <KGSourceSelector
+              value={sourceFilter}
+              onChange={setSourceFilter}
+            />
+          </div>
+
           {/* Sort & Confidence Filter */}
           <div className="flex items-center gap-4 text-sm text-slate-400">
             <div className="flex items-center gap-2">
@@ -510,6 +523,9 @@ export default function EntityExplorer({ onEntitySelect }: EntityExplorerProps) 
                         <span className="font-medium text-slate-200 truncate">
                           {entity.name}
                         </span>
+                        {entity.source && entity.source !== "unknown" && (
+                          <SourceBadge source={entity.source} size="xs" />
+                        )}
                       </div>
                       <div className="text-xs text-slate-500 mt-1 flex items-center gap-1 flex-wrap">
                         <span className={config.color}>{config.label}</span>
@@ -574,6 +590,9 @@ export default function EntityExplorer({ onEntitySelect }: EntityExplorerProps) 
                 >
                   {ENTITY_TYPE_CONFIG[selectedEntity.type]?.label || selectedEntity.type}
                 </span>
+                {selectedEntity.source && selectedEntity.source !== "unknown" && (
+                  <SourceBadge source={selectedEntity.source} size="sm" />
+                )}
                 {selectedEntity.confidence !== undefined && (
                   <span
                     className={`px-2 py-0.5 rounded ${

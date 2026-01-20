@@ -93,18 +93,17 @@ engine/data/output/
 # Archive folder (historical planning docs, not needed for app functionality)
 _archive/
 
-# Knowledge Graph Documentation (experimental features - hidden from public repo)
-KG_FEATURE_FLAG_GUIDE.md
-EVOLVING_KG_RESEARCH.md
-KG_BASELINE_EXPORT_PLAN.md
-LENNY_KG_BUILD_STATUS.md
-INSPIRATION_V2_PLAN.md
-engine/KG_USER_GUIDE.md
-engine/KG_QUALITY_DEFINITION.md
+# Knowledge Graph Documentation
+# INSPIRATION_V2_PLAN.md - Future roadmap (kept for reference)
 
-# Knowledge Graph Monitoring Scripts (local development tools)
+# Knowledge Graph Monitoring Scripts (local development tools, not needed by users)
 monitor-kg-build.sh
 monitor_kg_indexing.py
 check_kg_progress.py
 check_kg_status_simple.py
 monitor_lenny_kg.sh
+check-lenny-status.sh
+
+# Example/Test Files (not needed for production)
+inspiration.spec.ts.example
+playwright.config.ts.example

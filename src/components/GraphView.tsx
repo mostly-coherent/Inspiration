@@ -36,6 +36,7 @@ const ENTITY_TYPE_COLORS: Record<string, string> = {
   person: "#f472b6", // pink-400
   project: "#22d3ee", // cyan-400
   workflow: "#fb923c", // orange-400
+  other: "#94a3b8", // slate-400 (for emergent/uncategorized entities)
 };
 
 // Relation type colors
@@ -60,6 +61,7 @@ interface GraphNode {
   y?: number;
   fx?: number | null;
   fy?: number | null;
+  source?: string; // "user", "lenny", "both", "unknown"
 }
 
 interface GraphLink {
@@ -203,7 +205,7 @@ export default function GraphView({
     return RELATION_TYPE_COLORS[link.type] || "#475569";
   }, []);
 
-  // Node canvas rendering
+  // Node canvas rendering with source visual distinction
   const nodeCanvasObject = useCallback(
     (node: GraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const label = node.name;
@@ -211,15 +213,45 @@ export default function GraphView({
       const nodeSize = Math.max((node.val || 4), 4);
       const isHovered = hoveredNode?.id === node.id;
       const isSelected = selectedNode?.id === node.id;
+      const isLenny = node.source === "lenny";
+      const isBoth = node.source === "both";
 
       // Draw node circle
       ctx.beginPath();
       ctx.arc(node.x || 0, node.y || 0, nodeSize, 0, 2 * Math.PI);
-      ctx.fillStyle = getNodeColor(node);
-      ctx.fill();
+
+      // Fill based on source:
+      // - User entities: solid fill
+      // - Lenny entities: outlined with pattern fill (lighter)
+      // - Both: solid with extra ring
+      if (isLenny) {
+        // Lenny: lighter fill with dashed outline
+        ctx.fillStyle = getNodeColor(node) + "60"; // 60 = 37.5% opacity
+        ctx.fill();
+        ctx.setLineDash([3 / globalScale, 2 / globalScale]);
+        ctx.strokeStyle = getNodeColor(node);
+        ctx.lineWidth = 1.5 / globalScale;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        // User or unknown: solid fill
+        ctx.fillStyle = getNodeColor(node);
+        ctx.fill();
+      }
+
+      // "Both" sources get an extra ring
+      if (isBoth) {
+        ctx.beginPath();
+        ctx.arc(node.x || 0, node.y || 0, nodeSize + 2 / globalScale, 0, 2 * Math.PI);
+        ctx.strokeStyle = "#a78bfa"; // purple ring for "both"
+        ctx.lineWidth = 1 / globalScale;
+        ctx.stroke();
+      }
 
       // Highlight on hover/select
       if (isHovered || isSelected) {
+        ctx.beginPath();
+        ctx.arc(node.x || 0, node.y || 0, nodeSize + 1 / globalScale, 0, 2 * Math.PI);
         ctx.strokeStyle = isSelected ? "#ffffff" : "#cbd5e1";
         ctx.lineWidth = isSelected ? 2 / globalScale : 1.5 / globalScale;
         ctx.stroke();
@@ -232,6 +264,14 @@ export default function GraphView({
         ctx.textBaseline = "top";
         ctx.fillStyle = isSelected ? "#ffffff" : isHovered ? "#e2e8f0" : "#94a3b8";
         ctx.fillText(label, node.x || 0, (node.y || 0) + nodeSize + 2);
+
+        // Source indicator icon (small)
+        if (globalScale > 1 && (isLenny || isBoth)) {
+          ctx.font = `${fontSize * 0.7}px Sans-Serif`;
+          ctx.fillStyle = isLenny ? "#c084fc" : "#a78bfa"; // purple shades
+          const icon = isLenny ? "🎙️" : isBoth ? "🔗" : "";
+          ctx.fillText(icon, (node.x || 0) + nodeSize + 3, (node.y || 0) - nodeSize);
+        }
       }
     },
     [hoveredNode, selectedNode, getNodeColor]
@@ -339,7 +379,7 @@ export default function GraphView({
       {/* Graph Legend */}
       <div className="absolute top-2 left-2 z-10 bg-slate-900/90 backdrop-blur-sm rounded-lg p-3 text-xs">
         <div className="font-medium text-slate-300 mb-2">Entity Types</div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 mb-3">
           {Object.entries(ENTITY_TYPE_COLORS).map(([type, color]) => (
             <div key={type} className="flex items-center gap-1">
               <span
@@ -350,6 +390,21 @@ export default function GraphView({
             </div>
           ))}
         </div>
+        <div className="font-medium text-slate-300 mb-2">Sources</div>
+        <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+            <span className="text-slate-400">👤 My KG</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-purple-400/40 border border-purple-400 border-dashed" />
+            <span className="text-slate-400">🎙️ Lenny</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 ring-1 ring-purple-400 ring-offset-1 ring-offset-slate-900" />
+            <span className="text-slate-400">🔗 Both</span>
+          </div>
+        </div>
       </div>
 
       {/* Node/Link Info Panel */}
@@ -358,14 +413,34 @@ export default function GraphView({
           {selectedNode && (
             <div>
               <div className="font-medium text-white mb-1">{selectedNode.name}</div>
-              <div className="text-slate-400 capitalize">{selectedNode.type}</div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-slate-400 capitalize">{selectedNode.type}</span>
+                {selectedNode.source && selectedNode.source !== "unknown" && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                    selectedNode.source === "lenny" ? "bg-purple-500/20 text-purple-400" :
+                    selectedNode.source === "user" ? "bg-emerald-500/20 text-emerald-400" :
+                    "bg-indigo-500/20 text-indigo-400"
+                  }`}>
+                    {selectedNode.source === "lenny" ? "🎙️ Lenny" :
+                     selectedNode.source === "user" ? "👤 My KG" : "🔗 Both"}
+                  </span>
+                )}
+              </div>
               <div className="text-slate-500">{selectedNode.mentionCount} mentions</div>
             </div>
           )}
           {hoveredNode && hoveredNode.id !== selectedNode?.id && (
             <div>
               <div className="font-medium text-slate-300">{hoveredNode.name}</div>
-              <div className="text-slate-400 capitalize text-[10px]">{hoveredNode.type}</div>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400 capitalize text-[10px]">{hoveredNode.type}</span>
+                {hoveredNode.source && hoveredNode.source !== "unknown" && (
+                  <span className="text-[10px] text-slate-500">
+                    {hoveredNode.source === "lenny" ? "🎙️" :
+                     hoveredNode.source === "user" ? "👤" : "🔗"}
+                  </span>
+                )}
+              </div>
             </div>
           )}
           {hoveredLink && (

@@ -296,7 +296,8 @@ def get_conversations_for_date(target_date: date, workspace_paths: List[str]) ->
 
             # Normalize and check if this workspace is in user's config
             normalized_actual = os.path.normpath(actual_workspace)
-            if normalized_actual not in normalized_workspaces:
+            # If workspace_paths is provided, filter by it; if empty, include all workspaces
+            if normalized_workspaces and normalized_actual not in normalized_workspaces:
                 continue
 
             # Filter by date

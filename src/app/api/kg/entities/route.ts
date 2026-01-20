@@ -10,6 +10,7 @@ import { requireFeature } from "@/lib/featureFlags";
  * - sort: Sort by (mentions, recent, name) - default: mentions
  * - limit: Max results (default: 50)
  * - search: Search by name (case-insensitive)
+ * - source: Filter by data source (user, lenny, both, all) - default: all
  */
 export async function GET(request: NextRequest) {
   // Feature flag: Return 404 if KG is disabled
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(Math.max(parseInt(limitParam, 10) || 50, 1), 200); // Clamp between 1-200
     const search = searchParams.get("search")?.trim().substring(0, 100); // Limit search length
     const confidenceFilter = searchParams.get("confidence"); // "high", "medium", "low", or null
+    const sourceFilter = searchParams.get("source") || "all"; // "user", "lenny", "both", "all"
 
     // Build query
     let query = supabase.from("kg_entities").select("*");
@@ -60,6 +62,19 @@ export async function GET(request: NextRequest) {
     } else if (confidenceFilter === "low") {
       query = query.lt("confidence", 0.5);
     }
+
+    // Filter by source_type (user, expert, both, all)
+    // Note: "both" means entities that appear in BOTH sources
+    // "all" means all entities regardless of source
+    // Database uses "source_type" field, not "source" (which is always "llm")
+    if (sourceFilter === "user") {
+      query = query.eq("source_type", "user");
+    } else if (sourceFilter === "lenny") {
+      query = query.eq("source_type", "expert"); // Database uses "expert" for Lenny's podcast
+    } else if (sourceFilter === "both") {
+      query = query.eq("source_type", "both");
+    }
+    // "all" = no filter, show everything
 
     // Sort
     switch (sort) {
@@ -98,6 +113,7 @@ export async function GET(request: NextRequest) {
       firstSeen: entity.first_seen,
       lastSeen: entity.last_seen,
       confidence: entity.confidence || 1.0,
+      source: entity.source_type || "unknown", // Use source_type (user/expert/both), not source (always "llm")
     }));
 
     return NextResponse.json({ entities });
