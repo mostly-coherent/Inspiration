@@ -37,8 +37,36 @@ interface LennyStats {
   cloudMode?: boolean;
 }
 
+interface KGStats {
+  totalEntities: number;
+  byType: Record<string, number>;
+  totalMentions: number;
+  indexed: boolean;
+}
+
+interface IndexingProgress {
+  jobId: string;
+  status: "running" | "completed" | "failed" | "stopped";
+  startTime: number;
+  endTime?: number;
+  totalConversations: number;
+  processedConversations: number;
+  entitiesCreated: number;
+  entitiesDeduplicated: number;
+  relationsCreated: number;
+  decisionsCreated: number;
+  errors?: number;
+  skipped?: number;
+  error?: string;
+  phase?: string;
+  progressPercent?: number;
+  elapsedSeconds?: number;
+  estimatedSecondsRemaining?: number;
+}
+
 type LennyUpdateStatus = "idle" | "updating" | "success" | "error";
 type LennyDownloadStatus = "idle" | "downloading" | "success" | "error";
+type IndexingStatus = "idle" | "estimating" | "indexing" | "completed" | "error" | "stopped";
 
 interface ScoreboardHeaderProps {
   onSyncClick: () => void;
@@ -76,9 +104,28 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
   const [lennyUpdateMessage, setLennyUpdateMessage] = useState<string | null>(null);
   const [lennyDownloadStatus, setLennyDownloadStatus] = useState<LennyDownloadStatus>("idle");
   const [lennyDownloadMessage, setLennyDownloadMessage] = useState<string | null>(null);
+  const [kgStats, setKgStats] = useState<KGStats>({
+    totalEntities: 0,
+    byType: {},
+    totalMentions: 0,
+    indexed: false,
+  });
+  const [indexingStatus, setIndexingStatus] = useState<IndexingStatus>("idle");
+  const [indexingProgress, setIndexingProgress] = useState<IndexingProgress | null>(null);
+  const [indexingJobId, setIndexingJobId] = useState<string | null>(null);
+  const [costEstimate, setCostEstimate] = useState<{
+    conversationCount: number;
+    estimatedCost: number;
+    estimatedTimeMinutes: number;
+  } | null>(null);
+  const [showCostEstimate, setShowCostEstimate] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const lennyUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lennyDownloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const indexingProgressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const indexingProgressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const indexingErrorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const indexingStopTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
 
   // Fetch Memory stats
@@ -166,6 +213,27 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     }
   }, []);
 
+  // Fetch Knowledge Graph stats
+  const fetchKGStats = useCallback(async () => {
+    try {
+      const res = await fetch("/api/kg/stats");
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (isMountedRef.current) {
+        setKgStats({
+          totalEntities: data.totalEntities || 0,
+          byType: data.byType || {},
+          totalMentions: data.totalMentions || 0,
+          indexed: data.indexed || false,
+        });
+      }
+    } catch (e) {
+      console.error("Failed to fetch KG stats:", e);
+    }
+  }, []);
+
   // Fetch Lenny archive stats
   const fetchLennyStats = useCallback(async () => {
     try {
@@ -187,6 +255,204 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
       console.error("Failed to fetch Lenny stats:", e);
     }
   }, []);
+
+  // Fetch indexing progress
+  const fetchIndexingProgress = useCallback(async (jobId?: string) => {
+    try {
+      const url = jobId
+        ? `/api/kg/index-progress?jobId=${jobId}`
+        : "/api/kg/index-progress";
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (data.success && data.progress && isMountedRef.current) {
+        setIndexingProgress(data.progress);
+        setIndexingJobId(data.progress.jobId);
+        
+        if (data.progress.status === "running") {
+          setIndexingStatus("indexing");
+          // Start polling if not already polling
+          if (!indexingProgressIntervalRef.current) {
+            indexingProgressIntervalRef.current = setInterval(() => {
+              fetchIndexingProgress(data.progress.jobId);
+            }, 2000); // Poll every 2 seconds
+          }
+        } else if (data.progress.status === "completed") {
+          setIndexingStatus("completed");
+          // Stop polling
+          if (indexingProgressIntervalRef.current) {
+            clearInterval(indexingProgressIntervalRef.current);
+            indexingProgressIntervalRef.current = null;
+          }
+          // Refresh KG stats after completion
+          fetchKGStats();
+          // Clear progress after 5 seconds
+          if (indexingProgressTimeoutRef.current) {
+            clearTimeout(indexingProgressTimeoutRef.current);
+          }
+          indexingProgressTimeoutRef.current = setTimeout(() => {
+            if (isMountedRef.current) {
+              setIndexingStatus("idle");
+              setIndexingProgress(null);
+            }
+            indexingProgressTimeoutRef.current = null;
+          }, 5000);
+        } else if (data.progress.status === "failed" || data.progress.status === "stopped") {
+          setIndexingStatus("error");
+          // Stop polling
+          if (indexingProgressIntervalRef.current) {
+            clearInterval(indexingProgressIntervalRef.current);
+            indexingProgressIntervalRef.current = null;
+          }
+        }
+        return data.progress; // Return progress for caller to check
+      } else if (isMountedRef.current) {
+        // No active job
+        setIndexingStatus("idle");
+        setIndexingProgress(null);
+        return null;
+      }
+    } catch (e) {
+      console.error("Failed to fetch indexing progress:", e);
+      return null;
+    }
+  }, [fetchKGStats]);
+
+  // Estimate cost before indexing
+  const estimateCost = useCallback(async () => {
+    try {
+      // Get conversation count
+      const countRes = await fetch("/api/kg/conversation-count?daysBack=90");
+      if (!countRes.ok) {
+        return null;
+      }
+      const countData = await countRes.json();
+      const conversationCount = countData.conversationCount || 0;
+
+      if (conversationCount === 0) {
+        return null; // Can't estimate without count
+      }
+
+      // Estimate cost using same logic as estimate-cost endpoint
+      const estimateRes = await fetch("/api/kg/estimate-cost", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chunkCount: conversationCount, // Approximate: 1 conversation = 1 chunk
+          model: "claude-haiku-4-5",
+          withRelations: true,
+          avgChunkSize: 200, // Average tokens per conversation
+          workers: 4,
+        }),
+      });
+
+      if (!estimateRes.ok) {
+        return null;
+      }
+
+      const estimateData = await estimateRes.json();
+      return {
+        conversationCount,
+        estimatedCost: estimateData.costEstimate?.totalCostUsd || 0,
+        estimatedTimeMinutes: Math.round(
+          (estimateData.timeEstimate?.hours || 0) * 60 +
+            (estimateData.timeEstimate?.minutes || 0)
+        ),
+      };
+    } catch (e) {
+      console.error("Failed to estimate cost:", e);
+      return null;
+    }
+  }, []);
+
+  // Start indexing
+  const startIndexing = useCallback(async () => {
+    if (indexingStatus === "indexing" || indexingStatus === "estimating") {
+      return;
+    }
+
+    setIndexingStatus("estimating");
+    
+    try {
+      const res = await fetch("/api/kg/index-user-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          withRelations: true,
+          withDecisions: true,
+          workers: 4,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(errorData.error || "Failed to start indexing");
+      }
+
+      const data = await res.json();
+      if (data.success && data.jobId) {
+        setIndexingJobId(data.jobId);
+        setIndexingStatus("indexing");
+        setShowCostEstimate(false);
+        
+        // Start polling for progress
+        if (indexingProgressIntervalRef.current) {
+          clearInterval(indexingProgressIntervalRef.current);
+        }
+        indexingProgressIntervalRef.current = setInterval(() => {
+          fetchIndexingProgress(data.jobId);
+        }, 2000); // Poll every 2 seconds
+      } else {
+        throw new Error(data.error || "Failed to start indexing");
+      }
+    } catch (e) {
+      console.error("Failed to start indexing:", e);
+      setIndexingStatus("error");
+      if (indexingErrorTimeoutRef.current) {
+        clearTimeout(indexingErrorTimeoutRef.current);
+      }
+      indexingErrorTimeoutRef.current = setTimeout(() => {
+        if (isMountedRef.current) {
+          setIndexingStatus("idle");
+        }
+        indexingErrorTimeoutRef.current = null;
+      }, 5000);
+    }
+  }, [indexingStatus, fetchIndexingProgress]);
+
+  // Stop indexing
+  const stopIndexing = useCallback(async () => {
+    if (!indexingJobId) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/kg/index-user-chat/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: indexingJobId }),
+      });
+
+      if (res.ok) {
+        setIndexingStatus("stopped");
+        if (indexingProgressIntervalRef.current) {
+          clearInterval(indexingProgressIntervalRef.current);
+        }
+        // Refresh progress to show stopped state
+        if (indexingStopTimeoutRef.current) {
+          clearTimeout(indexingStopTimeoutRef.current);
+        }
+        indexingStopTimeoutRef.current = setTimeout(() => {
+          fetchIndexingProgress(indexingJobId);
+          indexingStopTimeoutRef.current = null;
+        }, 1000);
+      }
+    } catch (e) {
+      console.error("Failed to stop indexing:", e);
+    }
+  }, [indexingJobId, fetchIndexingProgress]);
 
   // Download Lenny embeddings from GitHub Releases
   const downloadLennyEmbeddings = useCallback(async () => {
@@ -325,7 +591,14 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     isMountedRef.current = true;
     const fetchAll = async () => {
       setIsLoading(true);
-      await Promise.all([fetchMemoryStats(), fetchLibraryStats(), fetchSourceBreakdown(), fetchLennyStats()]);
+      await Promise.all([
+        fetchMemoryStats(),
+        fetchLibraryStats(),
+        fetchSourceBreakdown(),
+        fetchLennyStats(),
+        fetchKGStats(),
+        fetchIndexingProgress(), // Check for existing indexing jobs
+      ]);
       if (isMountedRef.current) {
         setIsLoading(false);
       }
@@ -335,7 +608,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     return () => {
       isMountedRef.current = false;
     };
-  }, [fetchMemoryStats, fetchLibraryStats, fetchSourceBreakdown, fetchLennyStats]);
+  }, [fetchMemoryStats, fetchLibraryStats, fetchSourceBreakdown, fetchLennyStats, fetchKGStats, fetchIndexingProgress]);
 
   // Refresh library stats after sync completes
   useEffect(() => {
@@ -355,6 +628,18 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
       }
       if (lennyUpdateTimeoutRef.current) {
         clearTimeout(lennyUpdateTimeoutRef.current);
+      }
+      if (indexingProgressIntervalRef.current) {
+        clearInterval(indexingProgressIntervalRef.current);
+      }
+      if (indexingProgressTimeoutRef.current) {
+        clearTimeout(indexingProgressTimeoutRef.current);
+      }
+      if (indexingErrorTimeoutRef.current) {
+        clearTimeout(indexingErrorTimeoutRef.current);
+      }
+      if (indexingStopTimeoutRef.current) {
+        clearTimeout(indexingStopTimeoutRef.current);
       }
     };
   }, []);
@@ -385,7 +670,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                   </h2>
                 </div>
                 <p className="text-xs text-slate-300 ml-8">
-                  Patterns from AI conversations
+                  Themes, ideas & insights from your AI conversations
                 </p>
               </div>
               
@@ -424,59 +709,6 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                   {isSyncing ? "Syncing..." : isCloudMode ? "Cloud" : "Sync"}
                 </button>
               </div>
-            </div>
-
-            {/* Metadata Row: Date Coverage and Source Breakdown */}
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              {/* Date Coverage: First → Most Recent */}
-              {memoryStats.earliestDate && memoryStats.latestDate && (
-                <div className="flex items-center gap-1 text-slate-200 bg-slate-800/70 px-2 py-1 rounded-full">
-                  <span>📅</span>
-                  <span>{memoryStats.earliestDate}</span>
-                  <span className="text-slate-400">→</span>
-                  <span>{memoryStats.latestDate}</span>
-                </div>
-              )}
-
-              {/* Source Breakdown: Cursor: # conversations | # messages | Claude Code: # conversations | # messages */}
-              {sourceBreakdown && 
-                ((sourceBreakdown.cursor.conversations > 0 || sourceBreakdown.cursor.messages > 0) ||
-                 (sourceBreakdown.claudeCode.conversations > 0 || sourceBreakdown.claudeCode.messages > 0)) && (
-                <div className="flex items-center gap-1.5 text-slate-200 bg-slate-800/70 px-2 py-1 rounded-full">
-                  {(sourceBreakdown.cursor.conversations > 0 || sourceBreakdown.cursor.messages > 0) && (
-                    <>
-                      <span className="text-blue-300">Cursor:</span>
-                      <span className="font-medium text-slate-100">
-                        {sourceBreakdown.cursor.conversations.toLocaleString()}
-                      </span>
-                      <span className="text-[10px] text-slate-400">conv</span>
-                      <span className="text-slate-400">|</span>
-                      <span className="font-medium text-slate-100">
-                        {sourceBreakdown.cursor.messages.toLocaleString()}
-                      </span>
-                      <span className="text-[10px] text-slate-400">msgs</span>
-                    </>
-                  )}
-                  {(sourceBreakdown.cursor.conversations > 0 || sourceBreakdown.cursor.messages > 0) &&
-                   (sourceBreakdown.claudeCode.conversations > 0 || sourceBreakdown.claudeCode.messages > 0) && (
-                    <span className="text-slate-400 mx-1">|</span>
-                  )}
-                  {(sourceBreakdown.claudeCode.conversations > 0 || sourceBreakdown.claudeCode.messages > 0) && (
-                    <>
-                      <span className="text-purple-300">Claude Code:</span>
-                      <span className="font-medium text-slate-100">
-                        {sourceBreakdown.claudeCode.conversations.toLocaleString()}
-                      </span>
-                      <span className="text-[10px] text-slate-400">conv</span>
-                      <span className="text-slate-400">|</span>
-                      <span className="font-medium text-slate-100">
-                        {sourceBreakdown.claudeCode.messages.toLocaleString()}
-                      </span>
-                      <span className="text-[10px] text-slate-400">msgs</span>
-                    </>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Main Content Row */}
@@ -556,9 +788,56 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
               )}
             </div>
 
-            {/* Knowledge Graph Section (separate mental model) */}
-            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-700/30">
-              <span className="text-xs text-slate-500 uppercase tracking-wide">Knowledge Graph:</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {/* YOUR KNOWLEDGE GRAPH SECTION                                      */}
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-900/90 to-slate-950/95 border border-slate-700/70 rounded-2xl p-5 mt-4">
+        {/* Subtle gradient glow */}
+        <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-bl from-purple-500/5 via-indigo-500/5 to-transparent rounded-full blur-3xl" />
+        
+        <div className="relative z-10 space-y-4">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🔮</span>
+                <h2 className="text-sm font-semibold text-slate-100 uppercase tracking-wide">
+                  Your Knowledge Graph
+                </h2>
+              </div>
+              <p className="text-xs text-slate-300 ml-8">
+                Entities & relations from your AI conversations
+              </p>
+            </div>
+          </div>
+
+          {/* Stats Row */}
+          <div className="flex flex-wrap items-center gap-4">
+            {kgStats.indexed ? (
+              <>
+                <div className="text-center">
+                  <div className="text-lg font-bold text-purple-300">
+                    {kgStats.totalEntities.toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-slate-300">entities</div>
+                </div>
+                {kgStats.totalMentions > 0 && (
+                  <>
+                    <span className="text-slate-400">→</span>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-indigo-300">
+                        {kgStats.totalMentions.toLocaleString()}
+                      </div>
+                      <div className="text-[10px] text-slate-300">mentions</div>
+                    </div>
+                  </>
+                )}
+                {/* Quick Links */}
+                <div className="flex items-center gap-3 ml-auto">
               <a
                 href="/entities"
                 className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
@@ -572,22 +851,282 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 🔮 Graph
               </a>
             </div>
+              </>
+            ) : (
+              <div className="text-slate-500 text-sm">Not indexed yet</div>
+            )}
           </div>
 
-          {/* ─────────────────────────────────────────────────────────────── */}
-          {/* WISDOM FROM LENNY'S — Always visible, shows indexing status   */}
-          {/* ─────────────────────────────────────────────────────────────── */}
-          <div className="border-t border-slate-700/50" />
-          
+          {/* Indexing UI - Always show (allows re-indexing and shows progress) */}
+          <div className="space-y-2 pt-2 border-t border-slate-700/30">
+              {indexingStatus === "indexing" && indexingProgress ? (
+                <>
+                  {/* Progress Bar */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-300">
+                        {indexingProgress.phase || "Indexing conversations..."}
+                      </span>
+                      <span className="text-slate-400">
+                        {indexingProgress.progressPercent || 0}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-800/50 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-purple-500 to-indigo-500 h-full transition-all duration-300"
+                        style={{
+                          width: `${indexingProgress.progressPercent || 0}%`,
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-slate-500">
+                      <span>
+                        {indexingProgress.processedConversations} / {indexingProgress.totalConversations} conversations
+                      </span>
+                      {indexingProgress.estimatedSecondsRemaining && (
+                        <span>
+                          ~{Math.round(indexingProgress.estimatedSecondsRemaining / 60)} min remaining
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {/* Stats */}
+                  <div className="flex flex-wrap items-center gap-3 text-xs">
+                    {indexingProgress.entitiesCreated > 0 && (
+                      <div className="text-purple-300">
+                        +{indexingProgress.entitiesCreated} entities
+                      </div>
+                    )}
+                    {indexingProgress.entitiesDeduplicated > 0 && (
+                      <div className="text-purple-400/70">
+                        {indexingProgress.entitiesDeduplicated} deduplicated
+                      </div>
+                    )}
+                    {indexingProgress.relationsCreated > 0 && (
+                      <div className="text-indigo-300">
+                        +{indexingProgress.relationsCreated} relations
+                      </div>
+                    )}
+                    {indexingProgress.decisionsCreated > 0 && (
+                      <div className="text-emerald-300">
+                        +{indexingProgress.decisionsCreated} decisions
+                      </div>
+                    )}
+                    {(indexingProgress.errors ?? 0) > 0 && (
+                      <div className="text-red-400">
+                        {indexingProgress.errors} errors
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Stop Button */}
+                  <button
+                    onClick={stopIndexing}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 text-xs font-medium transition-all"
+                  >
+                    <span>⏸️</span>
+                    <span>Stop</span>
+                  </button>
+                </>
+              ) : indexingStatus === "completed" ? (
+                <div className="text-xs text-emerald-400">
+                  ✓ Indexing complete! Refresh to see updated stats.
+                </div>
+              ) : indexingStatus === "error" && indexingProgress?.error ? (
+                <div className="space-y-2">
+                  <div className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-lg">
+                    ⚠️ {indexingProgress.error}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIndexingStatus("idle");
+                      setIndexingProgress(null);
+                    }}
+                    className="text-xs text-slate-400 hover:text-slate-300"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {showCostEstimate && costEstimate ? (
+                    <div className="text-xs bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 space-y-1">
+                      <div className="text-amber-300 font-medium">Cost Estimate</div>
+                      <div className="text-slate-300">
+                        {costEstimate.conversationCount.toLocaleString()} conversations
+                      </div>
+                      <div className="text-slate-300">
+                        Estimated cost: ${costEstimate.estimatedCost.toFixed(2)}
+                      </div>
+                      <div className="text-slate-300">
+                        Estimated time: ~{costEstimate.estimatedTimeMinutes} minutes
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          onClick={startIndexing}
+                          disabled={indexingStatus === "estimating"}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 text-xs font-medium transition-all"
+                        >
+                          <span className={indexingStatus === "estimating" ? "animate-spin" : ""}>
+                            {indexingStatus === "estimating" ? "⏳" : "🚀"}
+                          </span>
+                          <span>Start Indexing</span>
+                        </button>
+                        <button
+                          onClick={() => setShowCostEstimate(false)}
+                          className="px-2 py-1 rounded bg-slate-800/50 text-slate-400 hover:text-slate-300 text-xs transition-all"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={async () => {
+                          // First, check if there's an existing running job
+                          const existingProgress = await fetchIndexingProgress();
+                          
+                          if (existingProgress && existingProgress.status === "running") {
+                            // Job already running, progress will be shown automatically
+                            return;
+                          }
+                          
+                          // No running job, proceed with cost estimation
+                          const estimate = await estimateCost();
+                          if (estimate) {
+                            setCostEstimate(estimate);
+                            setShowCostEstimate(true);
+                          } else {
+                            // If estimation fails, start directly
+                            await startIndexing();
+                          }
+                        }}
+                        disabled={indexingStatus === "estimating" || indexingStatus === "indexing"}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                          indexingStatus === "estimating" || indexingStatus === "indexing"
+                            ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait"
+                            : "bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/30"
+                        }`}
+                      >
+                        <span className={indexingStatus === "estimating" || indexingStatus === "indexing" ? "animate-spin" : ""}>
+                          {indexingStatus === "estimating" || indexingStatus === "indexing" ? "⏳" : "🚀"}
+                        </span>
+                        <span>
+                          {indexingStatus === "estimating" ? "Starting..." : indexingStatus === "indexing" ? "Indexing..." : "Index Your Chat History"}
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+          </div>
+        </div>
+      </div>
+
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {/* YOUR CURSOR & CLAUDE CODE USAGE                                     */}
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-900/90 to-slate-950/95 border border-slate-700/70 rounded-2xl p-5 mt-4">
+        {/* Subtle gradient glow */}
+        <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-bl from-blue-500/5 via-purple-500/5 to-transparent rounded-full blur-3xl" />
+        
+        <div className="relative z-10 space-y-4">
+          {/* Header */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">💬</span>
+                <h2 className="text-sm font-semibold text-slate-100 uppercase tracking-wide">
+                  Your Cursor & Claude Code Usage
+                </h2>
+              </div>
+              <p className="text-xs text-slate-300 ml-8">
+                Conversation history and message counts
+              </p>
+            </div>
+          </div>
+
+          {/* Metadata Row: Date Coverage and Source Breakdown */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {/* Date Coverage: First → Most Recent */}
+            {memoryStats.earliestDate && memoryStats.latestDate && (
+              <div className="flex items-center gap-1 text-slate-200 bg-slate-800/70 px-2 py-1 rounded-full">
+                <span>📅</span>
+                <span>{memoryStats.earliestDate}</span>
+                <span className="text-slate-400">→</span>
+                <span>{memoryStats.latestDate}</span>
+              </div>
+            )}
+
+            {/* Source Breakdown: Cursor: # conversations | # messages | Claude Code: # conversations | # messages */}
+            {sourceBreakdown && 
+              ((sourceBreakdown.cursor.conversations > 0 || sourceBreakdown.cursor.messages > 0) ||
+               (sourceBreakdown.claudeCode.conversations > 0 || sourceBreakdown.claudeCode.messages > 0)) && (
+              <div className="flex items-center gap-1.5 text-slate-200 bg-slate-800/70 px-2 py-1 rounded-full">
+                {(sourceBreakdown.cursor.conversations > 0 || sourceBreakdown.cursor.messages > 0) && (
+                  <>
+                    <span className="text-blue-300">Cursor:</span>
+                    <span className="font-medium text-slate-100">
+                      {sourceBreakdown.cursor.conversations.toLocaleString()}
+                    </span>
+                    <span className="text-[10px] text-slate-400">conv</span>
+                    <span className="text-slate-400">|</span>
+                    <span className="font-medium text-slate-100">
+                      {sourceBreakdown.cursor.messages.toLocaleString()}
+                    </span>
+                    <span className="text-[10px] text-slate-400">msgs</span>
+                  </>
+                )}
+                {(sourceBreakdown.cursor.conversations > 0 || sourceBreakdown.cursor.messages > 0) &&
+                 (sourceBreakdown.claudeCode.conversations > 0 || sourceBreakdown.claudeCode.messages > 0) && (
+                  <span className="text-slate-400 mx-1">|</span>
+                )}
+                {(sourceBreakdown.claudeCode.conversations > 0 || sourceBreakdown.claudeCode.messages > 0) && (
+                  <>
+                    <span className="text-purple-300">Claude Code:</span>
+                    <span className="font-medium text-slate-100">
+                      {sourceBreakdown.claudeCode.conversations.toLocaleString()}
+                    </span>
+                    <span className="text-[10px] text-slate-400">conv</span>
+                    <span className="text-slate-400">|</span>
+                    <span className="font-medium text-slate-100">
+                      {sourceBreakdown.claudeCode.messages.toLocaleString()}
+                    </span>
+                    <span className="text-[10px] text-slate-400">msgs</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {/* WISDOM FROM LENNY'S PODCASTS — Separate section                     */}
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-900/90 to-slate-950/95 border border-slate-700/70 rounded-2xl p-5 mt-4">
+        {/* Subtle gradient glow */}
+        <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-bl from-amber-500/5 via-orange-500/5 to-transparent rounded-full blur-3xl" />
+        
+        <div className="relative z-10 space-y-4">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
               <div className="flex items-center gap-2">
                 <span className="text-xl">🎙️</span>
                 <h2 className="text-sm font-semibold text-slate-100 uppercase tracking-wide">
-                  Wisdom from Lenny&apos;s
+                  Wisdom from Lenny&apos;s Podcasts
                 </h2>
               </div>
+              <p className="text-xs text-slate-300 ml-8">
+                300+ episodes indexed for semantic search with knowledge graph
+              </p>
+            </div>
+              </div>
               
+          {/* Stats and Actions Row */}
+          <div className="flex items-center justify-between">
               {/* Stats */}
               <div className="flex items-center gap-3">
                 {lennyStats.indexed && lennyStats.episodeCount > 0 ? (
@@ -606,10 +1145,12 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                       </div>
                     )}
                   </>
-                ) : null}
-              </div>
+              ) : (
+                <div className="text-slate-500 text-sm">Not indexed yet</div>
+              )}
             </div>
             
+            {/* Actions */}
             <div className="flex items-center gap-2">
               {/* Lenny Status Messages */}
               {(lennyDownloadMessage || lennyUpdateMessage) && (
@@ -627,7 +1168,6 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
               )}
               
               {/* Lenny Download/Sync Button (when not indexed) */}
-              {/* Show button on cloud too - Supabase Storage makes it available */}
               {!lennyStats.indexed && (
                 <button
                   onClick={downloadLennyEmbeddings}

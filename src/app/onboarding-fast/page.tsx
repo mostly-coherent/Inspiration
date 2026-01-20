@@ -1093,7 +1093,7 @@ function FastOnboardingContent() {
                 </label>
               </div>
               <p className="text-xs text-slate-400 mb-2">
-                Unlock expert perspectives from <strong className="text-amber-400">280+ Lenny&apos;s Podcast episodes</strong>. 
+                Unlock expert perspectives from <strong className="text-amber-400">300+ Lenny&apos;s Podcast episodes</strong> (updated weekly). 
                 See what industry leaders have said about your themes.
               </p>
               {openaiKeyFromEnv ? (
@@ -1334,7 +1334,7 @@ function FastOnboardingContent() {
                       <div>
                         <h3 className="font-semibold text-amber-300">Unlock Expert Perspectives</h3>
                         <p className="text-sm text-slate-400 mt-1">
-                          Add an OpenAI API key to see what 280+ industry experts (from Lenny&apos;s Podcast) 
+                          Add an OpenAI API key to see what 300+ industry experts (from Lenny&apos;s Podcast, updated weekly) 
                           have said about your themes.
                         </p>
                       </div>

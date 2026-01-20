@@ -1,0 +1,17 @@
+{
+  "kg-index-1768882344199": {
+    "jobId": "kg-index-1768882344199",
+    "status": "running",
+    "startTime": 1768882344199,
+    "totalConversations": 596,
+    "processedConversations": 0,
+    "entitiesCreated": 0,
+    "entitiesDeduplicated": 0,
+    "relationsCreated": 0,
+    "decisionsCreated": 0,
+    "errors": 0,
+    "skipped": 0,
+    "phase": "indexing",
+    "pid": 78830
+  }
+}

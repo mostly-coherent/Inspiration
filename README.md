@@ -13,7 +13,7 @@
 
 <img src="https://raw.githubusercontent.com/mostly-coherent/Inspiration/main/public/screenshots/homepage.png" alt="Inspiration - Main Interface" width="800">
 
-**New:** [Lenny's Podcast Integration](#whats-new) — Connect your thinking with 280+ expert episodes. Semantic search across both your conversations and expert wisdom to inspire outward exploration.
+**New:** [Lenny's Podcast Integration](#whats-new) — Connect your thinking with 300+ expert episodes. Updated weekly from Claire Vo's ChatPRD GitHub. Semantic search across both your conversations and expert wisdom to inspire outward exploration.
 
 ---
 
@@ -76,7 +76,7 @@ After several months of use, your Inspiration contains patterns specific to your
 | **Ideas** | Surface recurring pain points worth building solutions for |
 | **Insights** | Extract learnings worth sharing (blogs, tweets, notes) |
 | **Seek** | "I want to build X"—find similar examples from your own history |
-| **Expert Perspectives** | Connect your thinking with 280+ Lenny's Podcast episodes via semantic search |
+| **Expert Perspectives** | Connect your thinking with 300+ Lenny's Podcast episodes via semantic search (updated weekly) |
 
 ---
 
@@ -84,7 +84,7 @@ After several months of use, your Inspiration contains patterns specific to your
 
 | Timeline | What You Can Do |
 |----------|-----------------|
-| **Day 1** | Semantic search across 280+ Lenny's Podcast episodes for expert insights |
+| **Day 1** | Semantic search across 300+ Lenny's Podcast episodes for expert insights |
 | **Month 1** | See patterns across your conversations; discover how your themes relate to expert discussions |
 | **Month 6** | Your patterns connect with expert knowledge—relationships you didn't know existed |
 
@@ -130,7 +130,7 @@ Open `http://localhost:3000/onboarding-fast`
 | 2. API Key | Paste your Anthropic key | ~10s |
 | 3. Generate | Creates Theme Map from local SQLite | ~60s |
 
-**Value on Day 1:** Even with zero personal conversations, Inspiration includes 280+ Lenny's Podcast episodes (product leaders, engineers, founders). You can immediately ask: *"What do experts say about pricing strategy?"* or *"How did successful PMs approach their first PM role?"*
+**Value on Day 1:** Even with zero personal conversations, Inspiration includes 300+ Lenny's Podcast episodes (product leaders, engineers, founders), updated weekly from Claire Vo's ChatPRD GitHub. You can immediately ask: *"What do experts say about pricing strategy?"* or *"How did successful PMs approach their first PM role?"*
 
 As you add your own conversations, your patterns connect with expert knowledge—discovering how your thinking relates to industry expertise.
 
@@ -196,7 +196,7 @@ The novelty is longitudinal intelligence: pattern recognition + relationship for
 
 **Lenny's Podcast Integration**
 
-Your patterns now connect with expert knowledge. Semantic search across both your conversations and 280+ Lenny's Podcast episodes—**Claire Vo** (ChatPRD), **Dylan Field** (Figma), **Elena Verna** (Lovable, Miro), and other product leaders, engineers, and founders. Discover how expert thinking relates to your own patterns, inspiring outward exploration. Click through to YouTube timestamps.
+Your patterns now connect with expert knowledge. Semantic search across both your conversations and 300+ Lenny's Podcast episodes (updated weekly from [ChatPRD's archive](https://github.com/ChatPRD/lennys-podcast-transcripts))—**Claire Vo** (ChatPRD), **Dylan Field** (Figma), **Elena Verna** (Lovable, Miro), and other product leaders, engineers, and founders. Discover how expert thinking relates to your own patterns, inspiring outward exploration. Click through to YouTube timestamps.
 
 How it works:
 - **One-time auto-download:** ~250MB embeddings downloaded from GitHub Releases on first run

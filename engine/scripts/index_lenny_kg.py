@@ -255,7 +255,7 @@ def estimate_cost(num_episodes: int, with_relations: bool = False) -> dict:
         Dict with cost breakdown
     """
     # Average chunks per episode (from data/lenny_metadata.json analysis)
-    avg_chunks_per_episode = 157  # ~44K chunks / 280 episodes
+    avg_chunks_per_episode = 157  # ~44K chunks / 300+ episodes (updated weekly from ChatPRD GitHub)
     
     # Tokens per chunk (estimated)
     avg_tokens_per_chunk = 500

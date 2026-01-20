@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import EntityExplorer from "@/components/EntityExplorer";
 import EvolutionTimeline from "@/components/EvolutionTimeline";
@@ -16,7 +17,9 @@ interface KGStats {
 
 type ViewTab = "entities" | "trends" | "intelligence" | "episodes";
 
-export default function EntitiesPage() {
+function EntitiesPageContent() {
+  const searchParams = useSearchParams();
+  const selectedEntityId = searchParams.get("selected");
   const [stats, setStats] = useState<KGStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -230,10 +233,22 @@ export default function EntitiesPage() {
           </div>
         ) : (
           <div className="h-[calc(100vh-140px)]">
-            <EntityExplorer />
+            <EntityExplorer initialSelectedEntityId={selectedEntityId || undefined} />
           </div>
         )}
       </main>
     </div>
+  );
+}
+
+export default function EntitiesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 flex items-center justify-center">
+        <div className="text-slate-400">Loading...</div>
+      </div>
+    }>
+      <EntitiesPageContent />
+    </Suspense>
   );
 }

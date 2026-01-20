@@ -48,7 +48,7 @@ See PLAN.md for detailed use case descriptions.
 │                            ▼                                                │
 │                      ┌──────────────┐                                       │
 │                      │Lenny Archive │ (Pre-computed embeddings)             │
-│                      │ (280+ eps)   │ NPZ + JSON, local search              │
+│                      │ (300+ eps)   │ NPZ + JSON, local search              │
 │                      └──────────────┘                                       │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -341,9 +341,11 @@ Supports optional source filtering for targeted queries.
 
 ### Overview
 
-280+ expert podcast episodes from Lenny's Podcast, pre-indexed and searchable. Provides expert validation for user's themes in the Theme Explorer.
+300+ expert podcast episodes from Lenny's Podcast, pre-indexed and searchable. Updated weekly when Claire Vo updates the ChatPRD GitHub repository. Provides expert validation for user's themes in the Theme Explorer.
 
 **Key Design Decision:** Pre-computed embeddings are **hosted on GitHub Releases** (not in repo due to 219MB size limit). For cloud deployments, **Supabase Storage** is used as primary source (faster, 5-10s) with GitHub Releases as fallback (30-60s). Local development downloads automatically via `scripts/download-lenny-embeddings.sh`.
+
+**Update Frequency:** Lenny's podcast archive is updated weekly when Claire Vo updates the [ChatPRD/lennys-podcast-transcripts](https://github.com/ChatPRD/lennys-podcast-transcripts) GitHub repository. The app auto-syncs new episodes when users click "Refresh Memory".
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -354,7 +356,7 @@ Supports optional source filtering for targeted queries.
 │  │ GitHub Repo      │     │ Transcript       │     │ Local Indexer    │    │
 │  │ (ChatPRD/lennys) │────▶│ Parser           │────▶│ (Embeddings)     │    │
 │  │                  │     │                  │     │                  │    │
-│  │ 280+ episodes    │     │ YAML frontmatter │     │ OpenAI API       │    │
+│  │ 300+ episodes    │     │ YAML frontmatter │     │ OpenAI API       │    │
 │  │ Rich metadata    │     │ Speaker chunks   │     │ text-embedding   │    │
 │  └──────────────────┘     └──────────────────┘     └──────────────────┘    │
 │           │                                               │                │
@@ -495,7 +497,7 @@ UI shows: "✓ Synced 5 new episodes"
 ```
 
 **Manual (sync button):**
-- Click 🔄 button next to "280 expert episodes" in Scoreboard
+- Click 🔄 button next to "300+ expert episodes" in Scoreboard
 - Same flow as above
 
 ### Search Performance
@@ -520,7 +522,7 @@ UI shows: "✓ Synced 5 new episodes"
 - Shows quotes from experts who have discussed similar contrarian ideas
 
 **ScoreboardHeader:**
-- Shows "🎙️ 280 expert episodes" badge
+- Shows "🎙️ 300+ expert episodes" badge
 - Sync button for manual Lenny archive update
 - Status message after sync ("✓ Up to date" or "✓ Synced N episodes")
 

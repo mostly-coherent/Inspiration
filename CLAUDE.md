@@ -28,7 +28,7 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 - **Theme Explorer (LIB-8)** — Pattern discovery via dynamic similarity grouping (forest → trees zoom), AI synthesis per theme
 - **Unexplored Territory (LIB-10)** — Find topics discussed in Memory but missing from Library
 - **Counter-Intuitive (LIB-11)** — LLM-generated reflection prompts for "good opposite" perspectives
-- **Expert Perspectives (Lenny's Podcast)** — 280+ expert episodes integrated into Theme Explorer (Patterns + Counter-Intuitive tabs)
+- **Expert Perspectives (Lenny's Podcast)** — 300+ expert episodes integrated into Theme Explorer (Patterns + Counter-Intuitive tabs)
 - **Knowledge Graph (v2.0)** — Entity/relation extraction from conversations, Entity Explorer, Graph View, Evolution Timeline, Intelligence features
 
 **Longitudinal Intelligence Status:**
@@ -37,7 +37,7 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 
 ### Lenny's Podcast Integration
 
-**What:** 280+ expert podcast episodes from Lenny's Podcast, pre-indexed and searchable.
+**What:** 300+ expert podcast episodes from Lenny's Podcast, pre-indexed and searchable. Updated weekly when Claire Vo updates the ChatPRD GitHub repository.
 
 **Key Design Decision:** Pre-computed embeddings are **hosted on GitHub Releases** (not in repo due to 219MB size limit). For cloud deployments, **Supabase Storage** is used as primary source (faster, 5-10s) with GitHub Releases as fallback (30-60s). Local development downloads automatically via `scripts/download-lenny-embeddings.sh`.
 
@@ -66,7 +66,7 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 2. Upload `lenny_embeddings.npz` (~219MB) and `lenny_metadata.json` (~28KB)
 3. Cloud deployments will automatically use Supabase Storage
 
-**Sync Flow:** When user clicks "Refresh Memory", Lenny archive auto-syncs via `git pull` and re-indexes if new episodes detected.
+**Sync Flow:** When user clicks "Refresh Memory", Lenny archive auto-syncs via `git pull` from [ChatPRD/lennys-podcast-transcripts](https://github.com/ChatPRD/lennys-podcast-transcripts) (updated weekly by Claire Vo) and re-indexes if new episodes detected.
 
 ### New User Onboarding
 
@@ -239,7 +239,7 @@ npm run dev
 **What It Does:**
 - Extracts entities (tools, patterns, problems, concepts) and relations from conversations
 - Builds a knowledge graph showing how your thinking connects over time
-- Lenny's Podcast integration: 280+ expert episodes indexed for cross-source insights
+- Lenny's Podcast integration: 300+ expert episodes indexed for cross-source insights (updated weekly from ChatPRD GitHub)
 
 **Key Features:**
 - **Entity Explorer** — Browse all entities with filtering, search, detail view

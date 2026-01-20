@@ -573,7 +573,7 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 | LENNY-1 | **YouTube timestamp deep-links** — Convert `00:15:30` → `?t=930` for exact moment links | HIGH | LOW | Pending |
 | LENNY-2 | **View count badge** — Show 🔥 for high-view-count episodes (>500K views) | MEDIUM | LOW | Pending |
 | LENNY-3 | **"More from this guest"** — When seeing a quote, show other episodes from that guest | MEDIUM | MEDIUM | Pending |
-| LENNY-4 | **Browse Experts page** — List all 269 guests, click to see their episodes/quotes | LOW | MEDIUM | Pending |
+| LENNY-4 | **Browse Experts page** — List all guests (300+ episodes), click to see their episodes/quotes | LOW | MEDIUM | Pending |
 | LENNY-5 | **RAG from Lenny during Generation** — Pull expert quotes into idea/insight generation | LOW | HIGH | Pending |
 | LENNY-6 | **"Related Experts" for each theme** — Show which guests have talked most about a topic | LOW | MEDIUM | Pending |
 | LENNY-7 | **Last synced timestamp** — Show when Lenny archive was last synced in UI | LOW | LOW | Pending |
@@ -632,7 +632,7 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 
 Users have TWO knowledge graphs:
 1. **Personal KG:** Entities/relations from their own chat history (what they've built, problems encountered, patterns used)
-2. **Expert KG:** Entities/relations from 280+ Lenny podcast episodes (what experts recommend, industry best practices)
+2. **Expert KG:** Entities/relations from 300+ Lenny podcast episodes (what experts recommend, industry best practices). Updated weekly when Claire Vo updates the ChatPRD GitHub repository.
 
 **The Gap:** These graphs exist in isolation. No way to compare, contrast, or learn from the intersection.
 
@@ -671,7 +671,7 @@ Users have TWO knowledge graphs:
 
 | ID | Feature | Description | Priority | Effort | Status |
 |----|---------|-------------|----------|--------|--------|
-| XKG-1 | **Index Lenny into KG** | Run `index_lenny_kg.py` on all 280+ episodes to extract entities/relations | HIGH | LOW | Infrastructure exists |
+| XKG-1 | **Index Lenny into KG** | Run `index_lenny_kg.py` on all 300+ episodes to extract entities/relations | HIGH | LOW | Infrastructure exists |
 | XKG-2 | **Source Attribution** | Use `source` column to distinguish user vs expert entities (`source='lenny'` vs `source='cursor'`) | HIGH | LOW | Schema supports it |
 | XKG-3 | **Entity Type Mapping** | Ensure Lenny entities use same types (tool, pattern, problem, concept, person) | HIGH | LOW | Pending |
 | XKG-4 | **Cross-Source Deduplication** | Merge identical entities across sources (e.g., "React" from user + "React" from Lenny) | MEDIUM | MEDIUM | Pending |
@@ -727,7 +727,7 @@ Users have TWO knowledge graphs:
 - **Performance:** PostgreSQL CTEs sufficient; consider Neo4j if >100k entities
 
 **3. Cost Estimation:**
-- **Lenny KG Indexing:** ~$15-25 (GPT-4o-mini, 280 episodes × 44K chunks)
+- **Lenny KG Indexing:** ~$15-25 (GPT-4o-mini, 300+ episodes × 44K chunks)
 - **Cross-Graph Queries:** $0 (SQL only, no LLM calls)
 - **Pattern Comparison:** ~$0.01-0.05 per query (LLM synthesis of differences)
 

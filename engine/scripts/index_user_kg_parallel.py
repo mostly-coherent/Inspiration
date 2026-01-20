@@ -495,6 +495,18 @@ def update_progress(stats: dict):
         
         if stats.get("skipped"):
             _progress_stats["skipped"] += 1
+        
+        # Emit structured progress markers for API parsing
+        total = _progress_stats.get("total_conversations", 0)
+        if total > 0:
+            current = _progress_stats["chats_processed"]
+            print(f"[PROGRESS:current={current},total={total}]")
+            print(f"[STAT:key=entitiesCreated,value={_progress_stats['entities_created']}]")
+            print(f"[STAT:key=entitiesDeduplicated,value={_progress_stats['entities_deduplicated']}]")
+            print(f"[STAT:key=relationsCreated,value={_progress_stats['relations_created']}]")
+            print(f"[STAT:key=decisionsExtracted,value={_progress_stats['decisions_extracted']}]")
+            print(f"[STAT:key=errors,value={_progress_stats['errors']}]")
+            print(f"[STAT:key=skipped,value={_progress_stats['skipped']}]")
 
 
 def print_progress(current: int, total: int, start_time: float):
@@ -655,8 +667,13 @@ def main():
             print(f"   - {conv_data['chat_id']}: {len(conv_data['combined_text'])} chars")
         return
     
+    # Set total conversations for progress tracking
+    with _progress_lock:
+        _progress_stats["total_conversations"] = len(conv_data_list)
+    
     # Process conversations in parallel
     print(f"\n🔄 Processing {len(conv_data_list)} conversations with {args.workers} workers...")
+    print(f"[PHASE:name=indexing,message=Indexing conversations with {args.workers} workers]")
     start_time = time.time()
     
     try:
@@ -671,6 +688,7 @@ def main():
         
         # Build and save temporal chains
         print("\n🔗 Building temporal chains...")
+        print("[PHASE:name=temporal_chains,message=Building temporal relationships between conversations]")
         # Use conv_data_list which already has the right structure
         temporal_conv_data = [
             {

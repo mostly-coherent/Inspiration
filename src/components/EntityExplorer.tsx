@@ -92,9 +92,10 @@ const RELATION_TYPE_CONFIG: Record<string, { label: string; arrow: string }> = {
 
 interface EntityExplorerProps {
   onEntitySelect?: (entity: Entity) => void;
+  initialSelectedEntityId?: string;
 }
 
-export default function EntityExplorer({ onEntitySelect }: EntityExplorerProps) {
+export default function EntityExplorer({ onEntitySelect, initialSelectedEntityId }: EntityExplorerProps) {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
   const [mentions, setMentions] = useState<EntityMention[]>([]);
@@ -115,6 +116,7 @@ export default function EntityExplorer({ onEntitySelect }: EntityExplorerProps) 
   const isMountedRef = useRef(true);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const initialSelectionDoneRef = useRef(false);
 
   // Fetch entities
   const fetchEntities = useCallback(async () => {
@@ -361,6 +363,26 @@ export default function EntityExplorer({ onEntitySelect }: EntityExplorerProps) 
     };
   }, [typeFilter, sortBy, searchQuery, confidenceFilter, sourceFilter, fetchEntities]);
 
+  // Handle initial entity selection from URL parameter
+  useEffect(() => {
+    if (
+      initialSelectedEntityId &&
+      entities.length > 0 &&
+      !selectedEntity &&
+      !initialSelectionDoneRef.current
+    ) {
+      const entityToSelect = entities.find((e) => e.id === initialSelectedEntityId);
+      if (entityToSelect) {
+        initialSelectionDoneRef.current = true;
+        fetchEntityDetail(entityToSelect);
+      }
+    }
+    // Reset ref if initialSelectedEntityId changes (new navigation)
+    if (initialSelectedEntityId && !entities.find((e) => e.id === initialSelectedEntityId)) {
+      initialSelectionDoneRef.current = false;
+    }
+  }, [initialSelectedEntityId, entities, selectedEntity, fetchEntityDetail]);
+
   // Cleanup on unmount
   useEffect(() => {
     isMountedRef.current = true;
@@ -464,6 +486,7 @@ export default function EntityExplorer({ onEntitySelect }: EntityExplorerProps) 
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
+                aria-label="Sort entities by"
                 className="bg-slate-800/50 border border-slate-700/50 rounded px-2 py-1 text-slate-300"
               >
                 <option value="mentions">Most Mentioned</option>
@@ -476,6 +499,7 @@ export default function EntityExplorer({ onEntitySelect }: EntityExplorerProps) 
               <select
                 value={confidenceFilter}
                 onChange={(e) => setConfidenceFilter(e.target.value)}
+                aria-label="Filter entities by confidence level"
                 className="bg-slate-800/50 border border-slate-700/50 rounded px-2 py-1 text-slate-300"
               >
                 <option value="all">All</option>
