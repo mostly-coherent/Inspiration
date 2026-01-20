@@ -433,23 +433,7 @@ export default function EntityExplorer({ onEntitySelect, initialSelectedEntityId
         <div className="mb-4">
           <h2 className="text-xl font-semibold text-slate-100 mb-3 flex items-center gap-2">
             🔮 Entity Explorer
-            <span className="text-xs bg-amber-900/50 text-amber-400 px-2 py-0.5 rounded-full flex items-center gap-1">
-              🚧 Experimental
-            </span>
           </h2>
-
-          {/* Experimental Feature Banner */}
-          <div className="bg-amber-900/20 border border-amber-700/30 rounded-xl p-3 mb-3">
-            <div className="flex items-start gap-2">
-              <span className="text-lg">🚧</span>
-              <div className="text-xs">
-                <p className="text-amber-200 font-medium mb-1">Experimental Feature</p>
-                <p className="text-slate-400">
-                  Entity extraction and relationship detection are experimental. Data quality may vary.
-                </p>
-              </div>
-            </div>
-          </div>
 
           {/* Search */}
           <input

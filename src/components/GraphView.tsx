@@ -37,8 +37,12 @@ const ENTITY_TYPE_COLORS: Record<string, string> = {
   person: "#f472b6", // pink-400
   project: "#22d3ee", // cyan-400
   workflow: "#fb923c", // orange-400
+  episode: "#a78bfa", // violet-400 (backbone nodes - episodes)
   other: "#94a3b8", // slate-400 (for emergent/uncategorized entities)
 };
+
+// Layer types for Backbone & Satellite architecture
+type NodeLayer = "backbone" | "satellite" | "regular";
 
 // Relation type colors
 const RELATION_TYPE_COLORS: Record<string, string> = {
@@ -63,6 +67,7 @@ interface GraphNode {
   fx?: number | null;
   fy?: number | null;
   source?: string; // "user", "lenny", "both", "unknown"
+  layer?: NodeLayer; // "backbone" (episodes), "satellite" (conversations), "regular" (other)
 }
 
 interface GraphLink {
@@ -389,6 +394,52 @@ export default function GraphView({
     return clusterMap;
   }, []);
 
+  // Detect node layers (backbone vs satellite vs regular)
+  const detectNodeLayers = useCallback((data: GraphData): GraphData => {
+    return {
+      ...data,
+      nodes: data.nodes.map((node) => {
+        let layer: NodeLayer = "regular";
+        // Episodes are backbone nodes
+        if (node.type === "episode") {
+          layer = "backbone";
+        }
+        // Conversations (starting with "conv-") are satellite nodes
+        else if (node.id.startsWith("conv-")) {
+          layer = "satellite";
+        }
+        return { ...node, layer };
+      }),
+    };
+  }, []);
+
+  // Apply circular layout for backbone nodes (episodes)
+  const applyBackboneCircularLayout = useCallback((data: GraphData, centerX: number, centerY: number, radius: number) => {
+    const backboneNodes = data.nodes.filter((n) => n.layer === "backbone");
+    const angleStep = (2 * Math.PI) / Math.max(backboneNodes.length, 1);
+    
+    return {
+      ...data,
+      nodes: data.nodes.map((node) => {
+        if (node.layer === "backbone") {
+          const index = backboneNodes.findIndex((n) => n.id === node.id);
+          const angle = index * angleStep;
+          return {
+            ...node,
+            fx: centerX + radius * Math.cos(angle),
+            fy: centerY + radius * Math.sin(angle),
+          };
+        }
+        // Satellites and regular nodes: clear fixed positions (use force-directed)
+        return {
+          ...node,
+          fx: null,
+          fy: null,
+        };
+      }),
+    };
+  }, []);
+
   // Hierarchical layout calculation using d3-hierarchy
   const applyHierarchicalLayout = useCallback((data: GraphData) => {
     if (data.nodes.length === 0) return data;
@@ -455,21 +506,38 @@ export default function GraphView({
     };
   }, [dimensions]);
 
+  // Detect layers first
+  const layeredGraphData = useMemo(() => {
+    return detectNodeLayers(filteredGraphData);
+  }, [filteredGraphData, detectNodeLayers]);
+
   // Apply layout to filtered graph data
   const layoutedGraphData = useMemo(() => {
+    // Check if we have backbone nodes (episodes)
+    const hasBackboneNodes = layeredGraphData.nodes.some((n) => n.layer === "backbone");
+    
     if (layoutType === "hierarchical") {
-      return applyHierarchicalLayout(filteredGraphData);
+      return applyHierarchicalLayout(layeredGraphData);
     }
+    
+    // Backbone & Satellite: Use circular layout for backbone, force-directed for satellites
+    if (hasBackboneNodes) {
+      const centerX = dimensions.width / 2;
+      const centerY = dimensions.height / 2;
+      const radius = Math.min(dimensions.width, dimensions.height) * 0.3; // 30% of smaller dimension
+      return applyBackboneCircularLayout(layeredGraphData, centerX, centerY, radius);
+    }
+    
     // Force-directed: clear fixed positions
     return {
-      ...filteredGraphData,
-      nodes: filteredGraphData.nodes.map((node) => ({
+      ...layeredGraphData,
+      nodes: layeredGraphData.nodes.map((node) => ({
         ...node,
         fx: null,
         fy: null,
       })),
     };
-  }, [filteredGraphData, layoutType, applyHierarchicalLayout]);
+  }, [layeredGraphData, layoutType, applyHierarchicalLayout, applyBackboneCircularLayout, dimensions]);
 
   // Update clusters when graph data changes
   useEffect(() => {
@@ -508,6 +576,10 @@ export default function GraphView({
       const isLenny = node.source === "lenny";
       const isBoth = node.source === "both";
       
+      // Layer-based visual distinction
+      const isBackbone = node.layer === "backbone";
+      const isSatellite = node.layer === "satellite";
+      
       // Muted Context: Dim non-focused nodes when a node is selected
       const opacity = isInFocusContext || !focusNodeId ? 1 : 0.3;
 
@@ -521,15 +593,26 @@ export default function GraphView({
 
       // Visual Encoding: Size by importance (mentionCount + degree)
       // In heatmap mode, use smaller uniform size
+      // Layer-based sizing: Backbone larger, satellites smaller
       const baseNodeSize = isHeatmapMode ? 2 : Math.max((node.val || 4), 4);
-      const nodeSize = baseNodeSize;
+      const nodeSize = isBackbone 
+        ? baseNodeSize * 1.5  // 50% larger for backbone (episodes)
+        : isSatellite 
+        ? baseNodeSize * 0.7  // 30% smaller for satellites (conversations)
+        : baseNodeSize;
 
       // Draw node circle
       ctx.beginPath();
       ctx.arc(node.x || 0, node.y || 0, nodeSize, 0, 2 * Math.PI);
 
       // Visual Encoding: Bright colors for focus, muted for context
-      const baseColor = getNodeColor(node);
+      // Backbone nodes: Use episode color (violet), Satellites: Use conversation color (cyan)
+      let baseColor = getNodeColor(node);
+      if (isBackbone) {
+        baseColor = ENTITY_TYPE_COLORS.episode || "#a78bfa"; // violet-400 for episodes
+      } else if (isSatellite) {
+        baseColor = ENTITY_TYPE_COLORS.project || "#22d3ee"; // cyan-400 for conversations
+      }
       const colorWithOpacity = opacity < 1 
         ? baseColor + Math.floor(255 * opacity).toString(16).padStart(2, "0")
         : baseColor;

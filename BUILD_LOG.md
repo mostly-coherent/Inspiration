@@ -2791,3 +2791,40 @@ We discovered the user's local Cursor chat history (`state.vscdb`) is **2.1 GB**
 - Multi-source views enable comparing personal knowledge vs expert knowledge
 
 <!-- Entry added: 2026-01-19 -->
+
+## Progress - 2026-01-19 (Backbone & Satellite Architecture — Phase 1 & 2 COMPLETE)
+
+**Done:**
+- ✅ **Phase 1: Foundation Schema (`005_backbone_satellite_schema.sql`)**
+  - Created episode entities in `kg_entities` (type='episode', IDs: `episode-{slug}`)
+  - Created `kg_conversations` table with temporal fields (`date_month`, `date_day`)
+  - Created conversation entities in `kg_entities` (type='project', IDs: `conv-{message_id}`)
+  - Created `REFERENCES_EPISODE` relations linking episodes to conversations
+  - Added helper functions: `extract_date_from_timestamp()`, `extract_day_from_timestamp()`
+  - Added RPC functions: `get_conversations_by_date_range()`, `get_episodes_for_conversation()`
+  - Migration deployed and verified in Supabase
+  - File: `engine/scripts/migrations/005_backbone_satellite_schema.sql`
+
+- ✅ **Phase 2: Visualization Layers (`src/components/GraphView.tsx`)**
+  - Added layer detection (`detectNodeLayers()`): backbone (episodes), satellite (conversations), regular
+  - Implemented circular layout for backbone nodes (`applyBackboneCircularLayout()`)
+  - Added visual distinction: Size (backbone 50% larger, satellites 30% smaller)
+  - Added color coding: Violet (`#a78bfa`) for episodes, cyan (`#22d3ee`) for conversations
+  - Force-directed layout for satellites (conversations orbit backbone nodes)
+  - Automatic activation when backbone nodes (episodes) are present
+  - File: `src/components/GraphView.tsx`
+
+**In Progress:**
+- ⏳ Phase 3: Temporal Navigation (timeline slider, date filtering, ghost mode)
+
+**Next:**
+- Phase 3: Temporal Navigation
+- Phase 4: Semantic Concept Overlay
+- Phase 5: Summarization Nodes
+
+**Evidence:**
+- Migration script: `005_backbone_satellite_schema.sql` (377 lines)
+- GraphView implementation: Layer detection, circular layout, visual distinction
+- Database verification: Episode entities created, conversation entities created, relations established
+
+<!-- Entry added: 2026-01-19 -->

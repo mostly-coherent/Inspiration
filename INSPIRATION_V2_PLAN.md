@@ -1,11 +1,11 @@
 # Inspiration v2.0+ — Future Roadmap
 
 > **Version:** 2.0+ (Post-Knowledge Graphs Release)
-> **Last Updated:** 2026-01-19 (Updated: Iteration 2 & 3 Complete)
-> **Status:** 🔮 Future Features (v2.0 Foundation Complete, Iteration 2 & 3 Complete)
+> **Last Updated:** 2026-01-19 (Updated: Iteration 2 & 3 Complete, Backbone & Satellite Phase 1 & 2 Complete)
+> **Status:** 🔮 Future Features (v2.0 Foundation Complete, Iteration 2 & 3 Complete, Backbone & Satellite Phase 1 & 2 Complete)
 > **Philosophy:** Ship incrementally, iterate based on user feedback
 
-> **Note:** This document describes **future features not yet implemented**. For completed v2.0 features, see `PLAN.md` Knowledge Graph section.
+> **Note:** This document describes **future features not yet implemented**. For completed v2.0 features, see `PLAN.md` Knowledge Graph section. Backbone & Satellite Architecture (Phase 1 & 2) is complete and documented in this file.
 
 ---
 
@@ -18,6 +18,7 @@ Based on the current implementation state (15,449 entities, 10,898+ relations), 
 | Priority | Feature | Rationale | Effort | Status |
 |----------|---------|-----------|--------|--------|
 | **P1** | **User Chat Indexing UX** (Iteration 2) | Let users build personal KG with progress UI, cost estimation, incremental sync | 6-8 hours | ✅ **COMPLETE** (2026-01-19) |
+| **P1.5** | **Backbone & Satellite Architecture** (Phase 1-2) | Dual-layered graph visualization: Episodes as stable backbone, conversations as satellites | 2-3 weeks | ✅ **Phase 1 Complete** (2026-01-19), ✅ **Phase 2 Complete** (2026-01-19) |
 | **P2** | **Schema Evolution** (Phase 3) | Discover new entity types from 5,038 "other" entities without re-indexing | 2-3 weeks | ⏳ Pending |
 
 ### Tier 2: High Value, Requires Volume (Build After Tier 1)
@@ -157,6 +158,213 @@ Based on the current implementation state (15,449 entities, 10,898+ relations), 
   - Higher value, significant effort
 
 **See `PIVOT_LOG.md` for detailed decision rationale.**
+
+---
+
+## Backbone & Satellite Architecture (Dual-Layered Graph Visualization)
+
+> **Purpose:** Transform Knowledge Graph visualization from flat graph into dual-layered architecture (Episodes as Backbone, Conversations as Satellites)
+> **Status:** ✅ **Phase 1 Complete** (2026-01-19), ✅ **Phase 2 Complete** (2026-01-19)
+> **Rationale:** Addresses "hairball problem" by separating stable knowledge (podcasts) from dynamic activity (conversations)
+
+### Overview
+
+Transform the Knowledge Graph visualization from a flat graph into a **dual-layered architecture** where:
+- **Backbone (Stable):** Podcast episodes, guests, and topics — fixed layout anchors
+- **Satellites (Transient):** AI conversations that orbit specific episodes/concepts they reference
+
+This architecture addresses the "hairball problem" by separating stable knowledge (podcasts) from dynamic activity (conversations).
+
+### Current State Analysis
+
+#### ✅ What We Have (After Phase 1)
+
+1. **Episode Entities:** ✅ Created in `kg_entities` table (type='episode')
+   - IDs: `"episode-{episode_slug}"`
+   - Linked to `kg_episode_metadata` for rich metadata (YouTube URLs, guest names, etc.)
+
+2. **Conversation Entities:** ✅ Created in both `kg_conversations` table (metadata) and `kg_entities` table (graph nodes)
+   - IDs: `"conv-{message_id}"`
+   - Stored as 'project' type entities in `kg_entities` for foreign key constraints
+   - Temporal data: `date_month` (YYYY-MM-01), `date_day` (YYYY-MM-DD, nullable)
+
+3. **Episode → Conversation Relations:** ✅ Created via `REFERENCES_EPISODE` relation type
+   - Pattern: `episode-{slug} --[REFERENCES_EPISODE]--> conv-{message_id}`
+
+#### ✅ What's Implemented (Phase 2)
+
+1. **Layer Detection:** ✅ Automatic detection of backbone (episodes) vs satellite (conversations) vs regular nodes
+2. **Circular Layout:** ✅ Backbone nodes arranged in fixed circular layout
+3. **Visual Distinction:** ✅ Size (backbone 50% larger, satellites 30% smaller) and color (violet for episodes, cyan for conversations)
+4. **Force-Directed Satellites:** ✅ Conversations orbit backbone nodes via force-directed layout
+
+### Schema Design (Implemented)
+
+**Decision:** Hybrid Approach (Option A) — Keep `kg_episode_metadata` for rich metadata, create `kg_entities` entries with `entity_type='episode'` for graph nodes.
+
+**Rationale:**
+- Preserves existing metadata structure
+- Episodes become first-class graph nodes
+- Can link via standard `kg_relations` table
+
+**Migration:** `005_backbone_satellite_schema.sql` (✅ Complete)
+
+### Implementation Phases
+
+#### ✅ Phase 1: Foundation Schema (COMPLETE — 2026-01-19)
+
+**Goal:** Create episode entities, conversation entities, and basic linking.
+
+**Status:** ✅ **COMPLETE**
+
+**Deliverables:**
+- ✅ Episode entities in `kg_entities` (type='episode')
+- ✅ Conversation entities in `kg_conversations` table
+- ✅ Conversation entities in `kg_entities` (type='project', IDs: `conv-{message_id}`)
+- ✅ `REFERENCES_EPISODE` relations in `kg_relations`
+- ✅ Helper functions: `extract_date_from_timestamp()`, `extract_day_from_timestamp()`
+- ✅ RPC functions: `get_conversations_by_date_range()`, `get_episodes_for_conversation()`
+
+**Migration:** `005_backbone_satellite_schema.sql` deployed and verified
+
+#### ✅ Phase 2: Visualization Layers (COMPLETE — 2026-01-19)
+
+**Goal:** Separate backbone and satellite layers in GraphView.
+
+**Status:** ✅ **COMPLETE**
+
+**Deliverables:**
+- ✅ Layer detection (`backbone`, `satellite`, `regular`)
+- ✅ Circular layout for backbone nodes (episodes)
+- ✅ Force-directed layout for satellites (conversations orbit backbone)
+- ✅ Visual distinction: Size (backbone 50% larger, satellites 30% smaller) and color (violet for episodes, cyan for conversations)
+
+**Implementation:**
+- `GraphView.tsx`: Added `detectNodeLayers()`, `applyBackboneCircularLayout()`, layer-based rendering
+- Automatic activation when backbone nodes (episodes) are present
+
+#### ⏳ Phase 3: Temporal Navigation (Week 3)
+
+**Goal:** Timeline slider for time-scrubbing.
+
+**Tasks:**
+1. Add timeline slider UI component
+2. Implement date range filtering
+3. Dynamic graph assembly/disassembly based on date
+4. "Ghost" mode: Fade non-relevant episodes when clicking conversation
+
+**Deliverables:**
+- Timeline slider at bottom of graph view
+- Graph updates dynamically based on date range
+- Ghost mode for focused exploration
+
+**Status:** ⏳ Pending
+
+#### ⏳ Phase 4: Semantic Concept Overlay (Week 4)
+
+**Goal:** Embedding-based concept matching.
+
+**Tasks:**
+1. Generate embeddings for conversation synthesis
+2. Match user conversation concepts to episode concepts
+3. Create `SEMANTIC_MATCH` relations
+4. Visual "heat" or "glow" between matched concepts
+
+**Deliverables:**
+- Semantic matching algorithm
+- Visual indicators for concept matches
+- Concept overlay layer in graph
+
+**Status:** ⏳ Pending
+
+#### ⏳ Phase 5: Summarization Nodes (Week 5)
+
+**Goal:** Collapse conversations into synthesis nodes.
+
+**Tasks:**
+1. Generate synthesis text for conversations (LLM)
+2. Store synthesis embeddings
+3. Collapse/expand UI for conversation nodes
+4. Expand to message-level graph on double-click
+
+**Deliverables:**
+- Synthesis generation pipeline
+- Collapsible conversation nodes
+- Message-level detail view
+
+**Status:** ⏳ Pending
+
+### Technical Decisions
+
+#### 1. Episode → Conversation Linking
+
+**Decision:** Use `REFERENCES_EPISODE` relation type in `kg_relations` table.
+
+**Rationale:**
+- Leverages existing relation infrastructure
+- No schema changes needed (relation_type is TEXT)
+- Can add strength/confidence scores later
+
+**Alternatives Considered:**
+- Separate `kg_episode_conversations` junction table
+- Store episode_slug directly in conversation entity
+
+**Why Rejected:**
+- Junction table adds complexity without benefit
+- Direct storage limits to one episode per conversation (conversations can reference multiple episodes)
+
+#### 2. Temporal Granularity
+
+**Decision:** Store both `date_month` (DATE, first of month) and `date_day` (DATE, actual day).
+
+**Rationale:**
+- Month granularity for timeline scrubbing (less noise)
+- Day granularity for precise filtering when needed
+- NULL `date_day` indicates only month known
+
+**Implementation:**
+```sql
+date_month DATE,  -- Always set (YYYY-MM-01)
+date_day DATE,    -- NULL if only month known
+```
+
+#### 3. Semantic Matching Strategy
+
+**Decision:** Use embedding similarity for concept matching (automatic).
+
+**Rationale:**
+- User requested automatic embeddings-based matching
+- Can match "Qubits" ↔ "Quantum Computing" without manual curation
+- Similarity threshold can be tuned
+
+**Implementation:**
+- Generate embeddings for conversation synthesis
+- Match to episode concept embeddings
+- Create `SEMANTIC_MATCH` relations with similarity score
+
+### Questions Answered
+
+#### 1. Schema for Episode → Chat Message Linking?
+
+**Answer:** Use existing `kg_relations` table with `REFERENCES_EPISODE` relation type. Create episode entities and conversation entities, then link via relations.
+
+**Migration:** `005_backbone_satellite_schema.sql` handles this. ✅ Complete
+
+#### 2. Timestamp Granularity?
+
+**Answer:** Month/day granularity (day can be NULL). Use `date_month` for timeline scrubbing, `date_day` for precise filtering.
+
+**Implementation:** Helper functions `extract_date_from_timestamp()` and `extract_day_from_timestamp()` convert Unix milliseconds to DATE. ✅ Complete
+
+#### 3. Are Episodes Already Entities?
+
+**Answer:** ✅ Yes (after Phase 1). Episodes are now entities in `kg_entities` (type='episode'), created from `kg_episode_metadata` via migration.
+
+**Previous State:** Episodes were metadata only, linked via `message_id` pattern matching.
+
+#### 4. Semantic Matching Strategy?
+
+**Answer:** ✅ Automatic embeddings-based matching. Generate embeddings for conversation synthesis, match to episode concept embeddings, create `SEMANTIC_MATCH` relations. ⏳ Pending implementation (Phase 4)
 
 ---
 
@@ -686,8 +894,9 @@ Save to Supabase KG tables
 ---
 
 **Version:** v2.0+ (Future Roadmap)  
-**Last Updated:** 2026-01-19 (Updated: Iteration 2 & 3 status)  
-**Status:** 🔮 Future Features (v2.0 Foundation Complete, Iteration 2 & 3 Complete)  
+**Last Updated:** 2026-01-19 (Updated: Iteration 2 & 3 Complete, Backbone & Satellite Phase 1 & 2 Complete)  
+**Status:** 🔮 Future Features (v2.0 Foundation Complete, Iteration 2 & 3 Complete, Backbone & Satellite Phase 1 & 2 Complete)  
 **Purpose:** Roadmap for future KG enhancements, not current implementation
 
-**See `PLAN.md` for completed v2.0 Knowledge Graph features.**
+**See `PLAN.md` for completed v2.0 Knowledge Graph features.**  
+**See "Backbone & Satellite Architecture" section in this document for Phase 1 & 2 implementation details.**

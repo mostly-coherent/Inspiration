@@ -2102,6 +2102,34 @@ python3 engine/common/db_health_check.py
 
 ## Knowledge Graph Architecture (v6-v7)
 
+### Backbone & Satellite Architecture (v7.1 — 2026-01-19)
+
+**Purpose:** Dual-layered graph visualization separating stable knowledge (podcasts) from dynamic activity (conversations)
+
+**Architecture:**
+- **Backbone (Stable):** Podcast episodes arranged in fixed circular layout
+- **Satellites (Transient):** AI conversations orbit backbone nodes via force-directed layout
+- **Regular Nodes:** Other entities use standard force-directed layout
+
+**Schema:**
+- **Episode Entities:** `kg_entities` with `entity_type='episode'`, IDs: `episode-{slug}`
+- **Conversation Entities:** `kg_conversations` table (metadata) + `kg_entities` (type='project', IDs: `conv-{message_id}`)
+- **Relations:** `REFERENCES_EPISODE` links episodes to conversations
+- **Temporal Fields:** `date_month` (YYYY-MM-01), `date_day` (YYYY-MM-DD, nullable)
+
+**Visualization:**
+- Layer detection: Automatic (`backbone`, `satellite`, `regular`)
+- Layout: Circular for backbone, force-directed for satellites
+- Visual distinction: Size (backbone 50% larger, satellites 30% smaller), color (violet for episodes, cyan for conversations)
+
+**Files:**
+- `engine/scripts/migrations/005_backbone_satellite_schema.sql` — Schema migration
+- `src/components/GraphView.tsx` — Layer detection, circular layout, visual distinction
+
+**Status:** ✅ Phase 1 & 2 Complete (2026-01-19)
+
+---
+
 > **Complete Specification:** See `KNOWLEDGE_GRAPH_ARCHITECTURE.md` for full technical details
 > **Build Plan:** See `KNOWLEDGE_GRAPH_BUILD_PLAN.md` for phase-by-phase implementation tracking
 

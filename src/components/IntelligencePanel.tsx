@@ -486,18 +486,6 @@ export default function IntelligencePanel({
 
   return (
     <div className={`space-y-4 ${className}`}>
-      {/* Experimental Feature Banner */}
-      <div className="bg-amber-900/20 border border-amber-700/30 rounded-xl p-3">
-        <div className="flex items-start gap-2">
-          <span className="text-lg">🚧</span>
-          <div className="text-xs">
-            <p className="text-amber-200 font-medium mb-1">Experimental Feature</p>
-            <p className="text-slate-400">
-              Intelligence insights (patterns, missing links, path finding) are experimental. Results may vary in accuracy.
-            </p>
-          </div>
-        </div>
-      </div>
 
       {/* Tab Navigation */}
       <div className="flex gap-1 bg-slate-800/50 p-1 rounded-lg">

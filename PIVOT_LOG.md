@@ -1656,3 +1656,49 @@ String-based deduplication would find **zero merges** — effort with no value.
 - Common words found: accessibility, agent, analytics, anthropic, chatgpt... (semantic overlap, not string overlap)
 
 ---
+
+## Decision: Backbone & Satellite Architecture — 2026-01-19
+
+**Problem:** Knowledge Graph visualization suffers from "hairball problem" — mixing stable knowledge (podcasts) with dynamic activity (conversations) creates visual clutter and makes navigation difficult.
+
+**Decision:** Implement dual-layered graph architecture:
+- **Backbone (Stable):** Podcast episodes arranged in fixed circular layout
+- **Satellites (Transient):** AI conversations orbit backbone nodes via force-directed layout
+
+**Rationale:**
+- Separates stable knowledge from dynamic activity
+- Episodes serve as visual anchors for navigation
+- Conversations naturally cluster around referenced episodes
+- Addresses scalability concerns (prevents "hairball" as graph grows)
+
+**Alternatives Considered:**
+
+1. **Pure force-directed layout:** Rejected — creates hairball with 15K+ entities
+2. **Hierarchical layout only:** Rejected — doesn't distinguish stable vs transient nodes
+3. **Separate views (episodes vs conversations):** Rejected — loses cross-referencing value
+
+**Why Chosen:**
+- Best of both worlds: Stable anchors + dynamic clustering
+- Visual distinction makes navigation intuitive
+- Scales well (backbone fixed, satellites expandable)
+
+**Implementation:**
+- **Phase 1:** Schema migration (`005_backbone_satellite_schema.sql`) — ✅ Complete
+- **Phase 2:** Visualization layers (`GraphView.tsx`) — ✅ Complete
+- **Phase 3:** Temporal navigation — ⏳ Pending
+- **Phase 4:** Semantic concept overlay — ⏳ Pending
+- **Phase 5:** Summarization nodes — ⏳ Pending
+
+**Code Paths Affected:**
+- `engine/scripts/migrations/005_backbone_satellite_schema.sql` — Schema migration
+- `src/components/GraphView.tsx` — Layer detection, circular layout, visual distinction
+- `src/app/api/kg/subgraph/route.ts` — No changes (layer detection in frontend)
+
+**Verification:**
+- Migration deployed: Episode entities created, conversation entities created, relations established
+- GraphView tested: Backbone nodes display in circle, satellites orbit correctly
+- Visual distinction verified: Size and color differences visible
+
+**Status:** ✅ Phase 1 & 2 Complete | **DRI:** User + AI Agent
+
+---

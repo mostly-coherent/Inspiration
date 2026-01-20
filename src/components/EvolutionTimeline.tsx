@@ -440,18 +440,6 @@ export default function EvolutionTimeline({
 
   return (
     <div className={`space-y-4 ${className}`}>
-      {/* Experimental Feature Banner */}
-      <div className="bg-amber-900/20 border border-amber-700/30 rounded-xl p-3">
-        <div className="flex items-start gap-2">
-          <span className="text-lg">🚧</span>
-          <div className="text-xs">
-            <p className="text-amber-200 font-medium mb-1">Experimental Feature</p>
-            <p className="text-slate-400">
-              Evolution tracking and trend analysis are experimental. Data accuracy may vary.
-            </p>
-          </div>
-        </div>
-      </div>
 
       {/* Controls - only show if not in single entity mode */}
       {!entityId && (

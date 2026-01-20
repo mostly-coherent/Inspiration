@@ -2,17 +2,25 @@
 -- Purpose: Enable Episode → Conversation linking for dual-layered graph visualization
 -- Date: 2026-01-19
 -- Part of: Backbone & Satellite Architecture (v2.0+)
+--
+-- IMPORTANT: This migration must be run in THREE STEPS due to PostgreSQL enum limitations:
+-- Step 1: Run this FIRST (in a separate query/transaction):
+--   ALTER TYPE entity_type ADD VALUE IF NOT EXISTS 'episode';
+-- Step 2: Run this SECOND (in a separate query/transaction):
+--   ALTER TYPE relation_type ADD VALUE IF NOT EXISTS 'REFERENCES_EPISODE';
+-- Step 3: Then run the rest of this migration script below (from line 23 onwards)
+--
+-- If you get errors about enum values, you need to run Steps 1 and 2 first.
 
 -- ============================================================================
 -- 1. Create Episode Entities (Convert metadata to entities)
 -- ============================================================================
 
 -- Add episode entity type to enum (if not exists)
-DO $$ BEGIN
-    ALTER TYPE entity_type ADD VALUE IF NOT EXISTS 'episode';
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
+-- NOTE: This line may fail if run in the same transaction as the INSERT below.
+-- If it fails, run "ALTER TYPE entity_type ADD VALUE IF NOT EXISTS 'episode';" separately first,
+-- wait for it to complete, then run the rest of this script.
+ALTER TYPE entity_type ADD VALUE IF NOT EXISTS 'episode';
 
 -- Create episode entities from metadata (one-time migration)
 -- Episodes become stable "backbone" nodes
@@ -67,21 +75,28 @@ CREATE INDEX IF NOT EXISTS idx_kg_conversations_source ON kg_conversations(sourc
 CREATE INDEX IF NOT EXISTS idx_kg_conversations_timestamp ON kg_conversations(first_message_timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_kg_conversations_embedding ON kg_conversations 
 USING hnsw (synthesis_embedding vector_cosine_ops)
-WHERE synthesis_embedding IS NOT NULL
-WITH (m = 16, ef_construction = 64);
+WITH (m = 16, ef_construction = 64)
+WHERE synthesis_embedding IS NOT NULL;
 
 -- ============================================================================
 -- 3. Add Episode → Conversation Relation Type
 -- ============================================================================
 
+-- IMPORTANT: Add REFERENCES_EPISODE to relation_type enum FIRST (in a separate query):
+--   ALTER TYPE relation_type ADD VALUE IF NOT EXISTS 'REFERENCES_EPISODE';
+-- Then run the rest of this section.
+
 -- Add new relation types for Backbone & Satellite architecture
 -- These will be used in kg_relations.relation_type
--- Note: We don't modify the enum here, relation_type is TEXT in current schema
+-- Note: relation_type is an ENUM, so we must add new values before using them
 
--- Common relation types:
--- - "REFERENCES_EPISODE" - Conversation mentions/discusses an episode
--- - "DISCUSSES_CONCEPT" - Conversation discusses a concept from an episode
--- - "SEMANTIC_MATCH" - Semantic similarity between user conversation and episode concept
+-- Add REFERENCES_EPISODE to relation_type enum (if not exists)
+ALTER TYPE relation_type ADD VALUE IF NOT EXISTS 'REFERENCES_EPISODE';
+
+-- Common relation types (for future use):
+-- - "REFERENCES_EPISODE" - Conversation mentions/discusses an episode (added above)
+-- - "DISCUSSES_CONCEPT" - Conversation discusses a concept from an episode (future)
+-- - "SEMANTIC_MATCH" - Semantic similarity between user conversation and episode concept (future)
 
 -- ============================================================================
 -- 4. Helper Function: Extract Date from Timestamp
@@ -145,7 +160,32 @@ GROUP BY message_id
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================================
--- 6. Create Episode → Conversation Relations
+-- 6. Create Conversation Entities in kg_entities
+-- ============================================================================
+
+-- Create conversation entities in kg_entities table (required for foreign key constraints)
+-- Conversations are stored as 'project' type entities (matching existing pattern)
+INSERT INTO kg_entities (id, canonical_name, entity_type, description, source_type, mention_count, confidence)
+SELECT 
+    'conv-' || message_id as id,
+    'Conversation: ' || message_id as canonical_name,
+    'project'::entity_type as entity_type,  -- Use 'project' type for conversations
+    'AI conversation' as description,
+    CASE 
+        WHEN message_id LIKE 'lenny-%' THEN 'expert'
+        ELSE 'user'
+    END as source_type,
+    0 as mention_count,
+    1.0 as confidence
+FROM kg_entity_mentions
+WHERE NOT EXISTS (
+    SELECT 1 FROM kg_entities WHERE id = 'conv-' || message_id
+)
+GROUP BY message_id
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================================
+-- 7. Create Episode → Conversation Relations
 -- ============================================================================
 
 -- Link conversations to episodes they reference
@@ -174,6 +214,10 @@ WHERE m.message_id LIKE 'lenny-%'
     AND EXISTS (
         SELECT 1 FROM kg_entities 
         WHERE id = 'episode-' || substring(m.message_id from 'lenny-(.+?)-\d+$')
+    )
+    AND EXISTS (
+        SELECT 1 FROM kg_entities 
+        WHERE id = 'conv-' || m.message_id
     )
     AND NOT EXISTS (
         SELECT 1 FROM kg_relations 
