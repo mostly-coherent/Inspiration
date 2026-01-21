@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
-import { hierarchy, tree } from "d3-hierarchy";
 
 // Dynamically import ForceGraph2D from react-force-graph-2d to avoid SSR issues
 // react-force-graph-2d doesn't include AFRAME dependencies (unlike react-force-graph)
@@ -41,9 +40,6 @@ const ENTITY_TYPE_COLORS: Record<string, string> = {
   other: "#94a3b8", // slate-400 (for emergent/uncategorized entities)
 };
 
-// Layer types for Backbone & Satellite architecture
-type NodeLayer = "backbone" | "satellite" | "regular";
-
 // Relation type colors
 const RELATION_TYPE_COLORS: Record<string, string> = {
   SOLVES: "#34d399", // emerald
@@ -67,7 +63,6 @@ interface GraphNode {
   fx?: number | null;
   fy?: number | null;
   source?: string; // "user", "lenny", "both", "unknown"
-  layer?: NodeLayer; // "backbone" (episodes), "satellite" (conversations), "regular" (other)
 }
 
 interface GraphLink {
@@ -76,6 +71,7 @@ interface GraphLink {
   type: string;
   strength: number;
   evidence?: string;
+  similarity?: number; // For SEMANTIC_MATCH relations (0.0-1.0)
 }
 
 interface GraphData {
@@ -91,13 +87,6 @@ interface GraphViewProps {
 }
 
 type SourceFilter = "all" | "user" | "lenny" | "both";
-type ViewMode = "overview" | "detailed"; // Data Funnel: Overview vs Detailed
-type LayoutType = "force" | "hierarchical"; // Layout algorithms
-type NoiseFilter = {
-  hideSupernodes: boolean; // Hide highly connected nodes (>N connections)
-  hideLeafNodes: boolean; // Hide nodes with only 1 connection
-  supernodeThreshold: number; // Threshold for supernodes
-};
 
 export default function GraphView({
   centerEntityId,
@@ -114,22 +103,22 @@ export default function GraphView({
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [entityLimit, setEntityLimit] = useState(500);
+  const [entityLimit, setEntityLimit] = useState(100); // Default to Galaxy view (clean start)
   const [controlsExpanded, setControlsExpanded] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("overview"); // Start with overview
-  const [noiseFilter, setNoiseFilter] = useState<NoiseFilter>({
-    hideSupernodes: false,
-    hideLeafNodes: false,
-    supernodeThreshold: 20, // Nodes with >20 connections are supernodes
-  });
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null); // For muted context
-  const [layoutType, setLayoutType] = useState<LayoutType>("force"); // Layout algorithm
-  const [progressiveMode, setProgressiveMode] = useState(true); // Progressive expansion mode
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set()); // Track expanded nodes
-  const [initialNodeCount, setInitialNodeCount] = useState(50); // Start with top N nodes
-  const [weightedScoring, setWeightedScoring] = useState({ mentions: 50, degree: 50 }); // Weighted scoring (0-100)
-  const [bundlingEnabled, setBundlingEnabled] = useState(false); // Node bundling/clustering
-  const [clusters, setClusters] = useState<Map<string, string[]>>(new Map()); // Cluster assignments
+  const [expandingNodeId, setExpandingNodeId] = useState<string | null>(null); // Loading state for expansion
+  
+  // Search State (P4)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<GraphNode[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+
+  // Phase 5: Summarization Nodes
+  const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set()); // Collapsed conversation nodes (show as synthesis)
+  const [expandedMessageNodes, setExpandedMessageNodes] = useState<Set<string>>(new Set()); // Expanded to message-level detail
+  const [messageLevelData, setMessageLevelData] = useState<Map<string, GraphData>>(new Map()); // Message-level graph data per conversation
 
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<any>(null);
@@ -146,13 +135,84 @@ export default function GraphView({
     return { width: 800, height: 600 };
   });
 
+  // Handle search input change
+  const handleSearchChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    
+    if (query.length < 2) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    setIsSearching(true);
+    setShowSearchResults(true);
+    
+    try {
+      const res = await fetch(`/api/kg/search?q=${encodeURIComponent(query)}&limit=5`);
+      if (res.ok) {
+        const data = await res.json();
+        setSearchResults(data.results || []);
+      }
+    } catch (err) {
+      console.error("Search failed:", err);
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
+
+  // Handle search result selection
+  const handleSearchResultClick = useCallback(async (node: GraphNode) => {
+    setSearchQuery("");
+    setShowSearchResults(false);
+    
+    // Check if node is already in graph
+    const existingNode = graphData.nodes.find(n => n.id === node.id);
+    
+    if (existingNode) {
+      // Just focus it
+      setFocusNodeId(node.id);
+      setSelectedNode(existingNode);
+      if (graphRef.current) {
+        graphRef.current.centerAt(existingNode.x, existingNode.y, 1000);
+        graphRef.current.zoom(2, 1000);
+      }
+    } else {
+      // Fetch centered graph for this node
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/kg/subgraph?center_entity_id=${node.id}&depth=1&limit=50`);
+        if (res.ok) {
+          const data = await res.json();
+          // Replace current graph with new centered graph
+          const newGraphData: GraphData = {
+            nodes: (data.nodes || []) as GraphNode[],
+            links: (data.links || []) as GraphLink[],
+          };
+          setGraphData(newGraphData);
+          setFilteredGraphData(newGraphData);
+          
+          // Focus the node
+          setFocusNodeId(node.id);
+          const newNode = newGraphData.nodes.find((n: GraphNode) => n.id === node.id);
+          if (newNode) setSelectedNode(newNode);
+        }
+      } catch (err) {
+        console.error("Failed to load search result:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }, [graphData]);
+
   // Fetch neighbors of a specific node (for progressive expansion)
-  const fetchNodeNeighbors = useCallback(async (nodeId: string, depth: number = 1) => {
+  const fetchNodeNeighbors = useCallback(async (nodeId: string) => {
     try {
       const params = new URLSearchParams();
       params.set("center_entity_id", nodeId);
-      params.set("depth", depth.toString());
-      params.set("limit", "50"); // Limit neighbors per expansion
+      params.set("depth", "1");
+      params.set("limit", "20"); // Limit neighbors per expansion
 
       const res = await fetch(`/api/kg/subgraph?${params}`);
       if (!res.ok) {
@@ -166,7 +226,7 @@ export default function GraphView({
     }
   }, []);
 
-  // Fetch graph data (with progressive expansion support)
+  // Fetch graph data
   const fetchGraph = useCallback(async () => {
     // Cancel previous request if still in flight
     if (abortControllerRef.current) {
@@ -181,13 +241,10 @@ export default function GraphView({
       const params = new URLSearchParams();
       if (centerEntityId) {
         params.set("center_entity_id", centerEntityId);
-        params.set("depth", "2");
+        params.set("depth", "1"); // Shallow depth for cleaner view
       }
-      // Progressive mode: start with initialNodeCount, otherwise use entityLimit
-      const limit = progressiveMode ? initialNodeCount : entityLimit;
-      params.set("limit", limit.toString());
-      // Pass weighted scoring to API
-      params.set("weight_mentions", weightedScoring.mentions.toString());
+      
+      params.set("limit", entityLimit.toString());
 
       const res = await fetch(`/api/kg/subgraph?${params}`, {
         signal: abortControllerRef.current.signal,
@@ -224,8 +281,10 @@ export default function GraphView({
         links: data.links || [],
       };
       setGraphData(newGraphData);
-      // Apply initial filters
-      applyFilters(newGraphData, sourceFilter, noiseFilter);
+      
+      // Reset filtering state on new data
+      setFilteredGraphData(newGraphData);
+      
     } catch (err) {
       if (!isMountedRef.current) return;
       
@@ -241,67 +300,37 @@ export default function GraphView({
         setLoading(false);
       }
     }
-  }, [centerEntityId, entityLimit, progressiveMode, initialNodeCount, weightedScoring]);
+  }, [centerEntityId, entityLimit]);
 
-  // Compute node degrees (connection counts) for noise filtering
-  const computeNodeDegrees = useCallback((data: GraphData): Map<string, number> => {
-    const degrees = new Map<string, number>();
-    data.nodes.forEach((node) => degrees.set(node.id, 0));
-    data.links.forEach((link) => {
-      const sourceId = typeof link.source === "string" ? link.source : link.source.id;
-      const targetId = typeof link.target === "string" ? link.target : link.target.id;
-      degrees.set(sourceId, (degrees.get(sourceId) || 0) + 1);
-      degrees.set(targetId, (degrees.get(targetId) || 0) + 1);
-    });
-    return degrees;
-  }, []);
+  // Apply source filter
+  useEffect(() => {
+    let filteredNodes = graphData.nodes;
+    let filteredLinks = graphData.links;
 
-  // Apply all filters: source + noise reduction
-  const applyFilters = useCallback((data: GraphData, filter: SourceFilter, noise: NoiseFilter) => {
     // Step 1: Source filter
-    let filteredNodes = data.nodes;
-    if (filter !== "all") {
-      filteredNodes = data.nodes.filter((node) => {
-        if (filter === "user") return node.source === "user";
-        if (filter === "lenny") return node.source === "lenny" || node.source === "expert";
-        if (filter === "both") return node.source === "both";
+    if (sourceFilter !== "all") {
+      filteredNodes = graphData.nodes.filter((node) => {
+        if (sourceFilter === "user") return node.source === "user";
+        if (sourceFilter === "lenny") return node.source === "lenny" || node.source === "expert";
+        if (sourceFilter === "both") return node.source === "both";
         return true;
       });
+      
+      const filteredNodeIds = new Set(filteredNodes.map((n) => n.id));
+      filteredLinks = graphData.links.filter(
+        (link) => {
+          const sourceId = typeof link.source === "string" ? link.source : link.source.id;
+          const targetId = typeof link.target === "string" ? link.target : link.target.id;
+          return filteredNodeIds.has(sourceId) && filteredNodeIds.has(targetId);
+        }
+      );
     }
-
-    // Step 2: Compute degrees for noise filtering
-    const degrees = computeNodeDegrees({ nodes: filteredNodes, links: data.links });
-
-    // Step 3: Apply noise filters (supernodes and leaf nodes)
-    if (noise.hideSupernodes || noise.hideLeafNodes) {
-      filteredNodes = filteredNodes.filter((node) => {
-        const degree = degrees.get(node.id) || 0;
-        if (noise.hideSupernodes && degree > noise.supernodeThreshold) return false;
-        if (noise.hideLeafNodes && degree <= 1) return false;
-        return true;
-      });
-    }
-
-    // Step 4: Filter links to only include filtered nodes
-    const filteredNodeIds = new Set(filteredNodes.map((n) => n.id));
-    const filteredLinks = data.links.filter(
-      (link) => {
-        const sourceId = typeof link.source === "string" ? link.source : link.source.id;
-        const targetId = typeof link.target === "string" ? link.target : link.target.id;
-        return filteredNodeIds.has(sourceId) && filteredNodeIds.has(targetId);
-      }
-    );
 
     setFilteredGraphData({
       nodes: filteredNodes,
       links: filteredLinks,
     });
-  }, [computeNodeDegrees]);
-
-  // Update filtered data when filters change
-  useEffect(() => {
-    applyFilters(graphData, sourceFilter, noiseFilter);
-  }, [sourceFilter, noiseFilter, graphData, applyFilters]);
+  }, [graphData, sourceFilter]);
 
   // Zoom controls
   const handleZoomIn = useCallback(() => {
@@ -338,215 +367,168 @@ export default function GraphView({
     };
   }, [fetchGraph]);
 
-  // Handle node click - Data Funnel: Details on Demand + Progressive Expansion
+  // Handle node click - Expand and focus (P3)
   const handleNodeClick = useCallback(
     async (node: GraphNode) => {
       setSelectedNode(node);
       setFocusNodeId(node.id); // Set focus for muted context
-      if (viewMode === "overview") {
-        setViewMode("detailed"); // Switch to detailed view when clicking
-      }
-      
-      // Progressive Expansion: Load neighbors if not already expanded
-      if (progressiveMode && !expandedNodes.has(node.id)) {
-        const neighbors = await fetchNodeNeighbors(node.id, 1);
-        if (neighbors.nodes.length > 0 || neighbors.links.length > 0) {
-          setGraphData((prev) => {
-            // Merge new nodes (avoid duplicates)
-            const existingNodeIds = new Set(prev.nodes.map((n) => n.id));
-            const newNodes = neighbors.nodes.filter((n: GraphNode) => !existingNodeIds.has(n.id));
-            const existingLinkKeys = new Set(
-              prev.links.map((l: GraphLink) => `${typeof l.source === "string" ? l.source : l.source.id}-${typeof l.target === "string" ? l.target : l.target.id}`)
-            );
-            const newLinks = neighbors.links.filter(
-              (l: GraphLink) => !existingLinkKeys.has(`${typeof l.source === "string" ? l.source : l.source.id}-${typeof l.target === "string" ? l.target : l.target.id}`)
-            );
-            
-            return {
-              nodes: [...prev.nodes, ...newNodes],
-              links: [...prev.links, ...newLinks],
-            };
-          });
-          setExpandedNodes((prev) => new Set([...prev, node.id]));
-        }
-      }
       
       if (onEntityClick) {
         onEntityClick(node.id, node.name);
       }
+
+      // P3: Interactive Expansion
+      // If node is NOT a collapsed satellite (which uses double-click), expand it
+      if (!collapsedNodes.has(node.id) && !expandedNodes.has(node.id)) {
+        setExpandingNodeId(node.id);
+        
+        try {
+          const neighbors = await fetchNodeNeighbors(node.id);
+          
+          if (neighbors.nodes.length > 0) {
+            setGraphData((prev: GraphData) => {
+              // Merge new nodes
+              const existingNodeIds = new Set(prev.nodes.map((n) => n.id));
+              const newNodes = neighbors.nodes.filter((n: GraphNode) => !existingNodeIds.has(n.id));
+              
+              // Merge new links
+              const existingLinkKeys = new Set(
+                prev.links.map((l) => `${typeof l.source === 'string' ? l.source : (l.source as GraphNode).id}-${typeof l.target === 'string' ? l.target : (l.target as GraphNode).id}`)
+              );
+              const newLinks = neighbors.links.filter((l: GraphLink) => 
+                !existingLinkKeys.has(`${typeof l.source === 'string' ? l.source : (l.source as GraphNode).id}-${typeof l.target === 'string' ? l.target : (l.target as GraphNode).id}`)
+              );
+              
+              if (newNodes.length === 0 && newLinks.length === 0) return prev;
+
+              return {
+                nodes: [...prev.nodes, ...newNodes],
+                links: [...prev.links, ...newLinks]
+              };
+            });
+            
+            setExpandedNodes(prev => new Set([...prev, node.id]));
+          }
+        } catch (err) {
+          console.error("Error expanding node:", err);
+        } finally {
+          setExpandingNodeId(null);
+        }
+      }
     },
-    [onEntityClick, viewMode, progressiveMode, expandedNodes, fetchNodeNeighbors]
+    [onEntityClick, collapsedNodes, expandedNodes, fetchNodeNeighbors]
   );
 
-  // Node bundling/clustering: Simple community detection by entity type
-  const computeClusters = useCallback((data: GraphData): Map<string, string[]> => {
-    const clusterMap = new Map<string, string[]>();
-    
-    // Group nodes by entity type (simple clustering)
-    data.nodes.forEach((node) => {
-      const clusterKey = node.type || "other";
-      if (!clusterMap.has(clusterKey)) {
-        clusterMap.set(clusterKey, []);
+  // Phase 5: Handle double-click for summarization nodes (expand/collapse)
+  const handleNodeDoubleClick = useCallback(
+    async (node: GraphNode) => {
+      // Only handle double-click for conversation nodes
+      if (!node.id.startsWith("conv-")) {
+        return;
       }
-      clusterMap.get(clusterKey)!.push(node.id);
-    });
-    
-    return clusterMap;
-  }, []);
-
-  // Detect node layers (backbone vs satellite vs regular)
-  const detectNodeLayers = useCallback((data: GraphData): GraphData => {
-    return {
-      ...data,
-      nodes: data.nodes.map((node) => {
-        let layer: NodeLayer = "regular";
-        // Episodes are backbone nodes
-        if (node.type === "episode") {
-          layer = "backbone";
-        }
-        // Conversations (starting with "conv-") are satellite nodes
-        else if (node.id.startsWith("conv-")) {
-          layer = "satellite";
-        }
-        return { ...node, layer };
-      }),
-    };
-  }, []);
-
-  // Apply circular layout for backbone nodes (episodes)
-  const applyBackboneCircularLayout = useCallback((data: GraphData, centerX: number, centerY: number, radius: number) => {
-    const backboneNodes = data.nodes.filter((n) => n.layer === "backbone");
-    const angleStep = (2 * Math.PI) / Math.max(backboneNodes.length, 1);
-    
-    return {
-      ...data,
-      nodes: data.nodes.map((node) => {
-        if (node.layer === "backbone") {
-          const index = backboneNodes.findIndex((n) => n.id === node.id);
-          const angle = index * angleStep;
-          return {
-            ...node,
-            fx: centerX + radius * Math.cos(angle),
-            fy: centerY + radius * Math.sin(angle),
-          };
-        }
-        // Satellites and regular nodes: clear fixed positions (use force-directed)
-        return {
-          ...node,
-          fx: null,
-          fy: null,
-        };
-      }),
-    };
-  }, []);
-
-  // Hierarchical layout calculation using d3-hierarchy
-  const applyHierarchicalLayout = useCallback((data: GraphData) => {
-    if (data.nodes.length === 0) return data;
-
-    // Build a tree structure from the graph
-    // Use entity type as hierarchy level, then by mention count
-    const nodesByType = new Map<string, GraphNode[]>();
-    data.nodes.forEach((node) => {
-      const type = node.type || "other";
-      if (!nodesByType.has(type)) {
-        nodesByType.set(type, []);
-      }
-      nodesByType.get(type)!.push(node);
-    });
-
-    // Sort nodes within each type by mention count
-    nodesByType.forEach((nodes) => {
-      nodes.sort((a, b) => (b.mentionCount || 0) - (a.mentionCount || 0));
-    });
-
-    // Create hierarchy: Root -> Entity Types -> Entities
-    const rootData = {
-      name: "root",
-      children: Array.from(nodesByType.entries()).map(([type, nodes]) => ({
-        name: type,
-        children: nodes.map((node) => ({ name: node.id, node })),
-      })),
-    };
-
-    // Create d3 hierarchy
-    const root = hierarchy(rootData as any);
-    const treeLayout = tree().size([dimensions.width - 100, dimensions.height - 100]);
-    treeLayout(root);
-
-    // Map hierarchy positions to nodes
-    const nodeMap = new Map<string, { x: number; y: number }>();
-    
-    root.each((d: any) => {
-      if (d.data && d.data.node) {
-        // Leaf node (actual entity)
-        nodeMap.set(d.data.node.id, {
-          x: (d.x || 0) + dimensions.width / 2,
-          y: (d.y || 0) + 50,
+      
+      // Toggle collapse/expand
+      if (collapsedNodes.has(node.id)) {
+        // Expand: Remove from collapsed set
+        setCollapsedNodes((prev) => {
+          const next = new Set(prev);
+          next.delete(node.id);
+          return next;
         });
+      } else {
+        // Collapse: Add to collapsed set
+        setCollapsedNodes((prev) => new Set([...prev, node.id]));
       }
-    });
+      
+      // Toggle message-level expansion
+      if (expandedMessageNodes.has(node.id)) {
+        // Collapse message-level view
+        setExpandedMessageNodes((prev) => {
+          const next = new Set(prev);
+          next.delete(node.id);
+          return next;
+        });
+        setMessageLevelData((prev) => {
+          const next = new Map(prev);
+          next.delete(node.id);
+          return next;
+        });
+      } else {
+        // Expand to message-level: Fetch message-level graph data
+        setExpandedMessageNodes((prev) => new Set([...prev, node.id]));
+        
+        try {
+          // Fetch message-level entities and relations for this conversation
+          const res = await fetch(`/api/kg/subgraph?center_entity_id=${node.id}&depth=2&limit=100`);
+          if (res.ok) {
+            const data = await res.json();
+            setMessageLevelData((prev) => {
+              const next = new Map(prev);
+              next.set(node.id, data);
+              return next;
+            });
+          }
+        } catch (error) {
+          console.error("Failed to fetch message-level data:", error);
+        }
+      }
+    },
+    [collapsedNodes, expandedMessageNodes]
+  );
 
-    // Apply positions to nodes
-    const positionedNodes = data.nodes.map((node) => {
-      const pos = nodeMap.get(node.id);
-      if (pos) {
-        return {
-          ...node,
-          fx: pos.x,
-          fy: pos.y,
+  // Combine filtered data with message-level expansions
+  const layoutedGraphData = useMemo(() => {
+    let dataToLayout = filteredGraphData;
+    
+    // Phase 5: Merge message-level expanded data if any conversations are expanded
+    if (expandedMessageNodes.size > 0 && messageLevelData.size > 0) {
+      const expandedNodes = new Set<string>();
+      const expandedLinks: GraphLink[] = [];
+      
+      expandedMessageNodes.forEach((convId) => {
+        const messageData = messageLevelData.get(convId);
+        if (messageData) {
+          // Add message-level nodes (avoid duplicates)
+          const existingNodeIds = new Set(dataToLayout.nodes.map((n) => n.id));
+          messageData.nodes.forEach((node: GraphNode) => {
+            if (!existingNodeIds.has(node.id)) {
+              expandedNodes.add(node.id);
+            }
+          });
+          
+          // Add message-level links
+          expandedLinks.push(...messageData.links);
+        }
+      });
+      
+      // Merge expanded data
+      if (expandedNodes.size > 0 || expandedLinks.length > 0) {
+        const existingNodeIds = new Set(dataToLayout.nodes.map((n) => n.id));
+        const newNodes = Array.from(expandedNodes).map((nodeId) => {
+          // Find node in message data
+          for (const [convId, messageData] of messageLevelData.entries()) {
+            const node = messageData.nodes.find((n: GraphNode) => n.id === nodeId);
+            if (node) return node;
+          }
+          return null;
+        }).filter((n): n is GraphNode => n !== null && !existingNodeIds.has(n.id));
+        
+        const existingLinkKeys = new Set(
+          dataToLayout.links.map((l) => `${typeof l.source === "string" ? l.source : l.source.id}-${typeof l.target === "string" ? l.target : l.target.id}`)
+        );
+        const newLinks = expandedLinks.filter(
+          (l) => !existingLinkKeys.has(`${typeof l.source === "string" ? l.source : l.source.id}-${typeof l.target === "string" ? l.target : l.target.id}`)
+        );
+        
+        dataToLayout = {
+          nodes: [...dataToLayout.nodes, ...newNodes],
+          links: [...dataToLayout.links, ...newLinks],
         };
       }
-      return node;
-    });
-
-    return {
-      ...data,
-      nodes: positionedNodes,
-    };
-  }, [dimensions]);
-
-  // Detect layers first
-  const layeredGraphData = useMemo(() => {
-    return detectNodeLayers(filteredGraphData);
-  }, [filteredGraphData, detectNodeLayers]);
-
-  // Apply layout to filtered graph data
-  const layoutedGraphData = useMemo(() => {
-    // Check if we have backbone nodes (episodes)
-    const hasBackboneNodes = layeredGraphData.nodes.some((n) => n.layer === "backbone");
-    
-    if (layoutType === "hierarchical") {
-      return applyHierarchicalLayout(layeredGraphData);
     }
     
-    // Backbone & Satellite: Use circular layout for backbone, force-directed for satellites
-    if (hasBackboneNodes) {
-      const centerX = dimensions.width / 2;
-      const centerY = dimensions.height / 2;
-      const radius = Math.min(dimensions.width, dimensions.height) * 0.3; // 30% of smaller dimension
-      return applyBackboneCircularLayout(layeredGraphData, centerX, centerY, radius);
-    }
-    
-    // Force-directed: clear fixed positions
-    return {
-      ...layeredGraphData,
-      nodes: layeredGraphData.nodes.map((node) => ({
-        ...node,
-        fx: null,
-        fy: null,
-      })),
-    };
-  }, [layeredGraphData, layoutType, applyHierarchicalLayout, applyBackboneCircularLayout, dimensions]);
-
-  // Update clusters when graph data changes
-  useEffect(() => {
-    if (bundlingEnabled) {
-      setClusters(computeClusters(filteredGraphData));
-    } else {
-      setClusters(new Map());
-    }
-  }, [bundlingEnabled, filteredGraphData, computeClusters]);
+    return dataToLayout;
+  }, [filteredGraphData, expandedMessageNodes, messageLevelData]);
 
   // Node color based on type
   const getNodeColor = useCallback((node: GraphNode) => {
@@ -557,13 +539,6 @@ export default function GraphView({
   const getLinkColor = useCallback((link: GraphLink) => {
     return RELATION_TYPE_COLORS[link.type] || "#475569";
   }, []);
-
-  // Semantic Zoom Levels:
-  // - globalScale < 0.2: Heatmap mode (dots only, no labels)
-  // - 0.2 <= globalScale < 0.5: Minimal mode (small dots, no labels except hovered/selected)
-  // - 0.5 <= globalScale < 1.0: Standard mode (nodes with labels, basic icons)
-  // - 1.0 <= globalScale < 1.5: Detailed mode (full labels, source icons, relationship indicators)
-  // - globalScale >= 1.5: Metadata mode (labels + mention counts + relationship counts)
 
   // Node canvas rendering with semantic zooming
   const nodeCanvasObject = useCallback(
@@ -576,13 +551,12 @@ export default function GraphView({
       const isLenny = node.source === "lenny";
       const isBoth = node.source === "both";
       
-      // Layer-based visual distinction
-      const isBackbone = node.layer === "backbone";
-      const isSatellite = node.layer === "satellite";
+      // Phase 5: Check if node is collapsed (show as synthesis node)
+      const isCollapsed = collapsedNodes.has(node.id);
       
       // Muted Context: Dim non-focused nodes when a node is selected
       const opacity = isInFocusContext || !focusNodeId ? 1 : 0.3;
-
+      
       // Semantic Zoom: Determine detail level
       const zoomLevel = globalScale;
       const isHeatmapMode = zoomLevel < 0.2;
@@ -592,35 +566,26 @@ export default function GraphView({
       const isMetadataMode = zoomLevel >= 1.5;
 
       // Visual Encoding: Size by importance (mentionCount + degree)
-      // In heatmap mode, use smaller uniform size
-      // Layer-based sizing: Backbone larger, satellites smaller
       const baseNodeSize = isHeatmapMode ? 2 : Math.max((node.val || 4), 4);
-      const nodeSize = isBackbone 
-        ? baseNodeSize * 1.5  // 50% larger for backbone (episodes)
-        : isSatellite 
-        ? baseNodeSize * 0.7  // 30% smaller for satellites (conversations)
-        : baseNodeSize;
+      let nodeSize = baseNodeSize;
+      
+      // Phase 5: Collapsed nodes are smaller (synthesis representation)
+      if (isCollapsed && node.id.startsWith("conv-")) {
+        nodeSize = baseNodeSize * 0.5; // 50% of base size for collapsed synthesis nodes
+      }
 
       // Draw node circle
       ctx.beginPath();
       ctx.arc(node.x || 0, node.y || 0, nodeSize, 0, 2 * Math.PI);
 
       // Visual Encoding: Bright colors for focus, muted for context
-      // Backbone nodes: Use episode color (violet), Satellites: Use conversation color (cyan)
       let baseColor = getNodeColor(node);
-      if (isBackbone) {
-        baseColor = ENTITY_TYPE_COLORS.episode || "#a78bfa"; // violet-400 for episodes
-      } else if (isSatellite) {
-        baseColor = ENTITY_TYPE_COLORS.project || "#22d3ee"; // cyan-400 for conversations
-      }
       const colorWithOpacity = opacity < 1 
         ? baseColor + Math.floor(255 * opacity).toString(16).padStart(2, "0")
         : baseColor;
 
       // HEATMAP MODE: Simple dots only (very zoomed out)
       if (isHeatmapMode) {
-        ctx.beginPath();
-        ctx.arc(node.x || 0, node.y || 0, nodeSize, 0, 2 * Math.PI);
         ctx.fillStyle = colorWithOpacity;
         ctx.fill();
         // Only show highlight for hovered/selected in heatmap mode
@@ -634,13 +599,25 @@ export default function GraphView({
         return; // Early return for heatmap mode
       }
 
+      // Phase 5: Collapsed nodes show simplified synthesis representation
+      if (isCollapsed && node.id.startsWith("conv-")) {
+        ctx.fillStyle = colorWithOpacity;
+        ctx.fill();
+        
+        // Add synthesis indicator
+        if (isDetailedMode || isMetadataMode) {
+          ctx.fillStyle = "#ffffff";
+          ctx.font = `${Math.max(8 / globalScale, 6)}px Sans-Serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("S", node.x || 0, node.y || 0);
+        }
+        return; 
+      }
+      
       // MINIMAL MODE & STANDARD MODE: Basic node rendering
-      // Fill based on source:
-      // - User entities: solid fill
-      // - Lenny entities: outlined with pattern fill (lighter)
-      // - Both: solid with extra ring
       if (isLenny && !isMinimalMode) {
-        // Lenny: lighter fill with dashed outline (skip in minimal mode for performance)
+        // Lenny: lighter fill with dashed outline
         ctx.fillStyle = colorWithOpacity + (opacity < 1 ? "" : "60");
         ctx.fill();
         if (!isMinimalMode) {
@@ -665,13 +642,24 @@ export default function GraphView({
         ctx.stroke();
       }
 
-      // Highlight on hover/select/focus - Visual Encoding: Bright signal
+      // Highlight on hover/select/focus
       if (isHovered || isSelected || isFocused) {
         ctx.beginPath();
         ctx.arc(node.x || 0, node.y || 0, nodeSize + 1 / globalScale, 0, 2 * Math.PI);
         ctx.strokeStyle = isSelected || isFocused ? "#ffffff" : "#cbd5e1";
         ctx.lineWidth = isSelected || isFocused ? 2 / globalScale : 1.5 / globalScale;
         ctx.stroke();
+      }
+
+      // P3: Expansion Loading Indicator
+      if (node.id === expandingNodeId) {
+        ctx.beginPath();
+        ctx.arc(node.x || 0, node.y || 0, nodeSize + 4 / globalScale, 0, 2 * Math.PI);
+        ctx.strokeStyle = "#60a5fa"; // Blue
+        ctx.lineWidth = 1.5 / globalScale;
+        ctx.setLineDash([2 / globalScale, 2 / globalScale]);
+        ctx.stroke();
+        ctx.setLineDash([]); // Reset
       }
 
       // SEMANTIC ZOOM: Label rendering based on zoom level
@@ -690,7 +678,7 @@ export default function GraphView({
         ctx.fillStyle = isSelected || isFocused ? "#ffffff" : isHovered ? "#e2e8f0" : "#94a3b8";
         ctx.fillText(label, node.x || 0, (node.y || 0) + nodeSize + 2);
 
-        // METADATA MODE: Show mention count and relationship count
+        // METADATA MODE: Show mention count
         if (isMetadataMode) {
           const metadataY = (node.y || 0) + nodeSize + fontSize + 4;
           ctx.font = `${Math.max(8 / globalScale, 5)}px Sans-Serif`;
@@ -710,10 +698,10 @@ export default function GraphView({
         }
       }
     },
-    [hoveredNode, selectedNode, focusNodeId, getNodeColor]
+    [hoveredNode, selectedNode, focusNodeId, getNodeColor, collapsedNodes]
   );
 
-  // Link rendering - Semantic Zooming: Hide/show details based on zoom
+  // Link rendering
   const linkCanvasObject = useCallback(
     (link: GraphLink, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const sourceNode = link.source as GraphNode;
@@ -735,7 +723,7 @@ export default function GraphView({
       const isStandardMode = zoomLevel >= 0.5 && zoomLevel < 1.0;
       const isDetailedMode = zoomLevel >= 1.0;
 
-      // HEATMAP MODE: Hide links entirely (too zoomed out)
+      // HEATMAP MODE: Hide links entirely
       if (isHeatmapMode && !isHovered && !isInFocusPath) {
         return;
       }
@@ -748,12 +736,13 @@ export default function GraphView({
       ctx.lineTo(targetNode.x, targetNode.y || 0);
       
       // Visual Encoding: Thicker lines for stronger relationships
-      // In minimal mode, use thinner lines
       const baseLineWidth = isMinimalMode 
         ? (link.strength * 1 + 0.3) / globalScale
         : (link.strength * 2 + 0.5) / globalScale;
       
-      ctx.strokeStyle = isHovered ? "#ffffff" : getLinkColor(link);
+      let linkColor = isHovered ? "#ffffff" : getLinkColor(link);
+      
+      ctx.strokeStyle = linkColor;
       ctx.lineWidth = isHovered ? 2 / globalScale : baseLineWidth;
       
       // Opacity: Lower in heatmap/minimal modes, full in detailed
@@ -905,7 +894,6 @@ export default function GraphView({
     <div 
       ref={(el) => {
         containerRef.current = el;
-        // Immediately update dimensions when ref is set
         if (el) {
           requestAnimationFrame(() => {
             const rect = el.getBoundingClientRect();
@@ -921,363 +909,180 @@ export default function GraphView({
       className={`relative w-full h-full ${className}`}
       style={{ height: "100%", minHeight: height || 600 }}
     >
+      {/* Search Bar (P4) */}
+      <div className="absolute top-2 left-2 z-20 pointer-events-auto">
+        <div className="relative">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={handleSearchChange}
+            placeholder="Search entities..."
+            className="w-64 px-3 py-2 bg-slate-900/90 backdrop-blur-sm border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-lg"
+          />
+          {isSearching && (
+            <div className="absolute right-3 top-2.5">
+              <div className="animate-spin h-4 w-4 border-2 border-indigo-500 rounded-full border-t-transparent"></div>
+            </div>
+          )}
+          {showSearchResults && searchResults.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+              {searchResults.map((result) => (
+                <button
+                  key={result.id}
+                  onClick={() => handleSearchResultClick(result)}
+                  className="w-full text-left px-3 py-2 hover:bg-slate-800 border-b border-slate-800/50 last:border-0"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-200 font-medium">{result.name}</span>
+                    <span className="text-xs text-slate-500 capitalize">{result.type}</span>
+                  </div>
+                  <div className="text-xs text-slate-600 mt-0.5">
+                    {result.mentionCount} mentions
+                  </div>
+                </button>
+          ))}
+        </div>
+          )}
+          </div>
+          </div>
+
       {/* Graph Legend & Controls - Collapsible */}
-      <div className="absolute top-2 right-2 z-10">
+      <div className="absolute top-2 right-2 z-10 pointer-events-none">
         {/* Toggle Button */}
         <button
           onClick={() => setControlsExpanded(!controlsExpanded)}
-          className="mb-2 w-10 h-10 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm hover:bg-slate-800 rounded-lg text-slate-300 hover:text-white transition-colors shadow-lg"
+          className="mb-2 w-10 h-10 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm hover:bg-slate-800 rounded-lg text-slate-300 hover:text-white transition-colors shadow-lg pointer-events-auto"
           title={controlsExpanded ? "Hide Controls" : "Show Controls"}
           aria-label={controlsExpanded ? "Hide Controls" : "Show Controls"}
         >
           <span className="text-lg">{controlsExpanded ? "✕" : "⚙️"}</span>
         </button>
 
-        {/* Controls Panel */}
+        {/* Controls Panel - Simplified */}
         {controlsExpanded && (
-          <div className="bg-slate-900/90 backdrop-blur-sm rounded-lg p-3 text-xs space-y-3 shadow-lg max-w-[280px] max-h-[80vh] overflow-y-auto">
-        {/* View Mode Toggle - Data Funnel */}
-        <div>
-          <div className="font-medium text-slate-300 mb-2">View Mode</div>
-          <div className="flex gap-1.5">
-            <button
-              onClick={() => {
-                setViewMode("overview");
-                setFocusNodeId(null);
-                setSelectedNode(null);
-              }}
-              className={`px-2 py-1 rounded text-[10px] transition-colors ${
-                viewMode === "overview"
-                  ? "bg-indigo-500 text-white"
-                  : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-              }`}
-            >
-              Overview
-            </button>
-            <button
-              onClick={() => setViewMode("detailed")}
-              className={`px-2 py-1 rounded text-[10px] transition-colors ${
-                viewMode === "detailed"
-                  ? "bg-indigo-500 text-white"
-                  : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-              }`}
-            >
-              Detailed
-            </button>
+          <div className="bg-slate-900/90 backdrop-blur-sm rounded-lg p-3 text-xs space-y-3 shadow-lg max-w-[280px] max-h-[80vh] overflow-y-auto pointer-events-auto">
+            {focusNodeId && (
+              <div>
+                <button
+                  onClick={() => {
+                    setFocusNodeId(null);
+                    setSelectedNode(null);
+                  }}
+                  className="w-full px-2 py-1 rounded text-[10px] bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                >
+                  Clear Focus
+                </button>
           </div>
-          {focusNodeId && (
-            <button
-              onClick={() => {
-                setFocusNodeId(null);
-                setSelectedNode(null);
-              }}
-              className="mt-2 w-full px-2 py-1 rounded text-[10px] bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
-            >
-              Clear Focus
-            </button>
-          )}
-        </div>
-
-        {/* Noise Reduction Filters */}
-        <div>
-          <div className="font-medium text-slate-300 mb-2">Reduce Noise</div>
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={noiseFilter.hideSupernodes}
-                onChange={(e) =>
-                  setNoiseFilter({ ...noiseFilter, hideSupernodes: e.target.checked })
-                }
-                className="w-3 h-3 rounded accent-indigo-500"
-              />
-              <span className="text-slate-400 text-[10px]">
-                Hide Supernodes ({">"}{noiseFilter.supernodeThreshold} connections)
-              </span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={noiseFilter.hideLeafNodes}
-                onChange={(e) =>
-                  setNoiseFilter({ ...noiseFilter, hideLeafNodes: e.target.checked })
-                }
-                className="w-3 h-3 rounded accent-indigo-500"
-              />
-              <span className="text-slate-400 text-[10px]">Hide Leaf Nodes (1 connection)</span>
-            </label>
-            {noiseFilter.hideSupernodes && (
-              <div className="mt-1">
-                <input
-                  type="range"
-                  min="5"
-                  max="50"
-                  step="5"
-                  value={noiseFilter.supernodeThreshold}
-                  onChange={(e) =>
-                    setNoiseFilter({
-                      ...noiseFilter,
-                      supernodeThreshold: parseInt(e.target.value, 10),
-                    })
-                  }
-                  className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                  aria-label="Supernode threshold slider"
-                  title={`Supernode threshold: ${noiseFilter.supernodeThreshold}`}
-                />
-                <div className="text-[9px] text-slate-500 text-center mt-0.5">
-                  Threshold: {noiseFilter.supernodeThreshold}
-                </div>
-              </div>
             )}
-          </div>
-        </div>
 
-        {/* Entity Limit Control */}
-        <div>
-          <div className="font-medium text-slate-300 mb-2 flex items-center justify-between">
-            <span>Entity Limit</span>
-            <span className="text-slate-500 text-[10px]">{entityLimit}</span>
-          </div>
-          <div className="flex gap-1.5 mb-1">
-            <button
-              onClick={() => setEntityLimit(100)}
-              className={`px-2 py-1 rounded text-[10px] transition-colors ${
-                entityLimit === 100
-                  ? "bg-indigo-500 text-white"
-                  : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-              }`}
-            >
-              100
-            </button>
-            <button
-              onClick={() => setEntityLimit(500)}
-              className={`px-2 py-1 rounded text-[10px] transition-colors ${
-                entityLimit === 500
-                  ? "bg-indigo-500 text-white"
-                  : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-              }`}
-            >
-              500
-            </button>
-            <button
-              onClick={() => setEntityLimit(1000)}
-              className={`px-2 py-1 rounded text-[10px] transition-colors ${
-                entityLimit === 1000
-                  ? "bg-indigo-500 text-white"
-                  : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-              }`}
-            >
-              1K
-            </button>
-          </div>
-          <input
-            type="range"
-            min="50"
-            max="2000"
-            step="50"
-            value={entityLimit}
-            onChange={(e) => setEntityLimit(parseInt(e.target.value, 10))}
-            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-            aria-label="Entity limit slider"
-            title={`Entity limit: ${entityLimit}`}
-          />
-        </div>
-
-        {/* Layout Type */}
-        <div>
-          <div className="font-medium text-slate-300 mb-2">Layout</div>
-          <div className="flex gap-1.5">
-            <button
-              onClick={() => setLayoutType("force")}
-              className={`px-2 py-1 rounded text-[10px] transition-colors ${
-                layoutType === "force"
-                  ? "bg-indigo-500 text-white"
-                  : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-              }`}
-            >
-              Force
-            </button>
-            <button
-              onClick={() => setLayoutType("hierarchical")}
-              className={`px-2 py-1 rounded text-[10px] transition-colors ${
-                layoutType === "hierarchical"
-                  ? "bg-indigo-500 text-white"
-                  : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-              }`}
-            >
-              Hierarchical
-            </button>
-          </div>
-        </div>
-
-        {/* Progressive Expansion */}
-        <div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={progressiveMode}
-              onChange={(e) => {
-                setProgressiveMode(e.target.checked);
-                if (!e.target.checked) {
-                  setExpandedNodes(new Set());
-                }
-              }}
-              className="w-3 h-3 rounded accent-indigo-500"
-            />
-            <span className="text-slate-400 text-[10px]">Progressive Expansion</span>
-          </label>
-          {progressiveMode && (
-            <div className="mt-1">
-              <div className="text-slate-500 text-[10px] mb-1">
-                Initial Nodes: {initialNodeCount}
+            {/* Entity Limit Control */}
+            <div>
+              <div className="font-medium text-slate-300 mb-2 flex items-center justify-between">
+                <span>Entity Limit</span>
+                <span className="text-slate-500 text-[10px]">{entityLimit}</span>
+              </div>
+              <div className="flex gap-1.5 mb-1">
+                <button
+                  onClick={() => setEntityLimit(100)}
+                  className={`px-2 py-1 rounded text-[10px] transition-colors ${
+                    entityLimit === 100
+                      ? "bg-indigo-500 text-white"
+                      : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                  }`}
+                >
+                  100
+                </button>
+                <button
+                  onClick={() => setEntityLimit(500)}
+                  className={`px-2 py-1 rounded text-[10px] transition-colors ${
+                    entityLimit === 500
+                      ? "bg-indigo-500 text-white"
+                      : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                  }`}
+                >
+                  500
+                </button>
+                <button
+                  onClick={() => setEntityLimit(1000)}
+                  className={`px-2 py-1 rounded text-[10px] transition-colors ${
+                    entityLimit === 1000
+                      ? "bg-indigo-500 text-white"
+                      : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                  }`}
+                >
+                  1K
+                </button>
               </div>
               <input
                 type="range"
-                min="20"
-                max="200"
-                step="10"
-                value={initialNodeCount}
-                onChange={(e) => {
-                  setInitialNodeCount(parseInt(e.target.value, 10));
-                  setExpandedNodes(new Set()); // Reset expansions when changing initial count
-                }}
-                className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                aria-label="Initial node count slider"
-                title={`Initial nodes: ${initialNodeCount}`}
+                min="50"
+                max="2000"
+                step="50"
+                value={entityLimit}
+                onChange={(e) => setEntityLimit(parseInt(e.target.value, 10))}
+                className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                aria-label="Entity limit slider"
+                title={`Entity limit: ${entityLimit}`}
               />
             </div>
-          )}
-        </div>
 
-        {/* Weighted Scoring */}
-        <div>
-          <div className="font-medium text-slate-300 mb-2">
-            Scoring: {weightedScoring.mentions}% Mentions / {weightedScoring.degree}% Connections
-          </div>
-          <div className="space-y-1">
-            <div className="text-slate-500 text-[10px]">Mentions Weight</div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="5"
-              value={weightedScoring.mentions}
-              onChange={(e) => {
-                const mentions = parseInt(e.target.value, 10);
-                setWeightedScoring({ mentions, degree: 100 - mentions });
-              }}
-              className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-              aria-label="Mentions weight slider"
-              title={`Mentions weight: ${weightedScoring.mentions}%`}
-            />
-          </div>
-        </div>
-
-        {/* Node Bundling */}
-        <div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={bundlingEnabled}
-              onChange={(e) => setBundlingEnabled(e.target.checked)}
-              className="w-3 h-3 rounded accent-indigo-500"
-            />
-            <span className="text-slate-400 text-[10px]">Node Bundling (by Type)</span>
-          </label>
-          {bundlingEnabled && clusters.size > 0 && (
-            <div className="mt-1 text-slate-500 text-[10px]">
-              {clusters.size} clusters
+            {/* Source Filter Toggle */}
+            <div>
+              <div className="font-medium text-slate-300 mb-2">Filter by Source</div>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  onClick={() => setSourceFilter("all")}
+                  className={`px-2 py-1 rounded text-[10px] transition-colors ${
+                    sourceFilter === "all"
+                      ? "bg-indigo-500 text-white"
+                      : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setSourceFilter("user")}
+                  className={`px-2 py-1 rounded text-[10px] transition-colors flex items-center gap-1 ${
+                    sourceFilter === "user"
+                      ? "bg-emerald-500 text-white"
+                      : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                  }`}
+                >
+                  <span>👤</span> My KG
+                </button>
+                <button
+                  onClick={() => setSourceFilter("lenny")}
+                  className={`px-2 py-1 rounded text-[10px] transition-colors flex items-center gap-1 ${
+                    sourceFilter === "lenny"
+                      ? "bg-purple-500 text-white"
+                      : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                  }`}
+                >
+                  <span>🎙️</span> Lenny
+                </button>
+                <button
+                  onClick={() => setSourceFilter("both")}
+                  className={`px-2 py-1 rounded text-[10px] transition-colors flex items-center gap-1 ${
+                    sourceFilter === "both"
+                      ? "bg-indigo-500 text-white"
+                      : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                  }`}
+                >
+                  <span>🔗</span> Both
+                </button>
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* Source Filter Toggle */}
-        <div>
-          <div className="font-medium text-slate-300 mb-2">Filter by Source</div>
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              onClick={() => setSourceFilter("all")}
-              className={`px-2 py-1 rounded text-[10px] transition-colors ${
-                sourceFilter === "all"
-                  ? "bg-indigo-500 text-white"
-                  : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setSourceFilter("user")}
-              className={`px-2 py-1 rounded text-[10px] transition-colors flex items-center gap-1 ${
-                sourceFilter === "user"
-                  ? "bg-emerald-500 text-white"
-                  : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-              }`}
-            >
-              <span>👤</span> My KG
-            </button>
-            <button
-              onClick={() => setSourceFilter("lenny")}
-              className={`px-2 py-1 rounded text-[10px] transition-colors flex items-center gap-1 ${
-                sourceFilter === "lenny"
-                  ? "bg-purple-500 text-white"
-                  : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-              }`}
-            >
-              <span>🎙️</span> Lenny
-            </button>
-            <button
-              onClick={() => setSourceFilter("both")}
-              className={`px-2 py-1 rounded text-[10px] transition-colors flex items-center gap-1 ${
-                sourceFilter === "both"
-                  ? "bg-indigo-500 text-white"
-                  : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-              }`}
-            >
-              <span>🔗</span> Both
-            </button>
-          </div>
-        </div>
-
-        {/* Entity Types */}
-        <div>
-        <div className="font-medium text-slate-300 mb-2">Entity Types</div>
-          <div className="flex flex-wrap gap-2">
-          {Object.entries(ENTITY_TYPE_COLORS).map(([type, color]) => (
-            <div key={type} className="flex items-center gap-1">
-              <span
-                className="w-2 h-2 rounded-full"
-                style={{ backgroundColor: color }}
-              />
-              <span className="text-slate-400 capitalize">{type}</span>
-            </div>
-          ))}
-        </div>
-        </div>
-
-        {/* Source Legend */}
-        <div>
-          <div className="font-medium text-slate-300 mb-2">Source Indicators</div>
-          <div className="flex flex-wrap gap-2 text-[10px]">
-          <div className="flex items-center gap-1">
-              <span className="text-emerald-400">👤</span>
-              <span className="text-slate-400">My KG</span>
-          </div>
-          <div className="flex items-center gap-1">
-              <span className="text-purple-400">🎙️</span>
-              <span className="text-slate-400">Lenny</span>
-          </div>
-          <div className="flex items-center gap-1">
-              <span className="text-indigo-400">🔗</span>
-              <span className="text-slate-400">Both</span>
-            </div>
-          </div>
+            {/* Entity Type Legend - Simplified */}
+            <div className="pt-2 border-t border-slate-700/50">
+              <div className="text-slate-400 text-[9px] mb-1">Double-click nodes to expand</div>
         </div>
           </div>
         )}
-      </div>
+          </div>
 
       {/* Zoom Controls - Moved to bottom right */}
-      <div className="absolute bottom-2 right-2 z-10 bg-slate-900/90 backdrop-blur-sm rounded-lg p-2 flex flex-col gap-1">
+      <div className="absolute bottom-2 right-2 z-10 bg-slate-900/90 backdrop-blur-sm rounded-lg p-2 flex flex-col gap-1 pointer-events-auto">
         <button
           onClick={handleZoomIn}
           className="w-8 h-8 flex items-center justify-center bg-slate-700 hover:bg-slate-600 rounded text-slate-300 hover:text-white transition-colors"
@@ -1313,9 +1118,9 @@ export default function GraphView({
         </div>
       </div>
 
-      {/* Node/Link Info Panel */}
+      {/* Node/Link Info Panel - Adjusted position below search */}
       {(hoveredNode || hoveredLink || selectedNode) && (
-        <div className="absolute top-2 right-2 z-10 bg-slate-900/90 backdrop-blur-sm rounded-lg p-3 text-xs max-w-[200px]">
+        <div className="absolute top-14 left-2 z-10 bg-slate-900/90 backdrop-blur-sm rounded-lg p-3 text-xs max-w-[200px] pointer-events-auto">
           {selectedNode && (
             <div>
               <div className="font-medium text-white mb-1">{selectedNode.name}</div>
@@ -1377,12 +1182,15 @@ export default function GraphView({
         graphData={layoutedGraphData}
         width={dimensions.width}
         height={dimensions.height}
-        key={`graph-${dimensions.width}-${dimensions.height}-${layoutType}`}
+        key={`graph-${dimensions.width}-${dimensions.height}`}
         backgroundColor="transparent"
         nodeCanvasObject={nodeCanvasObject}
         nodePointerAreaPaint={(node: GraphNode, color: string, ctx: CanvasRenderingContext2D) => {
+          // Larger hit area for easier clicking - 12px padding around node
+          const nodeSize = Math.max((node.val || 4), 4);
+          const hitRadius = Math.max(nodeSize + 12, 16); // At least 16px radius for small nodes
           ctx.beginPath();
-          ctx.arc(node.x || 0, node.y || 0, (node.val || 4) + 2, 0, 2 * Math.PI);
+          ctx.arc(node.x || 0, node.y || 0, hitRadius, 0, 2 * Math.PI);
           ctx.fillStyle = color;
           ctx.fill();
         }}
@@ -1392,21 +1200,22 @@ export default function GraphView({
           const targetNode = link.target as GraphNode;
           if (!sourceNode.x || !targetNode.x) return;
           
+          // Smaller hit area for links - only 3px wide to avoid blocking nodes
           ctx.beginPath();
           ctx.moveTo(sourceNode.x, sourceNode.y || 0);
           ctx.lineTo(targetNode.x, targetNode.y || 0);
           ctx.strokeStyle = color;
-          ctx.lineWidth = 8;
+          ctx.lineWidth = 3; // Reduced from 8 to 3
           ctx.stroke();
         }}
         onNodeClick={handleNodeClick}
+        onNodeDoubleClick={handleNodeDoubleClick}
         onNodeHover={setHoveredNode}
         onLinkHover={setHoveredLink}
+        onLinkClick={undefined} // Disable link clicking - prioritize nodes
         onZoom={(zoom: { k?: number }) => {
           const newZoom = zoom.k || 1;
           setZoomLevel(newZoom);
-          // Force re-render on zoom change for semantic zooming
-          // The canvas will automatically re-render with new detail levels
         }}
         cooldownTicks={100}
         d3AlphaDecay={0.02}

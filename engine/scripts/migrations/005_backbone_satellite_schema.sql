@@ -330,6 +330,12 @@ CREATE POLICY "Allow anon insert kg_conversations"
 CREATE POLICY "Allow authenticated insert kg_conversations"
     ON kg_conversations FOR INSERT TO authenticated WITH CHECK (true);
 
+CREATE POLICY "Allow anon update kg_conversations"
+    ON kg_conversations FOR UPDATE TO anon USING (true);
+
+CREATE POLICY "Allow authenticated update kg_conversations"
+    ON kg_conversations FOR UPDATE TO authenticated USING (true);
+
 -- ============================================================================
 -- 10. Trigger for updated_at
 -- ============================================================================

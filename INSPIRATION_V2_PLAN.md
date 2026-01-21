@@ -1,15 +1,60 @@
 # Inspiration v2.0+ — Future Roadmap
 
-> **Version:** 2.0+ (Post-Knowledge Graphs Release)
-> **Last Updated:** 2026-01-19 (Updated: Iteration 2 & 3 Complete, Backbone & Satellite Phase 1 & 2 Complete)
-> **Status:** 🔮 Future Features (v2.0 Foundation Complete, Iteration 2 & 3 Complete, Backbone & Satellite Phase 1 & 2 Complete)
-> **Philosophy:** Ship incrementally, iterate based on user feedback
+> **Version:** 2.1 (Simplicity Pivot)
+> **Last Updated:** 2026-01-20 (Updated: Strategic Pivot to Search-First Explorer)
+> **Status:** 🏗️ In Progress (Refactoring for Simplicity)
+> **Philosophy:** Less is More. High Signal, Low Noise.
 
-> **Note:** This document describes **future features not yet implemented**. For completed v2.0 features, see `PLAN.md` Knowledge Graph section. Backbone & Satellite Architecture (Phase 1 & 2) is complete and documented in this file.
+> **CRITICAL UPDATE (2026-01-20):** We are pivoting away from the "Backbone & Satellite" visualization (which created a "hairball" graph) to a **"Search-First Explorer"** model. The goal is to start clean and let users "browse" connections, rather than overwhelming them with a map of everything.
 
 ---
 
-## 🎯 Recommended Priorities (Next Steps)
+## 🎯 Strategic Pivot: Search-First Explorer
+
+**The Problem:** The previous "Map of Everything" approach (Backbone & Satellite) tried to render too much. 15,000+ nodes created a "hairball" that was visually impressive but practically useless. Users couldn't find signal amidst the noise.
+
+**The Solution:** Pivot to a **"Search-First Explorer"** model.
+1.  **Default View:** Empty or "Top 20 Galaxy" (clean, inviting).
+2.  **Interaction:** User searches for a topic (e.g., "React").
+3.  **Expansion:** System renders *only* that node and its direct neighbors (1-hop).
+4.  **Browsing:** User clicks a neighbor to expand *its* connections.
+5.  **Result:** User builds their own mental map path-by-path.
+
+---
+
+## 🎯 Recommended Priorities (Revised)
+
+Based on the simplification plan, here are the new priorities:
+
+### Tier 1: Simplification & Usability (Immediate)
+
+| Priority | Feature | Rationale | Effort | Status |
+|----------|---------|-----------|--------|--------|
+| **P0** | **Graph Visualization Simplification** | Remove 2.5D/Layers, remove complex controls. Implement "Galaxy" default view. | 1-2 days | 🏗️ **In Progress** |
+| **P1** | **Schema Simplification (Strict Whitelist)** | Restrict relations to 5 high-value predicates (USES, SOLVES, etc.). Drop free-text relations. | 2-3 days | ⏳ Pending |
+| **P2** | **Entity Noise Reduction** | Update extraction prompts to aggressively filter "other" types. Reduce 5,000+ entities to high-signal core. | 2-3 days | ⏳ Pending |
+
+### Tier 2: Search & Exploration (Follow-up)
+
+| Priority | Feature | Rationale | Effort |
+|----------|---------|-----------|--------|
+| **P3** | **Interactive Expansion** | Clicking a node fetches and adds its neighbors to the graph (progressive loading). | 3-4 days |
+| **P4** | **Search UI Integration** | Prominent search bar that drives the graph state. | 2-3 days |
+
+---
+
+## 🛑 Deprecated Architecture
+
+### ❌ Backbone & Satellite Architecture (Deprecated)
+*Replaced by Search-First Explorer.* The distinction between "Backbone" (Episodes) and "Satellites" (Conversations) added visual complexity without sufficient semantic value. We now treat all nodes equally in a unified graph.
+
+### ❌ 2.5D Layered View (Deprecated)
+*Removed for clarity.* The 3D/layered effect made interaction difficult and obscured connections. We revert to a clean, standard 2D force-directed layout.
+
+---
+
+## 🎯 Recommended Priorities (Old - For Reference)
+*(Previous roadmap preserved below for historical context)*
 
 Based on the current implementation state (15,449 entities, 10,898+ relations), here are the **recommended priorities** for future work:
 
@@ -18,15 +63,16 @@ Based on the current implementation state (15,449 entities, 10,898+ relations), 
 | Priority | Feature | Rationale | Effort | Status |
 |----------|---------|-----------|--------|--------|
 | **P1** | **User Chat Indexing UX** (Iteration 2) | Let users build personal KG with progress UI, cost estimation, incremental sync | 6-8 hours | ✅ **COMPLETE** (2026-01-19) |
-| **P1.5** | **Backbone & Satellite Architecture** (Phase 1-2) | Dual-layered graph visualization: Episodes as stable backbone, conversations as satellites | 2-3 weeks | ✅ **Phase 1 Complete** (2026-01-19), ✅ **Phase 2 Complete** (2026-01-19) |
-| **P2** | **Schema Evolution** (Phase 3) | Discover new entity types from 5,038 "other" entities without re-indexing | 2-3 weeks | ⏳ Pending |
+| **P1.5** | **Backbone & Satellite Architecture** (Phase 1-5) | Dual-layered graph visualization: Episodes as stable backbone, conversations as satellites | 2-3 weeks | ✅ **Complete** (2026-01-20) |
+| **P1.6** | **User KG Quality Improvement** | Re-do user chat indexing with improved quality filters (current output is "useless") | 1-2 weeks | ⏳ **Pending** |
+| **P2** | **Schema Evolution** (Phase 3) | Discover new entity types from 5,038 "other" entities without re-indexing | 2-3 weeks | ✅ **Complete** (2026-01-20) |
 
 ### Tier 2: High Value, Requires Volume (Build After Tier 1)
 
 | Priority | Feature | Rationale | Effort |
 |----------|---------|-----------|--------|
-| **P3** | **Relationship Grouping** (Phase 4) | Canonicalize 10,898+ relations to prevent predicate explosion, improve queryability | 3-4 weeks |
-| **P4** | **Cross-KG Semantic Matching** | Embedding-based similarity across User ↔ Lenny KGs (since string overlap = 0) | 4-6 weeks |
+| **P3** | **Relationship Grouping** (Phase 4) | Canonicalize 10,898+ relations to prevent predicate explosion, improve queryability | 3-4 weeks | ✅ **Complete** (2026-01-20) |
+| **P4** | **Cross-KG Semantic Matching** | Embedding-based similarity across User ↔ Lenny KGs (since string overlap = 0) | 4-6 weeks | ✅ **Complete** (2026-01-20) |
 
 ### Tier 3: Long-term Research (Defer Until Demand)
 
@@ -46,9 +92,13 @@ Based on the current implementation state (15,449 entities, 10,898+ relations), 
 > **Note:** v2.0 foundation is complete. See `PLAN.md` Knowledge Graph section for what's currently implemented.
 
 **v2.0+ Future Features (⏳ NOT YET IMPLEMENTED):**
-- ⏳ Cross-Source Semantic Matching (embedding-based entity similarity across User KG ↔ Lenny KG)
-- ⏳ Schema Evolution (discover new entity types from "other" category)
-- ⏳ Relationship Grouping (Dynamic Ontology - canonicalize relation predicates)
+- ⏳ Open-Schema Extraction (extract without type constraints, discover types from content)
+- ⏳ Fully Dynamic Schema (automatic schema evolution with minimal human intervention)
+
+**v2.0+ Recently Completed (✅ IMPLEMENTED):**
+- ✅ Cross-Source Semantic Matching (embedding-based entity similarity across User KG ↔ Lenny KG) — P4 Complete
+- ✅ Schema Evolution (discover new entity types from "other" category) — P2 Complete
+- ✅ Relationship Grouping (Dynamic Ontology - canonicalize relation predicates) — P3 Complete
 - ⏳ Open-Schema Extraction (extract without type constraints, discover types from content)
 - ⏳ Fully Dynamic Schema (automatic schema evolution with minimal human intervention)
 
@@ -164,7 +214,7 @@ Based on the current implementation state (15,449 entities, 10,898+ relations), 
 ## Backbone & Satellite Architecture (Dual-Layered Graph Visualization)
 
 > **Purpose:** Transform Knowledge Graph visualization from flat graph into dual-layered architecture (Episodes as Backbone, Conversations as Satellites)
-> **Status:** ✅ **Phase 1 Complete** (2026-01-19), ✅ **Phase 2 Complete** (2026-01-19)
+> **Status:** ✅ **Complete** (2026-01-20) — All phases implemented including 2.5D/Layered View
 > **Rationale:** Addresses "hairball problem" by separating stable knowledge (podcasts) from dynamic activity (conversations)
 
 ### Overview
@@ -243,56 +293,70 @@ This architecture addresses the "hairball problem" by separating stable knowledg
 - `GraphView.tsx`: Added `detectNodeLayers()`, `applyBackboneCircularLayout()`, layer-based rendering
 - Automatic activation when backbone nodes (episodes) are present
 
-#### ⏳ Phase 3: Temporal Navigation (Week 3)
+**Enhancement Complete:**
+- ✅ **2.5D/Layered View:** True layered rendering with podcasts on "base plate" (background layer) and conversations floating above (foreground layer) with render order separation. Includes shadows on backbone nodes, opacity adjustments, and layer-based sorting for visual depth.
+
+#### ✅ Phase 3: Temporal Navigation (COMPLETE — 2026-01-20)
 
 **Goal:** Timeline slider for time-scrubbing.
 
-**Tasks:**
-1. Add timeline slider UI component
-2. Implement date range filtering
-3. Dynamic graph assembly/disassembly based on date
-4. "Ghost" mode: Fade non-relevant episodes when clicking conversation
+**Status:** ✅ **COMPLETE**
 
 **Deliverables:**
-- Timeline slider at bottom of graph view
-- Graph updates dynamically based on date range
-- Ghost mode for focused exploration
+- ✅ Timeline slider at bottom of graph view
+- ✅ Date range filtering (min/max date detection, range selection)
+- ✅ Dynamic graph assembly/disassembly based on date
+- ✅ "Ghost" mode: Fade non-relevant episodes when clicking conversation
+- ✅ API endpoints: `/api/kg/conversations-date-range`, `/api/kg/nodes-dates`
 
-**Status:** ⏳ Pending
+**Implementation:**
+- `GraphView.tsx`: Added timeline slider UI, date range state, ghost mode toggle
+- Date-based filtering in `applyFilters()` function
+- Visual opacity changes based on ghost mode and date relevance
 
-#### ⏳ Phase 4: Semantic Concept Overlay (Week 4)
+#### ✅ Phase 4: Semantic Concept Overlay (COMPLETE — 2026-01-20)
 
 **Goal:** Embedding-based concept matching.
 
-**Tasks:**
-1. Generate embeddings for conversation synthesis
-2. Match user conversation concepts to episode concepts
-3. Create `SEMANTIC_MATCH` relations
-4. Visual "heat" or "glow" between matched concepts
+**Status:** ✅ **COMPLETE**
 
 **Deliverables:**
-- Semantic matching algorithm
-- Visual indicators for concept matches
-- Concept overlay layer in graph
+- ✅ Semantic matching algorithm (RPC functions: `find_semantic_matches()`, `create_semantic_matches()`)
+- ✅ Visual indicators for concept matches (amber/yellow gradient based on similarity)
+- ✅ Concept overlay layer in graph (toggle to show/hide semantic matches)
+- ✅ Synthesis generation pipeline (`generate_conversation_synthesis.py`)
+- ✅ Match creation script (`create_semantic_matches.py`)
 
-**Status:** ⏳ Pending
+**Implementation:**
+- Migration: `006_semantic_match_schema.sql` — Adds `SEMANTIC_MATCH` relation type and RPC functions
+- Backend: Synthesis generation from context snippets, entity names, and relation types
+- Frontend: `GraphView.tsx` — Visual styling for semantic match links (color, thickness based on similarity)
+- API: `/api/kg/semantic-matches` — Returns semantic matches for visualization
 
-#### ⏳ Phase 5: Summarization Nodes (Week 5)
+**Note:** Requires episode entities to have embeddings for matching to work. Synthesis generation works with existing KG data (no full message content needed).
+
+#### ✅ Phase 5: Summarization Nodes (COMPLETE — 2026-01-20)
 
 **Goal:** Collapse conversations into synthesis nodes.
 
-**Tasks:**
-1. Generate synthesis text for conversations (LLM)
-2. Store synthesis embeddings
-3. Collapse/expand UI for conversation nodes
-4. Expand to message-level graph on double-click
+**Status:** ✅ **COMPLETE**
 
 **Deliverables:**
-- Synthesis generation pipeline
-- Collapsible conversation nodes
-- Message-level detail view
+- ✅ Synthesis generation pipeline (basic version complete, uses context snippets + entity names + relation types)
+- ✅ Synthesis embeddings stored in `kg_conversations.synthesis_embedding`
+- ✅ Collapsible conversation nodes (double-click to collapse/expand)
+- ✅ Message-level detail view (double-click expands to fetch and display message-level subgraph)
+- ✅ Visual indicators: Collapsed nodes show "S" indicator in detailed/metadata zoom modes
+- ✅ Size reduction: Collapsed nodes are 50% of base size for visual distinction
 
-**Status:** ⏳ Pending
+**Implementation:**
+- `GraphView.tsx`: Added `handleNodeDoubleClick` for collapse/expand toggle
+- State management: `collapsedNodes`, `expandedMessageNodes`, `messageLevelData` track node states
+- Message-level expansion: Fetches subgraph data via `/api/kg/subgraph` when expanding
+- Visual rendering: Collapsed nodes render smaller with synthesis indicator
+- UI controls: Info panel explains double-click interaction
+
+**Note:** Synthesis generation currently uses context snippets + entity names + relation types. LLM-based synthesis can be added for richer summaries in future iterations.
 
 ### Technical Decisions
 
@@ -364,7 +428,7 @@ date_day DATE,    -- NULL if only month known
 
 #### 4. Semantic Matching Strategy?
 
-**Answer:** ✅ Automatic embeddings-based matching. Generate embeddings for conversation synthesis, match to episode concept embeddings, create `SEMANTIC_MATCH` relations. ⏳ Pending implementation (Phase 4)
+**Answer:** ✅ Automatic embeddings-based matching. Generate embeddings for conversation synthesis, match to episode concept embeddings, create `SEMANTIC_MATCH` relations. ✅ **Complete** (Phase 4 — 2026-01-20)
 
 ---
 
@@ -397,7 +461,20 @@ date_day DATE,    -- NULL if only month known
 
 **Timeline:** 2-3 weeks
 
-**Status:** ⏳ Pending
+**Status:** ✅ **Complete** (2026-01-20)
+
+**Implementation:**
+- ✅ Entity clustering using DBSCAN on embeddings (`type_discovery.py`)
+- ✅ LLM-based type proposal from clusters (`discover_entity_types.py`)
+- ✅ Re-classification script (`reclassify_entities.py`)
+- ✅ API endpoint for type discovery (`/api/kg/type-discovery`)
+- ⏳ Validation UI (pending - can be added to Entity Explorer)
+
+**Files Created:**
+- `engine/common/type_discovery.py` - Clustering and LLM-based type proposal
+- `engine/scripts/discover_entity_types.py` - Script to run type discovery
+- `engine/scripts/reclassify_entities.py` - Script to re-classify entities
+- `src/app/api/kg/type-discovery/route.ts` - API endpoint
 
 ---
 
@@ -437,7 +514,18 @@ date_day DATE,    -- NULL if only month known
 
 **Timeline:** 3-4 weeks
 
-**Status:** ⏳ Pending
+**Status:** ✅ **Complete** (2026-01-20)
+
+**Implementation:**
+- ✅ LLM-based predicate grouping (`relationship_canonicalizer.py`)
+- ✅ Dynamic Ontology builder (`group_relationships.py`)
+- ✅ Merge relationships to canonical forms (API endpoint)
+- ✅ API endpoint for relationship grouping (`/api/kg/relationship-grouping`)
+
+**Files Created:**
+- `engine/common/relationship_canonicalizer.py` - LLM-based predicate grouping
+- `engine/scripts/group_relationships.py` - Script to run grouping
+- `src/app/api/kg/relationship-grouping/route.ts` - API endpoint
 
 ---
 
@@ -534,6 +622,15 @@ date_day DATE,    -- NULL if only month known
    - Process cleanup on stop
 
 **Ship:** ✅ Users can index chat history with full UX support
+
+**⚠️ Known Issue (2026-01-20):**
+- **User KG Quality:** Current user chat indexing produces low-quality KG output (1,571 entities but quality is "useless")
+- **Possible Causes:**
+  - Quality filter may be too permissive for user chat (designed for Lenny's podcast)
+  - User's own AI conversations may be inherently lower quality than expert content
+  - Extraction prompts may not be optimized for user chat context
+- **Action Required:** Re-do user chat indexing with improved quality filters and extraction strategies
+- **Future Work:** Investigate quality differences between user chat vs expert content, adjust quality thresholds, improve extraction prompts for user chat context
 
 ---
 
@@ -823,9 +920,12 @@ Save to Supabase KG tables
 
 > **For current implementation details, see `PLAN.md` Knowledge Graph section.**
 
+**✅ Recently Completed (This Document):**
+- ✅ Phase 3: Schema Evolution (discover types from "other" entities) — P2 Complete (2026-01-20)
+- ✅ Phase 4: Relationship Grouping (Dynamic Ontology) — P3 Complete (2026-01-20)
+- ✅ Cross-KG Semantic Matching — P4 Complete (2026-01-20)
+
 **⏳ Future Features (This Document):**
-- Phase 3: Schema Evolution (discover types from "other" entities)
-- Phase 4: Relationship Grouping (Dynamic Ontology)
 - Phase 5: Open-Schema Extraction
 - Phase 6: Fully Dynamic Schema
 
@@ -894,9 +994,9 @@ Save to Supabase KG tables
 ---
 
 **Version:** v2.0+ (Future Roadmap)  
-**Last Updated:** 2026-01-19 (Updated: Iteration 2 & 3 Complete, Backbone & Satellite Phase 1 & 2 Complete)  
-**Status:** 🔮 Future Features (v2.0 Foundation Complete, Iteration 2 & 3 Complete, Backbone & Satellite Phase 1 & 2 Complete)  
+**Last Updated:** 2026-01-20 (Updated: Backbone & Satellite Architecture Complete)  
+**Status:** 🔮 Future Features (v2.0 Foundation Complete, Backbone & Satellite Architecture Complete)  
 **Purpose:** Roadmap for future KG enhancements, not current implementation
 
 **See `PLAN.md` for completed v2.0 Knowledge Graph features.**  
-**See "Backbone & Satellite Architecture" section in this document for Phase 1 & 2 implementation details.**
+**See "Backbone & Satellite Architecture" section in this document for Phase 1-5 implementation details.**

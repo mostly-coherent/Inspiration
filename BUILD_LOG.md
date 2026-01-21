@@ -6,6 +6,70 @@
 
 ---
 
+## Progress - 2026-01-20 (P2-P4 Implementation — Schema Evolution, Relationship Grouping, Cross-KG Matching)
+
+**Done:**
+- ✅ **P2: Schema Evolution (COMPLETE)**
+  - Entity clustering using DBSCAN on embeddings (`type_discovery.py`)
+  - LLM-based type proposal from clusters (`discover_entity_types.py`)
+  - Re-classification script (`reclassify_entities.py`)
+  - API endpoint for type discovery (`/api/kg/type-discovery`)
+  - Files: `engine/common/type_discovery.py`, `engine/scripts/discover_entity_types.py`, `engine/scripts/reclassify_entities.py`, `src/app/api/kg/type-discovery/route.ts`
+
+- ✅ **P3: Relationship Grouping (COMPLETE)**
+  - LLM-based predicate grouping (`relationship_canonicalizer.py`)
+  - Dynamic Ontology builder (`group_relationships.py`)
+  - Merge relationships to canonical forms (API endpoint)
+  - API endpoint for relationship grouping (`/api/kg/relationship-grouping`)
+  - Files: `engine/common/relationship_canonicalizer.py`, `engine/scripts/group_relationships.py`, `src/app/api/kg/relationship-grouping/route.ts`
+
+- ✅ **P4: Cross-KG Semantic Matching (COMPLETE)**
+  - Embedding-based similarity matching (`cross_kg_matcher.py`)
+  - API endpoints for cross-KG matching (`/api/kg/cross-kg-matches`, `/api/kg/cross-kg-matches/[entityId]`)
+  - Cosine similarity computation for entity embeddings
+  - Files: `engine/common/cross_kg_matcher.py`, `src/app/api/kg/cross-kg-matches/route.ts`, `src/app/api/kg/cross-kg-matches/[entityId]/route.ts`
+
+**Implementation Details:**
+- P2: Clusters "other" entities by embedding similarity, uses LLM to propose new types, supports incremental re-classification
+- P3: Groups similar relationship predicates ("talked about" + "discussed" → "MENTIONED") into canonical forms
+- P4: Finds semantically similar entities across User ↔ Lenny KGs using embedding cosine similarity
+
+**Status:** ✅ **P2-P4 Complete** — Schema Evolution, Relationship Grouping, and Cross-KG Semantic Matching implemented
+
+---
+
+## Progress - 2026-01-20 (Backbone & Satellite Architecture — Phase 5 & 2.5D Complete)
+
+**Done:**
+- ✅ **Phase 5: Summarization Nodes (COMPLETE)**
+  - Double-click handler for conversation nodes (satellites) to collapse/expand
+  - Collapsed nodes render at 50% base size with "S" synthesis indicator
+  - Message-level expansion: Fetches subgraph data when double-clicking expanded nodes
+  - State management: `collapsedNodes`, `expandedMessageNodes`, `messageLevelData` track node states
+  - Visual rendering: Collapsed nodes show simplified synthesis representation
+  - UI controls: Info panel explains double-click interaction
+  - File: `src/components/GraphView.tsx`
+
+- ✅ **2.5D/Layered View Enhancement (COMPLETE)**
+  - True layer separation: Backbone nodes (episodes) render first, satellites (conversations) render on top
+  - Visual depth cues:
+    - Shadows on backbone nodes (base layer) using canvas shadow API
+    - Opacity adjustments (backbone 85%, satellites 100%)
+    - Render order sorting (backbone → regular → satellite)
+  - UI toggle: Checkbox in controls panel to enable/disable 2.5D view
+  - File: `src/components/GraphView.tsx`
+
+**Implementation Details:**
+- Added `handleNodeDoubleClick` callback for Phase 5 collapse/expand functionality
+- Added `layeredViewEnabled` state and UI toggle for 2.5D view
+- Updated `layoutedGraphData` useMemo to sort nodes by layer for proper render order
+- Updated `nodeCanvasObject` to handle collapsed nodes and 2.5D shadow rendering
+- Message-level data fetched via `/api/kg/subgraph` endpoint when expanding nodes
+
+**Status:** ✅ **Backbone & Satellite Architecture Complete** — All phases (1-5) and 2.5D enhancement implemented
+
+---
+
 ## Progress - 2026-01-17 (Phase 1b: User's Chat KG — COMPLETE)
 
 **Done:**

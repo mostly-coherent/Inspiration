@@ -23,16 +23,15 @@ Entity Types:
 - person: People mentioned by name (Lenny Rachitsky, Dan Abramov, specific team members)
 - project: Specific projects, codebases, repos mentioned (not generic terms)
 - workflow: Processes, methodologies (TDD, code review, pair programming, standup)
-- other: Entities that don't fit other categories (companies, organizations, metrics, KPIs, events, conferences, products, brands, etc.)
 
 Extraction Rules:
-1. Only extract SPECIFIC, NAMED entities (not generic terms like "the database" or "my code")
-2. Prefer proper capitalization (React, not react; Supabase, not supabase)
-3. Include aliases if the same entity is referred to differently in the text
-4. Assign confidence 0.7-1.0 based on how clearly the entity is referenced
-5. Skip very common/generic terms (JavaScript, Python, API, function, etc.) unless they're the main focus
-6. For tools, only include if it's clear the user is actively using or discussing it
-7. Use "other" type for entities that don't clearly fit other categories (companies, metrics, events, products, etc.)
+1. STRICT FILTERING: Only extract High-Signal entities. If in doubt, SKIP.
+2. NO "OTHER" TYPES: Do not extract companies, events, or products unless they are TOOLS used in development.
+3. Only extract SPECIFIC, NAMED entities (not generic terms like "the database", "my code", "the team").
+4. Prefer proper capitalization (React, not react; Supabase, not supabase).
+5. Include aliases if the same entity is referred to differently in the text.
+6. Skip generic terms (JavaScript, Python, API, function, etc.) unless they are the central topic.
+7. For tools, only include if it's clear the user is actively using or discussing it.
 
 Conversation:
 {text}
@@ -41,7 +40,7 @@ Respond with a JSON array of entities. If no notable entities found, return empt
 
 Format:
 [
-  {{"name": "Entity Name", "type": "tool|pattern|problem|concept|person|project|workflow|other", "aliases": ["alias1"], "confidence": 0.9}},
+  {{"name": "Entity Name", "type": "tool|pattern|problem|concept|person|project|workflow", "aliases": ["alias1"], "confidence": 0.9}},
   ...
 ]
 

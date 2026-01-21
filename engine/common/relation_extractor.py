@@ -35,11 +35,12 @@ RELATION TYPES:
 - IMPLEMENTS: realizes a concept (e.g., "Retry logic IMPLEMENTS resilience pattern")
 
 RULES:
-1. Only extract relationships that are EXPLICIT or STRONGLY IMPLIED in the text
-2. Both source and target must be specific, named entities (not generic terms)
-3. Extract at most 5 relationships per conversation
-4. Skip vague or uncertain relationships
-5. Provide a brief evidence snippet (quote or paraphrase) for each relation
+1. STRICT WHITELIST: Use ONLY the relation types listed above. DO NOT invent new types.
+2. Only extract relationships that are EXPLICIT or STRONGLY IMPLIED in the text.
+3. Both source and target must be specific, named entities (not generic terms).
+4. Extract at most 5 relationships per conversation.
+5. Skip vague or uncertain relationships.
+6. Provide a brief evidence snippet (quote or paraphrase) for each relation.
 
 OUTPUT FORMAT (JSON array):
 [

@@ -365,23 +365,70 @@ export default function EntityExplorer({ onEntitySelect, initialSelectedEntityId
 
   // Handle initial entity selection from URL parameter
   useEffect(() => {
-    if (
-      initialSelectedEntityId &&
-      entities.length > 0 &&
-      !selectedEntity &&
-      !initialSelectionDoneRef.current
-    ) {
-      const entityToSelect = entities.find((e) => e.id === initialSelectedEntityId);
-      if (entityToSelect) {
-        initialSelectionDoneRef.current = true;
-        fetchEntityDetail(entityToSelect);
+    async function handleInitialSelection() {
+      if (
+        initialSelectedEntityId &&
+        !initialSelectionDoneRef.current &&
+        (!selectedEntity || selectedEntity.id !== initialSelectedEntityId)
+      ) {
+        // Try to find in loaded entities first
+        const entityToSelect = entities.find((e) => e.id === initialSelectedEntityId);
+        
+        if (entityToSelect) {
+          initialSelectionDoneRef.current = true;
+          fetchEntityDetail(entityToSelect);
+        } else if (entities.length > 0 || !loading) {
+          // If entities are loaded but target not found, or not loading anymore
+          // Fetch specific entity details from API
+          try {
+            const res = await fetch("/api/kg/entities", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ entityId: initialSelectedEntityId }),
+            });
+            
+            if (res.ok) {
+              const data = await res.json();
+              if (data.entity) {
+                // Construct entity object matching interface
+                const entity: Entity = {
+                  id: data.entity.id,
+                  name: data.entity.name,
+                  type: data.entity.type,
+                  aliases: data.entity.aliases || [],
+                  mentionCount: data.entity.mentionCount || 0,
+                  firstSeen: data.entity.firstSeen,
+                  lastSeen: data.entity.lastSeen,
+                  confidence: data.entity.confidence || 1.0,
+                  source: data.entity.source || "unknown", // Map from backend response
+                };
+                
+                initialSelectionDoneRef.current = true;
+                
+                // Add to list if not present (so it shows up in sidebar)
+                setEntities(prev => {
+                  if (prev.some(e => e.id === entity.id)) return prev;
+                  return [entity, ...prev];
+                });
+                
+                // Select it
+                fetchEntityDetail(entity);
+              }
+            }
+          } catch (err) {
+            console.error("Failed to fetch initial entity:", err);
+          }
+        }
       }
     }
+
+    handleInitialSelection();
+    
     // Reset ref if initialSelectedEntityId changes (new navigation)
-    if (initialSelectedEntityId && !entities.find((e) => e.id === initialSelectedEntityId)) {
+    if (initialSelectedEntityId && selectedEntity && selectedEntity.id !== initialSelectedEntityId) {
       initialSelectionDoneRef.current = false;
     }
-  }, [initialSelectedEntityId, entities, selectedEntity, fetchEntityDetail]);
+  }, [initialSelectedEntityId, entities, selectedEntity, fetchEntityDetail, loading]);
 
   // Cleanup on unmount
   useEffect(() => {
