@@ -54,6 +54,7 @@ data/conversation_cache.json
 data/vector_db_sync_state.json
 data/idea_bank.json
 data/insight_bank.json
+data/kg_indexing_progress.json
 
 # Test Results (may contain personal paths)
 e2e/
