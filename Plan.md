@@ -560,7 +560,55 @@ inspiration/
 
 ## 🔮 Future Directions
 
-Active development focused on longitudinal intelligence—moving beyond single-session extraction. Roadmap details kept internal.
+<!-- Merged from INSPIRATION_V2_PLAN.md on 2026-01-21 -->
+
+Active development focused on longitudinal intelligence—moving beyond single-session extraction.
+
+### Strategic Pivot: Search-First Explorer (2026-01-20)
+
+**The Problem:** The previous "Map of Everything" approach (Backbone & Satellite) tried to render too much. 15,000+ nodes created a "hairball" that was visually impressive but practically useless. Users couldn't find signal amidst the noise.
+
+**The Solution:** Pivot to a **"Search-First Explorer"** model:
+1. **Default View:** Empty or "Top 20 Galaxy" (clean, inviting)
+2. **Interaction:** User searches for a topic (e.g., "React")
+3. **Expansion:** System renders *only* that node and its direct neighbors (1-hop)
+4. **Browsing:** User clicks a neighbor to expand *its* connections
+5. **Result:** User builds their own mental map path-by-path
+
+### Recommended Priorities (Revised)
+
+**Tier 1: Simplification & Usability (Immediate)**
+- **P0:** Graph Visualization Simplification — Remove 2.5D/Layers, remove complex controls. Implement "Galaxy" default view. (🏗️ In Progress)
+- **P1:** Schema Simplification (Strict Whitelist) — Restrict relations to 5 high-value predicates (USES, SOLVES, etc.). Drop free-text relations. (⏳ Pending)
+- **P2:** Entity Noise Reduction — Update extraction prompts to aggressively filter "other" types. Reduce 5,000+ entities to high-signal core. (⏳ Pending)
+
+**Tier 2: Search & Exploration (Follow-up)**
+- **P3:** Interactive Expansion — Clicking a node fetches and adds its neighbors to the graph (progressive loading)
+- **P4:** Search UI Integration — Prominent search bar that drives the graph state
+
+### Deprecated Architecture
+
+- ❌ **Backbone & Satellite Architecture** — Replaced by Search-First Explorer. The distinction between "Backbone" (Episodes) and "Satellites" (Conversations) added visual complexity without sufficient semantic value.
+- ❌ **2.5D Layered View** — Removed for clarity. The 3D/layered effect made interaction difficult and obscured connections.
+
+### Future Features (v2.0+)
+
+**Recently Completed (2026-01-20 to 2026-01-21):**
+- ✅ Schema Evolution (discover new entity types from "other" category) — P2 Complete
+- ✅ Relationship Grouping (Dynamic Ontology - canonicalize relation predicates) — P3 Complete
+- ✅ Cross-KG Semantic Matching (embedding-based entity similarity across User KG ↔ Lenny KG) — P4 Complete
+- ✅ User KG Data Cleanup — Complete (2026-01-21)
+- ✅ Lenny KG Export & Verification System — Complete (2026-01-21)
+- ✅ Incremental Indexing Documentation — Complete (2026-01-21)
+
+**Future Enhancements (Not Yet Implemented):**
+- ⏳ Open-Schema Extraction (extract without type constraints, discover types from content)
+- ⏳ Fully Dynamic Schema (automatic schema evolution with minimal human intervention)
+
+**Deferred:**
+- ⏸️ Cross-KG Connection (Phase 2) — String-based deduplication found 0 overlaps. User and Lenny entities are named differently. Future alternative: semantic matching (P4 above).
+
+> **Note:** For detailed technical roadmap, architecture decisions, and implementation history, see `ARCHITECTURE.md`, `BUILD_LOG.md`, and `PIVOT_LOG.md`.
 
 ---
 
@@ -581,7 +629,7 @@ Active development focused on longitudinal intelligence—moving beyond single-s
 **Knowledge Graph Integration (v2.0 - 2026-01-19):**
 
 > **Current Implementation:** See details below.  
-> **Future Roadmap:** See `INSPIRATION_V2_PLAN.md` for future enhancements (Phases 3-6).  
+> **Future Roadmap:** See "Future Directions" section above for roadmap details.  
 > **Architecture:** See `ARCHITECTURE.md` Knowledge Graph Architecture section for technical details.
 
 | ID | Feature | Priority | Effort | Status |

@@ -872,3 +872,113 @@ If you're too tired to test properly, **stop and test tomorrow**.
 - Refactored anything that touches multiple layers
 
 <!-- Merged from QA_CHECKLIST.md on 2026-01-08 -->
+
+---
+
+## Security & Privacy
+
+<!-- Merged from SECURITY_PRIVACY_ASSESSMENT.md on 2026-01-21 -->
+
+> **Purpose:** Verify that user data is NOT exposed when cloning the Inspiration repo, while Lenny's open-sourced podcast data CAN be safely included.
+
+### ✅ User Data Protection (VERIFIED)
+
+**Your Chat History:**
+- ✅ **NOT in repo** — All chat history files are gitignored:
+  - `data/config.json` (user-specific config)
+  - `data/conversation_cache.json` (cached conversations)
+  - `data/embedding_cache.json` (cached embeddings)
+  - `data/vector_db_sync_state.json` (sync state)
+- ✅ **Read from local files only** — The app reads from your local Cursor DB (`Library/Application Support/Cursor/...`) or Claude Code projects folder
+- ✅ **No hardcoded paths** — Paths are auto-detected based on platform (macOS/Windows)
+
+**Your Vector Database & Embeddings:**
+- ✅ **NOT in repo** — Stored in your own Supabase instance
+- ✅ **Environment variables required** — Each user must configure:
+  - `SUPABASE_URL` (your own Supabase project URL)
+  - `SUPABASE_ANON_KEY` (your own Supabase anonymous key)
+- ✅ **No hardcoded credentials** — All Supabase connections use `process.env.SUPABASE_URL` (no real URLs in code)
+- ✅ **Per-instance isolation** — Each user runs their own Supabase instance (no shared database)
+
+**Your Knowledge Graph:**
+- ✅ **NOT in repo** — Stored in your Supabase instance
+- ✅ **Source tracking** — Database schema separates user data (`source_type='user'`) from Lenny data (`source_type='expert'` or `source_type='lenny'`)
+- ✅ **RLS policies** — Row Level Security enabled (though per-instance, not multi-tenant)
+
+**Environment Variables:**
+- ✅ **Gitignored** — `.env` and `.env*.local` files are excluded from git
+- ✅ **No sample data** — No example `.env` files with real credentials
+- ✅ **Placeholders only** — Code uses placeholders like `https://your-project.supabase.co`
+
+### ✅ Lenny's Podcast Data (Safe to Include)
+
+**Current Status:**
+- ⚠️ **Currently gitignored** — Lenny's data is excluded:
+  - `data/lenny-transcripts/` (raw transcripts)
+  - `data/lenny_embeddings.npz` (pre-computed embeddings)
+  - `data/lenny_metadata.json` (episode metadata)
+
+**Why It's Safe to Include:**
+- ✅ **Open-sourced** — Lenny has open-sourced all podcast transcripts on GitHub
+- ✅ **Public domain** — Transcripts are publicly available
+- ✅ **Read-only** — Embeddings are deterministic and never modified by users
+- ✅ **Separated in DB** — Database uses `source_type` to distinguish Lenny data from user data
+
+**Recommendation:**
+If you want to enable zero-setup onboarding (as mentioned in optimization docs), you can:
+1. **Remove from `.gitignore`:**
+   - `data/lenny_embeddings.npz` (pre-computed embeddings)
+   - `data/lenny_metadata.json` (episode metadata)
+2. **Keep gitignored:**
+   - `data/lenny-transcripts/` (too large, can be cloned separately)
+3. **Add to README:** Instructions for cloning Lenny's transcripts repo separately
+
+### 🔒 Security Checklist
+
+| Item | Status | Notes |
+|------|--------|-------|
+| User chat history files | ✅ Protected | Gitignored, read from local files only |
+| User embeddings | ✅ Protected | Stored in user's Supabase instance |
+| User KG data | ✅ Protected | Stored in user's Supabase instance |
+| Supabase credentials | ✅ Protected | Environment variables, gitignored |
+| Hardcoded URLs/keys | ✅ None found | All use environment variables |
+| Sample data files | ✅ None found | No example files with real data |
+| Lenny's data | ⚠️ Currently excluded | Safe to include (open-sourced) |
+
+### 📋 What Gets Cloned
+
+When someone clones `https://github.com/mostly-coherent/Inspiration`:
+
+**✅ Included (Safe):**
+- Source code (TypeScript, Python)
+- Database schema migrations (SQL files)
+- Documentation (README, PLAN, etc.)
+- Configuration templates (no real credentials)
+
+**❌ NOT Included (Protected):**
+- User chat history files
+- User embeddings/cache files
+- User Knowledge Graph data
+- Environment variables (`.env` files)
+- User-specific config files
+
+**⚠️ Currently Excluded (But Safe to Include):**
+- Lenny's podcast embeddings (`data/lenny_embeddings.npz`)
+- Lenny's episode metadata (`data/lenny_metadata.json`)
+- Lenny's transcripts (`data/lenny-transcripts/` - too large for git, can be cloned separately)
+
+### 🛡️ Database Isolation
+
+**Schema Design:**
+- **`source_type` column** — Distinguishes data sources:
+  - `'user'` — User's chat conversations
+  - `'expert'` or `'lenny'` — Lenny's podcast episodes
+  - `'both'` — Entities mentioned in both sources
+
+**RLS Policies:**
+- **Per-instance, not multi-tenant** — Each user runs their own Supabase instance
+- **Full access within instance** — RLS policies use `USING (true)` because each instance is user-specific
+- **No cross-user access** — Impossible because each user has their own Supabase project
+
+**Last Updated:** 2026-01-20  
+**Verified By:** Code review of `.gitignore`, database schema, and environment variable usage

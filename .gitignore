@@ -74,6 +74,8 @@ data/lenny-transcripts/
 # Too large for git (219MB + 28MB), but auto-downloaded via scripts/download-lenny-embeddings.sh
 data/lenny_embeddings.npz
 data/lenny_metadata.json
+# Exported KG files (distributed via GitHub Releases, not committed)
+exports/lenny-kg/*.json
 # Indexing logs (local only, may contain user paths)
 data/lenny_index.log
 data/*.log
