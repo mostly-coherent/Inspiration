@@ -240,7 +240,7 @@ def generate_theme_map(
     Args:
         days: Number of days to analyze
         max_conversations: Maximum conversations to include
-        provider: LLM provider ("anthropic", "openai", "openrouter")
+        provider: LLM provider ("anthropic", "openai")
         model: Optional model override
         
     Returns:
@@ -434,7 +434,7 @@ def main():
     )
     parser.add_argument(
         "--provider",
-        choices=["anthropic", "openai", "openrouter"],
+        choices=["anthropic", "openai"],
         default="anthropic",
         help="LLM provider (default: anthropic)"
     )

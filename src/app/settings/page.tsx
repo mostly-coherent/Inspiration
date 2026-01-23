@@ -36,9 +36,9 @@ interface AppConfig {
     lastChecked: string | null;
   };
   llm: {
-    provider: "anthropic" | "openai" | "openrouter";
+    provider: "anthropic" | "openai";
     model: string;
-    fallbackProvider: "anthropic" | "openai" | "openrouter" | null;
+    fallbackProvider: "anthropic" | "openai" | null;
     fallbackModel: string | null;
     promptCompression?: {
       enabled: boolean;
@@ -556,9 +556,8 @@ export default function SettingsPage() {
           <h3 className="text-sm font-medium text-slate-300 mb-2">🔑 API Keys</h3>
           <p className="text-xs text-slate-500">
             API keys are loaded from environment variables. Set{" "}
-            <code className="text-amber-400">ANTHROPIC_API_KEY</code>,{" "}
-            <code className="text-amber-400">OPENAI_API_KEY</code>, and/or{" "}
-            <code className="text-amber-400">OPENROUTER_API_KEY</code> in your{" "}
+            <code className="text-amber-400">ANTHROPIC_API_KEY</code> and/or{" "}
+            <code className="text-amber-400">OPENAI_API_KEY</code> in your{" "}
             <code className="text-slate-400">.env</code> or <code className="text-slate-400">.env.local</code> file.
           </p>
         </div>

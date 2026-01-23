@@ -146,7 +146,7 @@ export async function POST(request: Request) {
     }
 
     // Determine overall validity
-    // Anthropic is required; OpenAI and Supabase are optional (only fail if provided and invalid)
+    // Anthropic is required; OpenAI (for embeddings) and Supabase are optional (only fail if provided and invalid)
     const allValid = 
       results.anthropic.valid && 
       (results.openai === null || results.openai.valid) &&

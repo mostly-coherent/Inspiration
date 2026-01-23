@@ -1,6 +1,6 @@
 # Inspiration
 
-> **Your thinking is accumulating in AI conversations—Inspiration surfaces the patterns and relationships.**
+> **Your AI conversations (Cursor & Claude Code) contain your best problem-solving. Inspiration structures them to reveal patterns, evolution, and connections you missed.**
 
 ![Type](https://img.shields.io/badge/Type-Tool-purple)
 ![Status](https://img.shields.io/badge/Status-Active-green)
@@ -9,30 +9,33 @@
 
 <img src="https://raw.githubusercontent.com/mostly-coherent/Inspiration/main/public/screenshots/homepage.png" alt="Inspiration - Main Interface" width="800">
 
-## 🚀 Quick Start
+<details open>
+<summary><strong>📚 Why This Exists</strong></summary>
 
-```bash
-git clone https://github.com/mostly-coherent/Inspiration.git
-cd Inspiration
-npm run bootstrap
-npm run dev
-```
+Your best problem-solving happens in conversations with AI—reasoning through trade-offs, exploring architectures, and debugging complex issues. But this thinking is usually ephemeral. **Inspiration** analyzes your history to reveal the patterns you miss in the moment.
 
-**→ Open http://localhost:3000/onboarding-fast**
+**What you can discover:**
+- **Hidden Loops:** "I've been circling this same architectural problem for months."
+- **Evolution:** "My focus shifted from UI polish to distributed systems without me noticing."
+- **Cross-Project Insights:** "The auth pattern I rejected in Project A is actually perfect for Project B."
 
-| Step | What Happens | Time |
-|------|-------------|------|
-| 1. Auto-detect | Finds your Cursor DB, shows size | ~3s |
-| 2. API Key | Paste your Anthropic key | ~10s |
-| 3. Generate | Creates Theme Map from local SQLite | ~60s |
+**Who This Is For:**
+Builders who use AI as a **thinking partner** (reasoning, trade-offs, decisions)—not just for autocomplete. If you've ever thought *"I solved this before... where is that conversation?"*, this is for you.
 
-**Getting Started:** **Theme Explorer** requires Library items (conversations + indexing + mining), but once you have patterns, expert perspectives from 300+ Lenny's Podcast episodes automatically surface when you click any theme. **Knowledge Graph** (`/entities`) can show Lenny's KG (13,878 entities) if imported/indexed in your Supabase instance.
+</details>
 
-**API Keys:** Anthropic required. OpenAI optional (enables expert perspectives). Supabase optional (for 500MB+ histories).
+<details>
+<summary><strong>🔍 What Makes It Different</strong></summary>
 
-**Typical costs:** $0.50–$5 first sync, $0.10–$2 per scan. Estimates shown before each run.
+Inspiration is designed to work with your chat history over time:
+- **Works across tools:** Unified view of Cursor and Claude Code conversations
+- **Privacy-first:** Your data stays on your machine (local-first). Optional Supabase sync uses your own instance. No tracking, no telemetry.
+- **Longitudinal:** Becomes more useful the longer you use it, revealing evolution in your thinking
+- **Semantic:** Finds conceptual connections, not just keyword matches
 
----
+After several months of use, your Inspiration contains patterns specific to your workflow—connections between projects, recurring problems you didn't notice, evolution in your approach.
+
+</details>
 
 <details>
 <summary><strong>✨ Features</strong></summary>
@@ -57,105 +60,49 @@ npm run dev
 </details>
 
 <details>
-<summary><strong>⚙️ Environment Variables</strong></summary>
+<summary><strong>🆕 What's New: Lenny's Podcast Integration</strong></summary>
 
-Required environment variables:
+Your patterns now connect with expert knowledge. Semantic search across both your conversations and 300+ Lenny's Podcast episodes (updated weekly from [ChatPRD's archive](https://github.com/ChatPRD/lennys-podcast-transcripts))—**Claire Vo** (ChatPRD), **Dylan Field** (Figma), **Elena Verna** (Lovable, Miro), and other product leaders, engineers, and founders. Discover how expert thinking relates to your own patterns, inspiring outward exploration. Click through to YouTube timestamps.
 
-- **`ANTHROPIC_API_KEY`** – Required: For Claude (generation, synthesis)
-- **`OPENAI_API_KEY`** – Optional: Enables expert perspectives (embeddings, semantic search)
-- **`SUPABASE_URL`** – Optional: For Vector DB (required for 500MB+ histories)
-- **`SUPABASE_ANON_KEY`** – Optional: Supabase anonymous key
+How it works:
+- **One-time auto-download:** ~250MB embeddings downloaded from GitHub Releases on first run
+- **Requires:** Anthropic API key (Theme Map) + OpenAI API key (expert perspectives unlock)
+- 269 episodes, 44,371 searchable segments, all rich metadata (titles, YouTube URLs, timestamps)
+- Works with Fast Start (Anthropic key)—add OpenAI key to unlock expert perspectives
+- Auto-syncs new episodes when you refresh Memory (pulls from [ChatPRD's archive](https://github.com/ChatPRD/lennys-podcast-transcripts))
+- No embedding cost—everything pre-computed and downloaded once
 
-**Notes:**
-- Cursor chat history auto-detected on macOS and Windows
-- Claude Code JSONL history supported on all platforms
-- Cloud deployment (Vercel): Read-only mode
+Theme Explorer tabs:
+- **Patterns** — Themes in your Library connected to related expert discussions
+- **Unexplored** — Topics you discuss but haven't extracted (with expert examples to inspire)
+- **Counter-Intuitive** — Reflection prompts + expert contrarian perspectives
 
 </details>
 
-<details>
-<summary><strong>🛠️ Available Scripts</strong></summary>
+## 🚀 Quick Start
 
 ```bash
-npm run bootstrap  # One-command setup (installs Node + Python deps)
-npm run dev        # Start development server
-npm run build      # Build for production
-npm run lint       # Check code quality
-npm test           # Run E2E tests (Playwright)
-npm run test:ui    # Interactive Playwright UI
-npm run test:unit  # Run unit tests (Vitest)
+git clone https://github.com/mostly-coherent/Inspiration.git
+cd Inspiration
+npm run bootstrap
+npm run dev
 ```
 
-</details>
+**→ Open http://localhost:3000/onboarding-fast**
 
-<details>
-<summary><strong>🚢 Deployment</strong></summary>
+| Step | What Happens | Time |
+|------|-------------|------|
+| 1. Auto-detect | Finds your Cursor DB, shows size | ~3s |
+| 2. API Key | Paste your Anthropic key | ~10s |
+| 3. Generate | Creates Theme Map from local SQLite | ~60s |
 
-**Recommended: Deploy to Vercel**
+**Fast Start (90s):** Just paste your Anthropic key. Inspiration instantly maps your local chat history (Cursor or Claude Code) to find patterns. No database setup required.
 
-1. Build locally and verify: `npm run build`
-2. Connect GitHub repo to Vercel
-3. Configure environment variables in Vercel dashboard
-4. Deploy
+**Full Power:** Add an OpenAI key to connect your thinking with **300+ Lenny's Podcast episodes**. See how expert product leaders solved the problems you're facing now.
 
-**Note:** Cloud deployments run in read-only mode (cannot sync local Cursor DB). For full functionality, run locally.
+**Cost:** **$0** for local history (<500MB). Optional vector indexing (for massive scale) costs ~$0.50–$5 one-time (paid directly to OpenAI/Anthropic for its API usage).
 
-</details>
-
-<details>
-<summary><strong>📚 Why This Exists</strong></summary>
-
-After months of using Cursor, I realized my best problem-solving was happening in conversations with Claude—but I had no way to see patterns across those conversations.
-
-Questions I couldn't answer:
-- "Am I circling the same problem from different angles?"
-- "How has my approach to architecture evolved over time?"
-- "What connects this project to work I did three months ago?"
-
-Every conversation with AI in Cursor / Claude Code is you reasoning through problems. Before AI assistants, that thinking was invisible. Now it's captured—but without structure, you can't see the relationships. Inspiration analyzes your conversations to reveal how your thinking connects over time.
-
-What you can discover:
-- *"I've been circling this problem for months without realizing it"*
-- *"Three months ago I was focused on frontend, now it's all system design—I didn't notice the shift"*
-- *"I keep hitting the same edge case across different projects"*
-
-**Example:** Run Theme Explorer on 6 months of conversations. See a theme like "Developer tooling for async workflows." Zoom in: background jobs, webhooks, event-driven architecture. The synthesis shows it appeared in 12 conversations across 4 projects. You've been dancing around the same problem—maybe it's time to build a unified solution.
-
-</details>
-
-<details>
-<summary><strong>🎯 Who This Is For</strong></summary>
-
-You'll find this useful if:
-- You use Cursor or Claude Code as a thinking partner (not just autocomplete)
-- You've had that moment: *"I solved this before... where was that conversation?"*
-- You're curious what patterns emerge across months of conversations
-- You want to see how your thinking has evolved over time
-
-**Not for you if:** You use Cursor or Claude Code just for autocomplete and cut-and-dry coding. Inspiration is for people who have conversations with AI while building—reasoning through problems, exploring trade-offs, working through decisions.
-
-</details>
-
-<details>
-<summary><strong>🔍 What Makes It Different</strong></summary>
-
-Inspiration is designed to work with your chat history over time:
-- Works across tools (Cursor, Claude Code)
-- Becomes more useful the longer you use it
-- Local-first architecture (your data stays on your machine)
-- Semantic search, not just text matching
-- Personalized to how you actually work
-
-After several months of use, your Inspiration contains patterns specific to your workflow—connections between projects, recurring problems you didn't notice, evolution in your approach.
-
-</details>
-
-<details>
-<summary><strong>🔒 Privacy</strong></summary>
-
-**Local-first.** Your data stays on your machine. Optional Supabase sync (your own instance). Only analyzed content sent to LLM APIs. No tracking, no telemetry. [Open source](https://github.com/mostly-coherent/Inspiration).
-
-</details>
+---
 
 <details>
 <summary><strong>🧠 How It Works</strong></summary>
@@ -183,29 +130,38 @@ More conversations mean more patterns and more nodes in the graph. The value isn
 </details>
 
 <details>
-<summary><strong>🆕 What's New</strong></summary>
+<summary><strong>⚙️ Environment Variables</strong></summary>
 
-**Lenny's Podcast Integration**
+Required environment variables:
 
-Your patterns now connect with expert knowledge. Semantic search across both your conversations and 300+ Lenny's Podcast episodes (updated weekly from [ChatPRD's archive](https://github.com/ChatPRD/lennys-podcast-transcripts))—**Claire Vo** (ChatPRD), **Dylan Field** (Figma), **Elena Verna** (Lovable, Miro), and other product leaders, engineers, and founders. Discover how expert thinking relates to your own patterns, inspiring outward exploration. Click through to YouTube timestamps.
+- **`ANTHROPIC_API_KEY`** – Required: For Claude (generation, synthesis)
+- **`OPENAI_API_KEY`** – Optional: Enables expert perspectives (embeddings, semantic search)
+- **`SUPABASE_URL`** – Optional: For Vector DB (required for 500MB+ histories)
+- **`SUPABASE_ANON_KEY`** – Optional: Supabase anonymous key
 
-How it works:
-- **One-time auto-download:** ~250MB embeddings downloaded from GitHub Releases on first run
-- **Requires:** Anthropic API key (Theme Map) + OpenAI API key (expert perspectives unlock)
-- 269 episodes, 44,371 searchable segments, all rich metadata (titles, YouTube URLs, timestamps)
-- Works with Fast Start (Anthropic key)—add OpenAI key to unlock expert perspectives
-- Auto-syncs new episodes when you refresh Memory (pulls from [ChatPRD's archive](https://github.com/ChatPRD/lennys-podcast-transcripts))
-- No embedding cost—everything pre-computed and downloaded once
-
-Theme Explorer tabs:
-- **Patterns** — Themes in your Library connected to related expert discussions
-- **Unexplored** — Topics you discuss but haven't extracted (with expert examples to inspire)
-- **Counter-Intuitive** — Reflection prompts + expert contrarian perspectives
+**Notes:**
+- Cursor chat history auto-detected on macOS and Windows
+- Claude Code JSONL history supported on all platforms
+- Cloud deployment (Vercel): Read-only mode
 
 </details>
 
 <details>
-<summary><strong>⚙️ Requirements</strong></summary>
+<summary><strong>🚢 Deployment</strong></summary>
+
+**Recommended: Deploy to Vercel**
+
+1. Build locally and verify: `npm run build`
+2. Connect GitHub repo to Vercel
+3. Configure environment variables in Vercel dashboard
+4. Deploy
+
+**Note:** Cloud deployments run in read-only mode (cannot sync local Cursor DB). For full functionality, run locally.
+
+</details>
+
+<details>
+<summary><strong>⚙️ System Requirements</strong></summary>
 
 | Requirement | Version/Details |
 |-------------|-----------------|

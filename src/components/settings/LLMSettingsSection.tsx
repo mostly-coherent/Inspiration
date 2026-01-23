@@ -1,9 +1,9 @@
 "use client";
 
 interface LLMConfig {
-  provider: "anthropic" | "openai" | "openrouter";
+  provider: "anthropic" | "openai";
   model: string;
-  fallbackProvider: "anthropic" | "openai" | "openrouter" | null;
+  fallbackProvider: "anthropic" | "openai" | null;
   fallbackModel: string | null;
   promptCompression?: {
     enabled: boolean;
@@ -35,14 +35,13 @@ export function LLMSettingsSection({
           value={llm.provider}
           onChange={(e) =>
             onSave({
-              llm: { ...llm, provider: e.target.value as "anthropic" | "openai" | "openrouter" },
+              llm: { ...llm, provider: e.target.value as "anthropic" | "openai" },
             })
           }
           className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500/50"
         >
           <option value="anthropic">Anthropic (Claude)</option>
           <option value="openai">OpenAI (GPT)</option>
-          <option value="openrouter">OpenRouter (500+ Models)</option>
         </select>
       </div>
       <div>

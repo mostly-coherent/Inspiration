@@ -9,7 +9,6 @@ Estimates LLM API costs based on:
 Pricing Sources (as of 2026-01-13):
 - Anthropic: https://www.anthropic.com/pricing
 - OpenAI: https://openai.com/pricing
-- OpenRouter: https://openrouter.ai/docs#models (varies by model)
 
 Last Updated: 2026-01-13
 """
@@ -33,21 +32,12 @@ PRICING = {
         "gpt-4-turbo": {"input": 10.00, "output": 30.00},
         "gpt-3.5-turbo": {"input": 0.50, "output": 1.50},
     },
-    # OpenRouter - using Claude pricing as default
-    # https://openrouter.ai/docs#models
-    "openrouter": {
-        "anthropic/claude-sonnet-4": {"input": 3.00, "output": 15.00},
-        "anthropic/claude-3.5-sonnet": {"input": 3.00, "output": 15.00},
-        "anthropic/claude-3-opus": {"input": 15.00, "output": 75.00},
-        "openai/gpt-4o": {"input": 2.50, "output": 10.00},
-    },
 }
 
 # Default models per provider (same as llm.py)
 DEFAULT_MODELS = {
     "anthropic": "claude-sonnet-4-20250514",
     "openai": "gpt-4o",
-    "openrouter": "anthropic/claude-sonnet-4",
 }
 
 # Token estimation constants
@@ -114,7 +104,7 @@ def get_model_pricing(provider: str, model: str | None = None) -> dict | None:
     Get pricing for a provider/model combination.
     
     Args:
-        provider: LLM provider ("anthropic", "openai", "openrouter")
+        provider: LLM provider ("anthropic", "openai")
         model: Model identifier (uses default if None)
         
     Returns:
@@ -137,7 +127,7 @@ def get_model_pricing(provider: str, model: str | None = None) -> dict | None:
 
 def estimate_cost(
     conversation_count: int,
-    provider: Literal["anthropic", "openai", "openrouter"] = "anthropic",
+    provider: Literal["anthropic", "openai"] = "anthropic",
     model: str | None = None,
     output_tokens: int | None = None,
 ) -> CostEstimate:

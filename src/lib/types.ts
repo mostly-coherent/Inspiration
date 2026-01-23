@@ -1,7 +1,7 @@
 export type ToolType = "ideas" | "insights";
 
 // v3: LLM Provider Types
-export type LLMProviderType = "anthropic" | "openai" | "openrouter";
+export type LLMProviderType = "anthropic" | "openai";
 
 // v3: Advanced LLM Configuration
 export interface LLMTaskConfig {

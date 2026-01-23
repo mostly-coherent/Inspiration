@@ -192,8 +192,7 @@ export async function GET() {
     // Check for LLM keys in environment
     report.hasLlmKey = !!(
       process.env.ANTHROPIC_API_KEY ||
-      process.env.OPENAI_API_KEY ||
-      process.env.OPENROUTER_API_KEY
+      process.env.OPENAI_API_KEY
     );
     
     // Check Theme Map

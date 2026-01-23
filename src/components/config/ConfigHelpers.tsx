@@ -16,13 +16,6 @@ export const DEFAULT_MODELS: Record<LLMProviderType, string[]> = {
     "gpt-4-turbo",
     "gpt-3.5-turbo",
   ],
-  openrouter: [
-    "anthropic/claude-sonnet-4",
-    "anthropic/claude-3.5-sonnet",
-    "openai/gpt-4o",
-    "google/gemini-pro-1.5",
-    "meta-llama/llama-3.1-70b-instruct",
-  ],
 };
 
 // Embedding models (OpenAI only for now)
@@ -64,7 +57,6 @@ export function LLMTaskEditor({
         >
           <option value="anthropic">Anthropic</option>
           <option value="openai">OpenAI</option>
-          <option value="openrouter">OpenRouter</option>
         </select>
         <select
           value={config.model}

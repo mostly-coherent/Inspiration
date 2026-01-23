@@ -37,18 +37,6 @@ export function getFriendlyError(rawError: string): FriendlyError {
         severity: "error",
       };
     }
-    if (errorLower.includes("openrouter")) {
-      return {
-        title: "OpenRouter Credits Depleted",
-        message: "Your OpenRouter account needs more credits to continue.",
-        cta: {
-          label: "Add Credits →",
-          action: "external_link",
-          url: "https://openrouter.ai/credits",
-        },
-        severity: "error",
-      };
-    }
     return {
       title: "API Credits Depleted",
       message: "One of your AI providers needs more credits.",

@@ -156,7 +156,7 @@ function FastOnboardingContent() {
   const [selectedDays, setSelectedDays] = useState(14);
   
   // API key state
-  const [selectedProvider, setSelectedProvider] = useState<"anthropic" | "openai" | "openrouter">("anthropic");
+  const [selectedProvider, setSelectedProvider] = useState<"anthropic" | "openai">("anthropic");
   const [apiKey, setApiKey] = useState("");
   const [keyFromEnv, setKeyFromEnv] = useState(false);
   const [validatingKey, setValidatingKey] = useState(false);
@@ -411,9 +411,7 @@ function FastOnboardingContent() {
     try {
       const envVarName = selectedProvider === "anthropic" 
         ? "ANTHROPIC_API_KEY" 
-        : selectedProvider === "openai" 
-          ? "OPENAI_API_KEY" 
-          : "OPENROUTER_API_KEY";
+        : "OPENAI_API_KEY";
       
       const res = await fetch("/api/config/validate", {
         method: "POST",
@@ -435,7 +433,11 @@ function FastOnboardingContent() {
         return true;
       } else {
         setKeyValid(false);
-        setError(data.results?.[selectedProvider]?.error || "Invalid API key");
+        // Type-safe access to results based on selectedProvider
+        const errorMessage = selectedProvider === "anthropic" 
+          ? data.results?.anthropic?.error 
+          : data.results?.openai?.error;
+        setError(errorMessage || "Invalid API key");
         return false;
       }
     } catch (e) {
@@ -520,9 +522,7 @@ function FastOnboardingContent() {
       if (!keyFromEnv && apiKey) {
         const envVarName = selectedProvider === "anthropic" 
           ? "ANTHROPIC_API_KEY" 
-          : selectedProvider === "openai" 
-            ? "OPENAI_API_KEY" 
-            : "OPENROUTER_API_KEY";
+          : "OPENAI_API_KEY";
         keysToSave[envVarName] = apiKey;
       }
       

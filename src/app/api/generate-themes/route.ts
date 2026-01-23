@@ -15,7 +15,7 @@ export const maxDuration = 120; // 2 minutes max
 interface GenerateThemesRequest {
   days?: number;
   maxConversations?: number;
-  provider?: "anthropic" | "openai" | "openrouter";
+  provider?: "anthropic" | "openai";
   model?: string;
 }
 
@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
  * Query params:
  * - estimateCost=true: Include cost estimate
  * - days=N: Days to analyze (for cost estimate)
- * - provider=anthropic|openai|openrouter: LLM provider (for cost estimate)
+ * - provider=anthropic|openai: LLM provider (for cost estimate)
  * - model=string: Model override (for cost estimate)
  */
 export async function GET(request: NextRequest) {

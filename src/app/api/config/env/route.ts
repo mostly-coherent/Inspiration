@@ -79,7 +79,7 @@ export async function POST(request: Request) {
         envLines.push(`ANTHROPIC_API_KEY=${envVars.ANTHROPIC_API_KEY}`);
       }
       if (envVars.OPENAI_API_KEY) {
-        envLines.push(`OPENAI_API_KEY=${envVars.OPENAI_API_KEY}`);
+        envLines.push(`OPENAI_API_KEY=${envVars.OPENAI_API_KEY}  # Required for embeddings only`);
       }
       envLines.push("");
     }
@@ -137,7 +137,7 @@ export async function GET() {
   const configured = {
     anthropic: !!process.env.ANTHROPIC_API_KEY,
     supabase: !!process.env.SUPABASE_URL && !!process.env.SUPABASE_ANON_KEY,
-    openai: !!process.env.OPENAI_API_KEY,
+    openai: !!process.env.OPENAI_API_KEY,  // For embeddings only
   };
 
   // Only Anthropic is truly required. Supabase is optional for small histories.

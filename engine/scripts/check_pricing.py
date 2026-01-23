@@ -25,7 +25,6 @@ from common.cost_estimator import PRICING, get_all_supported_models
 PRICING_URLS = {
     "anthropic": "https://www.anthropic.com/pricing",
     "openai": "https://openai.com/pricing",
-    "openrouter": "https://openrouter.ai/docs#models",
 }
 
 
