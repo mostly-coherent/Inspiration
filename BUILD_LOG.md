@@ -6,6 +6,69 @@
 
 ---
 
+## Progress - 2026-01-27 (LLM Provider Unification — Remove OpenRouter from UI)
+
+<!-- Merged from UNIFY_TO_ANTHROPIC_PLAN.md on 2026-01-27 -->
+
+**Done:**
+- ✅ **Phase 1: Remove OpenRouter from UI (COMPLETE)**
+  - Removed "openrouter" from `LLMProviderType` union type
+  - Removed OpenRouter from provider dropdowns in onboarding, settings, and config
+  - Removed OpenRouter key handling from API routes
+  - Removed OpenRouter validation logic
+  - Updated type definitions to exclude OpenRouter
+
+- ✅ **Phase 5: UI Simplification (COMPLETE)**
+  - Removed OpenRouter from `DEFAULT_MODELS` in ConfigHelpers
+  - Removed OpenRouter dropdown option from all UI components
+  - Kept Anthropic/OpenAI provider selection and fallback UI as-is
+
+**Files Changed:**
+
+**Frontend (8 files):**
+1. `src/lib/types.ts` — Updated `LLMProviderType = "anthropic" | "openai"`
+2. `src/app/onboarding-fast/page.tsx` — Removed OpenRouter from provider selection
+3. `src/app/settings/page.tsx` — Removed `OPENROUTER_API_KEY` from display
+4. `src/components/settings/LLMSettingsSection.tsx` — Removed OpenRouter dropdown option
+5. `src/components/config/LLMConfigSection.tsx` — Removed OpenRouter dropdown option
+6. `src/components/config/ConfigHelpers.tsx` — Removed OpenRouter from `DEFAULT_MODELS` and dropdown
+7. `src/app/api/config/route.ts` — Removed "openrouter" from config types
+8. `src/app/api/config/env/route.ts` — Removed `OPENROUTER_API_KEY` handling
+
+**Backend (4 files):**
+9. `src/app/api/config/validate/route.ts` — Removed OpenRouter validation logic
+10. `src/app/api/debug-report/route.ts` — Removed `OPENROUTER_API_KEY` check
+11. `src/lib/errorMessages.ts` — Removed OpenRouter-specific error handling
+12. `engine/common/cost_estimator.py` — Removed OpenRouter pricing data
+13. `engine/scripts/check_pricing.py` — Removed OpenRouter from pricing URLs
+
+**Verification:**
+- [x] TypeScript compilation passes (`tsc --noEmit --skipLibCheck`)
+- [x] No OpenRouter references in UI components (grep verified)
+- [x] UI dropdowns show only Anthropic and OpenAI
+- [x] Config validation doesn't check OpenRouter
+- [x] API key management doesn't include OpenRouter
+- [x] Type safety maintained (no dynamic key access issues)
+
+**Phases Not Implemented (User Decision):**
+- ⏭️ **Phase 2:** OpenAI embeddings kept as-is (no changes needed)
+- ⏭️ **Phase 3:** Judge/Compression/Extractors kept with OpenAI (user preference)
+- ⏭️ **Phase 4:** Fallback logic kept as-is (Anthropic ↔ OpenAI dual LLM)
+
+**Final Configuration:**
+- Users need 2 API keys: Anthropic (LLM generation) + OpenAI (embeddings, judge, compression, extractors)
+- Fallback: Anthropic ↔ OpenAI (dual LLM setup)
+- OpenRouter: Removed from UI (backend still supports it but not exposed)
+
+**Status:** ✅ **Complete** — OpenRouter removed from UI, dual LLM setup (Anthropic + OpenAI) finalized
+
+**Evidence:**
+- Commit: `4f88343` (2026-01-27)
+- Files changed: 16 files (438 insertions, 179 deletions)
+- README.md updated with clarified cost structure
+
+---
+
 ## Progress - 2026-01-20 (P2-P4 Implementation — Schema Evolution, Relationship Grouping, Cross-KG Matching)
 
 **Done:**

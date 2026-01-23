@@ -1702,3 +1702,101 @@ String-based deduplication would find **zero merges** — effort with no value.
 **Status:** ✅ Phase 1 & 2 Complete | **DRI:** User + AI Agent
 
 ---
+
+## Decision: LLM Provider Unification — Anthropic + OpenAI Dual Setup - 2026-01-27
+
+<!-- Merged from UNIFY_TO_ANTHROPIC_PLAN.md on 2026-01-27 -->
+
+**Decision:** Simplified LLM provider setup to require only Anthropic + OpenAI API keys. Removed OpenRouter from UI (backend still supports it but not exposed to users).
+
+**Final Configuration:**
+- **LLM Generation:** Anthropic only (Claude models)
+- **Embeddings:** OpenAI only (text-embedding-3-small)
+- **Judge/Compression/Extractors:** OpenAI (user preference for separate LLM to judge Anthropic output)
+- **Fallback:** Kept (Anthropic ↔ OpenAI dual LLM setup)
+- **OpenRouter:** Removed from UI (not exposed to users)
+
+**Research Findings:**
+
+| Finding | Details |
+|---------|---------|
+| **Anthropic Embeddings** | ❌ Anthropic does NOT offer native embedding models |
+| **Voyage AI** | ✅ Anthropic's officially recommended embedding provider, but adds 3rd API key |
+| **OpenAI Embeddings** | ✅ Already using text-embedding-3-small (1536 dimensions), works well |
+
+**Rationale:**
+
+1. **Why Keep OpenAI for Embeddings:**
+   - Anthropic has no native embeddings
+   - Voyage AI would require 3rd API key (adds friction)
+   - OpenAI embeddings already work well, no migration needed
+   - Simplest approach: Keep what works
+
+2. **Why Keep OpenAI for Judge/Compression/Extractors:**
+   - User prefers separate LLM for judging Anthropic output (avoids self-judging)
+   - Already have OpenAI key for embeddings, no additional setup
+   - OpenAI GPT-4o/GPT-4o-mini work well for these tasks
+
+3. **Why Keep Fallback:**
+   - Dual LLM setup (Anthropic + OpenAI) makes fallback logical
+   - Increases reliability if one provider has issues
+   - Users explicitly requested to keep fallback
+
+4. **Why Remove OpenRouter:**
+   - Simplifies onboarding (2 API keys vs 3)
+   - OpenRouter was optional/rarely used
+   - Reduces cognitive load in UI
+
+**Alternatives Considered:**
+
+| Alternative | Decision | Reason |
+|------------|----------|--------|
+| Use Voyage AI for embeddings | ❌ Rejected | Adds 3rd API key, more complexity |
+| Use Anthropic for judge/compression | ❌ Rejected | User prefers separate LLM for judging |
+| Remove fallback logic | ❌ Rejected | User wants fallback with dual LLM setup |
+| Remove OpenRouter entirely (backend too) | ⏸️ Deferred | Kept backend support but removed from UI |
+
+**Environment Variables:**
+
+```bash
+# Before
+ANTHROPIC_API_KEY=sk-ant-...      # Required
+OPENAI_API_KEY=sk-...              # Optional
+OPENROUTER_API_KEY=sk-or-...       # Optional
+
+# After
+ANTHROPIC_API_KEY=sk-ant-...      # Required (LLM generation)
+OPENAI_API_KEY=sk-...              # Required (embeddings, judge, compression, extractors)
+```
+
+**Migration Considerations:**
+
+| Change | Impact |
+|--------|--------|
+| OpenRouter removed from UI | Non-breaking (still in backend, just not exposed) |
+| LLM task defaults unchanged | No behavior change (already using Anthropic/OpenAI) |
+| Fallback kept | No change |
+| Embeddings unchanged | No migration needed (still using OpenAI) |
+
+**Code Paths Affected:**
+
+**Frontend (UI Changes):**
+- `src/lib/types.ts` — Removed "openrouter" from `LLMProviderType`
+- `src/app/onboarding-fast/page.tsx` — Removed OpenRouter from provider selection
+- `src/app/settings/page.tsx` — Removed OpenRouter key display
+- `src/components/settings/LLMSettingsSection.tsx` — Removed OpenRouter dropdown option
+- `src/components/config/LLMConfigSection.tsx` — Removed OpenRouter dropdown option
+- `src/components/config/ConfigHelpers.tsx` — Removed OpenRouter from `DEFAULT_MODELS` and dropdown
+
+**Backend (Type Updates):**
+- `src/app/api/config/route.ts` — Removed "openrouter" from config types
+- `src/app/api/config/env/route.ts` — Removed `OPENROUTER_API_KEY` handling
+- `src/app/api/config/validate/route.ts` — Removed OpenRouter validation logic
+- `src/app/api/debug-report/route.ts` — Removed OpenRouter key check
+- `src/lib/errorMessages.ts` — Removed OpenRouter-specific error handling
+- `engine/common/cost_estimator.py` — Removed OpenRouter pricing data
+- `engine/scripts/check_pricing.py` — Removed OpenRouter from pricing URLs
+
+**Status:** ✅ Implemented (Phases 1 & 5) | **DRI:** User + AI Agent
+
+---
