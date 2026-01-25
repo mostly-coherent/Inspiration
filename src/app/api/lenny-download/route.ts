@@ -33,7 +33,10 @@ function isSupabaseConfigured(): boolean {
 }
 
 /**
- * Download from Supabase Storage (Primary - Recommended)
+ * Download from Supabase Storage (Optional Optimization)
+ * 
+ * Only used if Supabase is configured (not available during new user onboarding).
+ * Provides faster downloads (5-10s) for production deployments.
  */
 async function downloadFromSupabaseStorage(): Promise<{ success: boolean; message: string; error?: string }> {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -145,9 +148,15 @@ async function downloadFromGitHubReleases(): Promise<{ success: boolean; message
  * POST /api/lenny-download
  * 
  * Downloads Lenny embeddings with fallback strategy:
- * 1. Supabase Storage (Primary - Recommended for cloud deployments)
- * 2. GitHub Releases (Fallback - For users without Supabase)
- * 3. Local filesystem (Local development only)
+ * 
+ * **New Users (Onboarding):** Always downloads from GitHub Releases
+ * - Local dev: Uses bash script → GitHub Releases
+ * - Cloud (Vercel): Direct download → GitHub Releases
+ * 
+ * **Production (Optional Optimization):** Supabase Storage (if configured)
+ * - Only used if SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are set
+ * - Faster downloads (5-10s vs 30-60s) for production deployments
+ * - Falls back to GitHub Releases if Supabase fails or not configured
  * 
  * Idempotent: skips if files already exist.
  */
@@ -156,9 +165,11 @@ export async function POST(): Promise<NextResponse<DownloadResponse>> {
     const isCloud = isCloudEnvironment();
     const hasSupabase = isSupabaseConfigured();
 
-    // Cloud environment: Try Supabase first, then GitHub fallback
+    // Cloud environment: Try Supabase Storage (if configured), otherwise GitHub Releases
+    // Note: New users won't have Supabase configured, so GitHub Releases is always used during onboarding
     if (isCloud) {
-      // Primary: Try Supabase Storage
+      // Optional optimization: Try Supabase Storage (only if configured)
+      // This is for production deployments that have Supabase set up
       if (hasSupabase) {
         const result = await downloadFromSupabaseStorage();
         if (result.success) {
@@ -168,12 +179,13 @@ export async function POST(): Promise<NextResponse<DownloadResponse>> {
         console.warn("[Lenny Download] Supabase download failed, falling back to GitHub:", result.error);
       }
 
-      // Fallback: Download from GitHub Releases to /tmp
+      // Default: Download from GitHub Releases (used for all new users)
       const result = await downloadFromGitHubReleases();
       return NextResponse.json({ 
         ...result, 
         source: "github", 
         cloudMode: true,
+        // Only show optimization hint if Supabase was configured but failed
         ...(hasSupabase ? { error: "Supabase Storage not available, using GitHub fallback. Consider uploading to Supabase for faster downloads." } : {})
       });
     }

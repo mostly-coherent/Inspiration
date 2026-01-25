@@ -41,7 +41,9 @@ interface KGStats {
   totalEntities: number;
   byType: Record<string, number>;
   totalMentions: number;
+  totalRelations?: number; // Optional for backward compatibility
   indexed: boolean;
+  sourceType?: string; // "user", "expert", "both", "all"
 }
 
 interface IndexingProgress {
@@ -110,6 +112,13 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     totalMentions: 0,
     indexed: false,
   });
+  const [lennyKgStats, setLennyKgStats] = useState<KGStats>({
+    totalEntities: 0,
+    byType: {},
+    totalMentions: 0,
+    indexed: false,
+  });
+  const [isLoadingLennyKgStats, setIsLoadingLennyKgStats] = useState(true);
   const [indexingStatus, setIndexingStatus] = useState<IndexingStatus>("idle");
   const [indexingProgress, setIndexingProgress] = useState<IndexingProgress | null>(null);
   const [indexingJobId, setIndexingJobId] = useState<string | null>(null);
@@ -213,10 +222,10 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     }
   }, []);
 
-  // Fetch Knowledge Graph stats
+  // Fetch Knowledge Graph stats (user's KG)
   const fetchKGStats = useCallback(async () => {
     try {
-      const res = await fetch("/api/kg/stats");
+      const res = await fetch("/api/kg/stats?sourceType=user");
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -226,11 +235,45 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
           totalEntities: data.totalEntities || 0,
           byType: data.byType || {},
           totalMentions: data.totalMentions || 0,
+          totalRelations: data.totalRelations || 0,
           indexed: data.indexed || false,
+          sourceType: "user",
         });
       }
     } catch (e) {
       console.error("Failed to fetch KG stats:", e);
+    }
+  }, []);
+
+  // Fetch Lenny's Knowledge Graph stats
+  const fetchLennyKGStats = useCallback(async () => {
+    if (isMountedRef.current) {
+      setIsLoadingLennyKgStats(true);
+    }
+    try {
+      const res = await fetch("/api/kg/stats?sourceType=expert");
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (isMountedRef.current) {
+        // Debug log to verify API response
+        console.log("Lenny KG Stats API Response:", data);
+        setLennyKgStats({
+          totalEntities: data.totalEntities || 0,
+          byType: data.byType || {},
+          totalMentions: data.totalMentions ?? 0, // Use ?? to distinguish 0 from undefined
+          totalRelations: data.totalRelations ?? 0, // Use ?? to distinguish 0 from undefined
+          indexed: data.indexed || false,
+          sourceType: "expert",
+        });
+        setIsLoadingLennyKgStats(false);
+      }
+    } catch (e) {
+      console.error("Failed to fetch Lenny KG stats:", e);
+      if (isMountedRef.current) {
+        setIsLoadingLennyKgStats(false);
+      }
     }
   }, []);
 
@@ -288,6 +331,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
           }
           // Refresh KG stats after completion
           fetchKGStats();
+          fetchLennyKGStats();
           // Clear progress after 5 seconds
           if (indexingProgressTimeoutRef.current) {
             clearTimeout(indexingProgressTimeoutRef.current);
@@ -519,16 +563,16 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     }, 5000);
   }, [lennyDownloadStatus, fetchLennyStats]);
 
-  // Update Lenny embeddings from GitHub Release (delete + re-download)
+  // Update Lenny embeddings and Knowledge Graph from GitHub Releases
   const updateLennyEmbeddings = useCallback(async () => {
     // Prevent concurrent updates
     if (lennyUpdateStatus === "updating" || !isMountedRef.current) return;
     
     setLennyUpdateStatus("updating");
-    setLennyUpdateMessage("Downloading from GitHub...");
+    setLennyUpdateMessage("Downloading embeddings & KG from GitHub...");
     
     try {
-      const res = await fetch("/api/lenny-update", { method: "POST" });
+      const res = await fetch("/api/lenny-update-all", { method: "POST" });
       
       if (!isMountedRef.current) return;
       
@@ -546,22 +590,26 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
       if (!isMountedRef.current) return;
       
       if (data.success) {
-        if (data.action === "updated") {
-          const message = data.oldEpisodes && data.newEpisodes 
-            ? `✓ Updated: ${data.oldEpisodes}→${data.newEpisodes} episodes`
-            : `✓ ${data.message}`;
-          setLennyUpdateMessage(message);
+        if (data.action === "updated" || data.action === "partial") {
+          setLennyUpdateMessage(`✓ ${data.message}`);
+        } else {
+          setLennyUpdateMessage(`⚠️ ${data.message}`);
         }
         setLennyUpdateStatus("success");
         // Refresh stats after update
-        fetchLennyStats().catch((e) => {
-          console.error("Failed to refresh Lenny stats:", e);
-        });
+        await Promise.all([
+          fetchLennyStats().catch((e) => {
+            console.error("Failed to refresh Lenny stats:", e);
+          }),
+          fetchLennyKGStats().catch((e) => {
+            console.error("Failed to refresh Lenny KG stats:", e);
+          }),
+        ]);
       } else {
         if (data.action === "cloud_mode") {
           setLennyUpdateMessage("☁️ Cloud mode");
         } else {
-          setLennyUpdateMessage("⚠️ Update failed");
+          setLennyUpdateMessage(`⚠️ ${data.message || "Update failed"}`);
         }
         setLennyUpdateStatus("error");
       }
@@ -584,7 +632,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
       }
       lennyUpdateTimeoutRef.current = null;
     }, 5000);
-  }, [lennyUpdateStatus, fetchLennyStats]);
+  }, [lennyUpdateStatus, fetchLennyStats, fetchLennyKGStats]);
 
   // Fetch all stats on mount
   useEffect(() => {
@@ -597,6 +645,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
         fetchSourceBreakdown(),
         fetchLennyStats(),
         fetchKGStats(),
+        fetchLennyKGStats(),
         fetchIndexingProgress(), // Check for existing indexing jobs
       ]);
       if (isMountedRef.current) {
@@ -608,7 +657,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
     return () => {
       isMountedRef.current = false;
     };
-  }, [fetchMemoryStats, fetchLibraryStats, fetchSourceBreakdown, fetchLennyStats, fetchKGStats, fetchIndexingProgress]);
+  }, [fetchMemoryStats, fetchLibraryStats, fetchSourceBreakdown, fetchLennyStats, fetchKGStats, fetchLennyKGStats, fetchIndexingProgress]);
 
   // Refresh library stats after sync completes
   useEffect(() => {
@@ -808,8 +857,8 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 <h2 className="text-sm font-semibold text-slate-100 uppercase tracking-wide">
                   Your Knowledge Graph
                 </h2>
-                <span className="px-1.5 py-0.5 text-[9px] font-medium rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wide" title="Experimental feature - work in progress">
-                  Experimental
+                <span className="px-1.5 py-0.5 text-[9px] font-medium rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wide" title="Under construction - work in progress">
+                  UNDER CONSTRUCTION
                 </span>
               </div>
               <p className="text-xs text-slate-300 ml-8">
@@ -828,32 +877,46 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                   </div>
                   <div className="text-[10px] text-slate-300">entities</div>
                 </div>
-                {kgStats.totalMentions > 0 && (
+                {/* Always show mentions if KG is indexed (even if 0) */}
+                <span className="text-slate-400">→</span>
+                <div className="text-center">
+                  <div className="text-lg font-bold text-indigo-300">
+                    {(kgStats.totalMentions || 0).toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-slate-300">mentions</div>
+                </div>
+                {/* Show relations if available */}
+                {kgStats.totalRelations !== undefined && (
                   <>
                     <span className="text-slate-400">→</span>
                     <div className="text-center">
-                      <div className="text-lg font-bold text-indigo-300">
-                        {kgStats.totalMentions.toLocaleString()}
+                      <div className="text-lg font-bold text-emerald-300">
+                        {kgStats.totalRelations.toLocaleString()}
                       </div>
-                      <div className="text-[10px] text-slate-300">mentions</div>
+                      <div className="text-[10px] text-slate-300">relations</div>
+                      {kgStats.totalRelations === 0 && (
+                        <div className="text-[8px] text-slate-500 mt-0.5" title="Relations extraction requires --with-relations flag during indexing">
+                          (not extracted)
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
                 {/* Quick Links */}
                 <div className="flex items-center gap-3 ml-auto">
-              <a
-                href="/entities"
-                className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
-              >
-                📋 Entities
-              </a>
-              <a
-                href="/graph"
-                className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-              >
-                🔮 Graph
-              </a>
-            </div>
+                  <a
+                    href="/entities"
+                    className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                  >
+                    📋 Entities
+                  </a>
+                  <a
+                    href="/graph"
+                    className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                  >
+                    🔮 Graph
+                  </a>
+                </div>
               </>
             ) : (
               <div className="text-slate-500 text-sm">Not indexed yet</div>
@@ -1128,33 +1191,149 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
             </div>
               </div>
               
-          {/* Stats and Actions Row */}
-          <div className="flex items-center justify-between">
-              {/* Stats */}
-              <div className="flex items-center gap-3">
-                {lennyStats.indexed && lennyStats.episodeCount > 0 ? (
-                  <>
-                    <div 
-                      className="flex items-center gap-1.5 text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full"
-                      title={`${lennyStats.chunkCount.toLocaleString()} searchable segments`}
-                    >
-                      <span className="font-semibold">{lennyStats.episodeCount}</span>
-                      <span className="text-amber-300/70 text-xs">episodes</span>
-                    </div>
-                    {lennyStats.embeddingsSizeMB && (
-                      <div className="flex items-center gap-1.5 text-slate-200 bg-slate-800/70 px-2.5 py-1 rounded-full">
-                        <span className="font-medium text-slate-100">{lennyStats.embeddingsSizeMB} MB</span>
-                        <span className="text-slate-300 text-xs">indexed</span>
+          {/* Episodes (left, centered) → Two branches (right) */}
+          {lennyStats.indexed && lennyStats.episodeCount > 0 ? (
+            <div className="flex flex-wrap items-center gap-4">
+              {/* Episodes (leftmost, vertically centered between branches) */}
+              <div className="text-center self-center">
+                <div className="text-lg font-bold text-amber-300">
+                  {lennyStats.episodeCount.toLocaleString()}
+                </div>
+                <div className="text-[10px] text-slate-300">episodes</div>
+                <div className="text-[9px] text-slate-400 mt-0.5">raw transcript</div>
+              </div>
+
+              {/* Two branches side by side */}
+              <div className="flex-1 flex flex-col gap-3">
+                {/* Branch 1: Semantic Search */}
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="text-[10px] text-slate-400 font-medium w-[120px]">Semantic Search:</div>
+                  {lennyStats.embeddingsSizeMB && (
+                    <>
+                      <div className="text-center min-w-[80px]">
+                        <div className="text-lg font-bold text-emerald-300">
+                          {lennyStats.embeddingsSizeMB} MB
+                        </div>
+                        <div className="text-[10px] text-slate-300">indexed</div>
+                        <div className="text-[9px] text-slate-400 mt-0.5">embeddings</div>
                       </div>
-                    )}
-                  </>
-              ) : (
-                <div className="text-slate-500 text-sm">Not indexed yet</div>
-              )}
+                      {lennyStats.chunkCount > 0 && (
+                        <>
+                          <span className="text-slate-400">→</span>
+                          <div className="text-center min-w-[70px]">
+                            <div className="text-lg font-bold text-indigo-300">
+                              {lennyStats.chunkCount.toLocaleString()}
+                            </div>
+                            <div className="text-[10px] text-slate-300">segments</div>
+                            <div className="text-[9px] text-slate-400 mt-0.5">searchable</div>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Branch 2: Knowledge Graph */}
+                <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-slate-700/30">
+                  <div className="text-[10px] text-slate-400 font-medium w-[120px]">Knowledge Graph:</div>
+              {isLoadingLennyKgStats ? (
+                // Loading skeleton - matches structure of actual data
+                <>
+                  <div className="text-center min-w-[80px]">
+                    <div className="text-lg font-bold text-purple-300 animate-pulse">
+                      <span className="inline-block w-16 h-5 bg-slate-700 rounded"></span>
+                    </div>
+                    <div className="text-[10px] text-slate-300">entities</div>
+                  </div>
+                  <span className="text-slate-400">→</span>
+                  <div className="text-center min-w-[70px]">
+                    <div className="text-lg font-bold text-indigo-300 animate-pulse">
+                      <span className="inline-block w-16 h-5 bg-slate-700 rounded"></span>
+                    </div>
+                    <div className="text-[10px] text-slate-300">mentions</div>
+                  </div>
+                  {lennyKgStats.totalRelations !== undefined && lennyKgStats.totalRelations > 0 && (
+                    <>
+                      <span className="text-slate-400">→</span>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-emerald-300 animate-pulse">
+                          <span className="inline-block w-16 h-5 bg-slate-700 rounded"></span>
+                        </div>
+                        <div className="text-[10px] text-slate-300">relations</div>
+                      </div>
+                    </>
+                  )}
+                  {/* Quick Links - show even during loading */}
+                  <div className="flex items-center gap-2 ml-auto">
+                    <a
+                      href="/entities?sourceType=expert"
+                      className="px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/30 text-sm font-medium text-purple-300 hover:bg-purple-500/20 hover:border-purple-500/50 hover:text-purple-200 transition-all"
+                    >
+                      📋 Entities
+                    </a>
+                    <a
+                      href="/graph?sourceType=expert"
+                      className="px-3 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-sm font-medium text-indigo-300 hover:bg-indigo-500/20 hover:border-indigo-500/50 hover:text-indigo-200 transition-all"
+                    >
+                      🔮 Graph
+                    </a>
+                  </div>
+                </>
+              ) : lennyKgStats.indexed && lennyKgStats.totalEntities > 0 ? (
+                // Actual data when loaded
+                <>
+                  <div className="text-center min-w-[80px]">
+                    <div className="text-lg font-bold text-purple-300">
+                      {lennyKgStats.totalEntities.toLocaleString()}
+                    </div>
+                    <div className="text-[10px] text-slate-300">entities</div>
+                  </div>
+                  {/* Always show mentions if KG is indexed (even if 0) */}
+                  <span className="text-slate-400">→</span>
+                  <div className="text-center min-w-[70px]">
+                    <div className="text-lg font-bold text-indigo-300">
+                      {(lennyKgStats.totalMentions || 0).toLocaleString()}
+                    </div>
+                    <div className="text-[10px] text-slate-300">mentions</div>
+                  </div>
+                  {/* Show relations only if > 0 */}
+                  {lennyKgStats.totalRelations !== undefined && lennyKgStats.totalRelations > 0 && (
+                    <>
+                      <span className="text-slate-400">→</span>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-emerald-300">
+                          {lennyKgStats.totalRelations.toLocaleString()}
+                        </div>
+                        <div className="text-[10px] text-slate-300">relations</div>
+                      </div>
+                    </>
+                  )}
+                  {/* Quick Links */}
+                  <div className="flex items-center gap-2 ml-auto">
+                    <a
+                      href="/entities?sourceType=expert"
+                      className="px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/30 text-sm font-medium text-purple-300 hover:bg-purple-500/20 hover:border-purple-500/50 hover:text-purple-200 transition-all"
+                    >
+                      📋 Entities
+                    </a>
+                    <a
+                      href="/graph?sourceType=expert"
+                      className="px-3 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-sm font-medium text-indigo-300 hover:bg-indigo-500/20 hover:border-indigo-500/50 hover:text-indigo-200 transition-all"
+                    >
+                      🔮 Graph
+                    </a>
+                  </div>
+                </>
+              ) : null}
+                </div>
+              </div>
             </div>
-            
-            {/* Actions */}
-            <div className="flex items-center gap-2">
+          ) : (
+            <div className="text-slate-500 text-sm">Not indexed yet</div>
+          )}
+
+          {/* Actions Row */}
+          <div className="flex items-center gap-2 pt-2 border-t border-slate-700/30">
               {/* Lenny Status Messages */}
               {(lennyDownloadMessage || lennyUpdateMessage) && (
                 <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -1208,7 +1387,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                       ? "bg-amber-500/20 text-amber-300 animate-pulse cursor-wait"
                       : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30"
                   }`}
-                  title="Update from GitHub Release (free, fast ~2 min)"
+                  title="Update embeddings & Knowledge Graph from GitHub Releases (v1.0.0-lenny & v1.0.0-lenny-kg). Updates both semantic search and KG. ~5-10 min."
                 >
                   <span className={lennyUpdateStatus === "updating" ? "animate-spin" : ""}>
                     {lennyUpdateStatus === "updating" ? "⏳" : "⬇️"}
@@ -1216,7 +1395,6 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                   <span>{lennyUpdateStatus === "updating" ? "Updating..." : "Update"}</span>
                 </button>
               )}
-            </div>
           </div>
         </div>
       </div>

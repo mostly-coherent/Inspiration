@@ -14,7 +14,7 @@ import path from "path";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { ANTHROPIC_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, OPENAI_API_KEY } = body;
+    const { ANTHROPIC_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY } = body;
 
     // Read existing .env.local if it exists to preserve existing keys
     const envPath = path.join(process.cwd(), ".env.local");
@@ -52,10 +52,13 @@ export async function POST(request: Request) {
     if (SUPABASE_ANON_KEY) {
       envVars.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
     }
+    if (SUPABASE_SERVICE_ROLE_KEY) {
+      envVars.SUPABASE_SERVICE_ROLE_KEY = SUPABASE_SERVICE_ROLE_KEY;
+    }
 
     // Validate that at least one key is being saved
     const keysToSave = Object.keys(body).filter(key => 
-      ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY"].includes(key) && body[key]
+      ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"].includes(key) && body[key]
     );
     
     if (keysToSave.length === 0) {
@@ -89,6 +92,9 @@ export async function POST(request: Request) {
       envLines.push("# Vector Database (Supabase)");
       envLines.push(`SUPABASE_URL=${envVars.SUPABASE_URL}`);
       envLines.push(`SUPABASE_ANON_KEY=${envVars.SUPABASE_ANON_KEY}`);
+      if (envVars.SUPABASE_SERVICE_ROLE_KEY) {
+        envLines.push(`SUPABASE_SERVICE_ROLE_KEY=${envVars.SUPABASE_SERVICE_ROLE_KEY}`);
+      }
       envLines.push("");
     }
 

@@ -32,6 +32,8 @@ interface ThemePreviewData {
     avgItemsPerTheme: number;
     singleItemThemes: number;
   };
+  sourceType?: "library" | "vectordb" | "combined" | "none"; // NEW: Indicates data source
+  message?: string; // Optional message from API
 }
 
 interface SynthesisData {
@@ -89,6 +91,10 @@ function getZoomLabel(threshold: number): { label: string; description: string }
 }
 
 function ThemesPage() {
+  // NEW: Theme Map regeneration state
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [themeMapFromFastStart, setThemeMapFromFastStart] = useState<any>(null); // Loaded from cache
+  
   // Item type filter
   const [itemTypeFilter, setItemTypeFilter] = useState<ItemTypeFilter>("all");
   
@@ -142,6 +148,100 @@ function ThemesPage() {
     minClusterSize: 5,
     maxSuggestions: 3,
   });
+  
+  // NEW: Load cached theme map from Fast Start on mount
+  useEffect(() => {
+    let cancelled = false;
+    
+    const loadCachedThemeMap = async () => {
+      try {
+        // Load most recent theme map (no time limit - patterns over all time)
+        const res = await fetch(`/api/theme-map`);
+        if (cancelled) return;
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.exists && data.data) {
+            setThemeMapFromFastStart(data.data);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load cached theme map:", err);
+      }
+    };
+    
+    loadCachedThemeMap();
+    
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  
+  // NEW: Regenerate theme map function (no time limit - patterns over all time)
+  const regenerateThemeMap = useCallback(async () => {
+    setIsRegenerating(true);
+    setError(null);
+    
+    try {
+      const res = await fetch("/api/generate-themes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          days: 3650, // ~10 years - effectively all available data
+          maxConversations: 80,
+          source: null, // Auto-detect (Vector DB or SQLite)
+        }),
+      });
+      
+      if (!res.ok) {
+        throw new Error(`Generation failed: ${res.status}`);
+      }
+      
+      const result = await res.json();
+      
+      if (result.success && result.result) {
+        setThemeMapFromFastStart(result.result);
+        
+        // Save to cache
+        try {
+          const saveRes = await fetch("/api/theme-map", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              days: 3650, // ~10 years - effectively all available data
+              themes: result.result.themes.map((t: any) => ({
+                name: t.title,
+                description: t.summary,
+                evidence: t.evidence.map((e: any) => ({
+                  conversation_id: e.chatId,
+                  snippet: e.snippet,
+                })),
+              })),
+              counter_intuitive: result.result.counterIntuitive || [],
+              unexplored_territory: result.result.unexploredTerritory || [],
+              generated_at: result.result.generatedAt,
+              conversations_analyzed: result.result.analyzed?.conversationsUsed || 0,
+              time_window_days: 3650, // ~10 years - effectively all available data
+            }),
+          });
+          
+          if (!saveRes.ok) {
+            console.warn("Failed to save theme map to cache:", await saveRes.text());
+          }
+        } catch (saveError) {
+          console.error("Failed to save theme map to cache:", saveError);
+          // Don't throw - caching failure shouldn't break regeneration
+        }
+      } else {
+        throw new Error(result.error || "Generation failed");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to regenerate");
+      console.error("Theme map regeneration failed:", err);
+    } finally {
+      setIsRegenerating(false);
+    }
+  }, []); // setState functions are stable, don't need dependencies
   
   // Load config values on mount
   useEffect(() => {
@@ -254,9 +354,11 @@ function ThemesPage() {
     setError(null);
     try {
       const itemTypeParam = itemTypeFilter !== "all" ? `&itemType=${itemTypeFilter}` : "";
+      // API endpoint automatically falls back to Vector DB if no library items found
       const response = await fetch(
         `/api/items/themes/preview?threshold=${debouncedThreshold}${itemTypeParam}`
       );
+      
       if (!response.ok) {
         const errorText = await response.text().catch(() => `HTTP ${response.status}`);
         throw new Error(`Failed to fetch themes: ${errorText}`);

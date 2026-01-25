@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
         send({ type: "complete" });
         controller.close();
       } catch (error) {
-        logger.error("[Seek-Stream] Error:", error);
+        logger.error("[Seek-Stream] Error:", error instanceof Error ? error : String(error));
         send({ type: "error", error: error instanceof Error ? error.message : "Unknown error" });
         controller.close();
       }
@@ -114,7 +114,7 @@ async function runPythonScriptStream(
             killTimeout = null;
           }, 2000);
         } catch (err) {
-          logger.error("[Seek-Stream] Error killing process:", err);
+          logger.error("[Seek-Stream] Error killing process:", err instanceof Error ? err : String(err));
         }
         
         // S7 Fix: Clean up temporary output files on abort
@@ -130,14 +130,14 @@ async function runPythonScriptStream(
                   fs.unlinkSync(filePath);
                   logger.log(`[Seek-Stream] Cleaned up temp file: ${file}`);
                 } catch (e) {
-                  logger.error(`[Seek-Stream] Failed to clean up ${file}:`, e);
+                  logger.error(`[Seek-Stream] Failed to clean up ${file}:`, e instanceof Error ? e : String(e));
                 }
               }
             }
           }
           send({ type: "info", message: "Cleaned up temporary files" });
         } catch (cleanupErr) {
-          logger.error("[Seek-Stream] Cleanup error:", cleanupErr);
+          logger.error("[Seek-Stream] Cleanup error:", cleanupErr instanceof Error ? cleanupErr : String(cleanupErr));
         }
         
         resolve();

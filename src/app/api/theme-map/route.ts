@@ -13,7 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 import { isCloudEnvironment } from "@/lib/vercel";
 
 const DATA_DIR = path.join(process.cwd(), "data");
-const THEME_MAP_FILE = path.join(DATA_DIR, "theme_map.json");
+const THEME_MAPS_DIR = path.join(DATA_DIR, "theme_maps"); // Size-based Theme Maps (~500MB)
 
 // Initialize Supabase client (if available)
 function getSupabaseClient() {
@@ -26,10 +26,15 @@ function getSupabaseClient() {
   return null;
 }
 
-// Ensure data directory exists (local only)
+// Ensure data directories exist (local only)
 function ensureDataDir() {
-  if (!isCloudEnvironment() && !fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!isCloudEnvironment()) {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(THEME_MAPS_DIR)) {
+      fs.mkdirSync(THEME_MAPS_DIR, { recursive: true });
+    }
   }
 }
 
@@ -61,7 +66,8 @@ interface ThemeMapData {
   generated_at: string;
   conversations_analyzed: number;
   conversations_considered?: number;  // Total found before capping at 60
-  time_window_days: number;
+  time_window_days: number | null; // null = size-based Theme Map
+  max_size_mb?: number; // Size-based Theme Map context (~500MB)
   tech_stack_detected?: string[];
   meta?: {
     llm_provider?: string;
@@ -77,11 +83,12 @@ interface SavedThemeMap {
 
 /**
  * GET /api/theme-map
- * Load saved Theme Map
+ * Load saved Theme Map (size-based, most recent ~500MB)
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = getSupabaseClient();
+    const cacheKey = "theme_map_latest"; // Always use "latest" for size-based Theme Maps
     
     // Try Supabase first (works on Vercel)
     if (supabase) {
@@ -89,12 +96,11 @@ export async function GET() {
         const { data, error } = await supabase
           .from('app_config')
           .select('value')
-          .eq('key', 'theme_map')
+          .eq('key', cacheKey)
           .single();
         
         if (!error && data?.value) {
           const saved = data.value as SavedThemeMap;
-          // Validate structure
           if (saved && typeof saved === 'object' && saved.data && typeof saved.savedAt === 'string') {
             return NextResponse.json({
               success: true,
@@ -115,49 +121,25 @@ export async function GET() {
     if (!isCloudEnvironment()) {
       ensureDataDir();
       
-      if (!fs.existsSync(THEME_MAP_FILE)) {
-        return NextResponse.json({
-          success: true,
-          exists: false,
-          data: null,
-        });
-      }
-      
-      let content: string;
-      try {
-        content = fs.readFileSync(THEME_MAP_FILE, "utf-8");
-      } catch (readError) {
-        console.error("[theme-map] Failed to read Theme Map file:", readError);
-        return NextResponse.json(
-          { success: false, error: "Failed to read Theme Map file" },
-          { status: 500 }
-        );
-      }
-      
-      let saved: SavedThemeMap;
-      try {
-        const parsed = JSON.parse(content);
-        // Validate structure
-        if (parsed && typeof parsed === 'object' && parsed.data && typeof parsed.savedAt === 'string') {
-          saved = parsed as SavedThemeMap;
-        } else {
-          throw new Error("Invalid Theme Map structure");
+      const cacheFile = path.join(THEME_MAPS_DIR, `${cacheKey}.json`);
+      if (fs.existsSync(cacheFile)) {
+        try {
+          const content = fs.readFileSync(cacheFile, "utf-8");
+          const parsed = JSON.parse(content);
+          if (parsed && typeof parsed === 'object' && parsed.data && typeof parsed.savedAt === 'string') {
+            const saved = parsed as SavedThemeMap;
+            return NextResponse.json({
+              success: true,
+              exists: true,
+              data: saved.data,
+              savedAt: saved.savedAt,
+              version: saved.version,
+            });
+          }
+        } catch (err) {
+          console.error("[theme-map] Failed to parse Theme Map file:", err);
         }
-      } catch (parseError) {
-        console.error("[theme-map] Failed to parse Theme Map file:", parseError);
-        return NextResponse.json(
-          { success: false, error: "Theme Map file is corrupted" },
-          { status: 500 }
-        );
       }
-      
-      return NextResponse.json({
-        success: true,
-        exists: true,
-        data: saved.data,
-        savedAt: saved.savedAt,
-        version: saved.version,
-      });
     }
     
     // Cloud environment but no Supabase config
@@ -177,7 +159,7 @@ export async function GET() {
 
 /**
  * POST /api/theme-map
- * Save Theme Map
+ * Save Theme Map (size-based, most recent ~500MB)
  */
 export async function POST(request: Request) {
   try {
@@ -191,6 +173,10 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    
+    // Always use "latest" cache key for size-based Theme Maps (~500MB)
+    const cacheKey = "theme_map_latest";
+    const maxSizeMb = body.maxSizeMb as number | undefined;
     
     // Validate required fields
     if (!body.themes || !Array.isArray(body.themes)) {
@@ -207,7 +193,8 @@ export async function POST(request: Request) {
       generated_at: (body.generated_at as string) || new Date().toISOString(),
       conversations_analyzed: (body.conversations_analyzed as number) || 0,
       conversations_considered: body.conversations_considered as number | undefined,
-      time_window_days: (body.time_window_days as number) || 0,
+      time_window_days: null, // Always null - Theme Maps are size-based, not time-based
+      max_size_mb: maxSizeMb || 500, // Store size context (defaults to 500MB)
       tech_stack_detected: body.tech_stack_detected as string[] | undefined,
       meta: body.meta as ThemeMapData["meta"],
     };
@@ -224,10 +211,11 @@ export async function POST(request: Request) {
     // Try Supabase first (works on Vercel)
     if (supabase) {
       try {
+        const configKey = cacheKey; // Always "theme_map_latest" for size-based Theme Maps
         const { error } = await supabase
           .from('app_config')
           .upsert({ 
-            key: 'theme_map', 
+            key: configKey, 
             value: saved,
             updated_at: new Date().toISOString()
           });
@@ -246,8 +234,9 @@ export async function POST(request: Request) {
     // Fallback to file system (local development only)
     if (!isCloudEnvironment()) {
       ensureDataDir();
+      const cacheFile = path.join(THEME_MAPS_DIR, `${cacheKey}.json`);
       try {
-        fs.writeFileSync(THEME_MAP_FILE, JSON.stringify(saved, null, 2), "utf-8");
+        fs.writeFileSync(cacheFile, JSON.stringify(saved, null, 2), "utf-8");
         success = true;
       } catch (writeError) {
         console.error("[theme-map] Failed to write Theme Map file:", writeError);
@@ -270,6 +259,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       savedAt: saved.savedAt,
+      path: !isCloudEnvironment() ? path.join(THEME_MAPS_DIR, `${cacheKey}.json`) : undefined,
     });
   } catch (error) {
     console.error("[theme-map] Error saving:", error);
@@ -282,20 +272,21 @@ export async function POST(request: Request) {
 
 /**
  * DELETE /api/theme-map
- * Clear saved Theme Map
+ * Clear saved Theme Map (size-based, most recent ~500MB)
  */
-export async function DELETE() {
+export async function DELETE(request: Request) {
   try {
     const supabase = getSupabaseClient();
+    const cacheKey = "theme_map_latest";
     let success = false;
     
-    // Try Supabase first (works on Vercel)
+    // Try Supabase first
     if (supabase) {
       try {
         const { error } = await supabase
           .from('app_config')
           .delete()
-          .eq('key', 'theme_map');
+          .eq('key', cacheKey);
         
         if (error) {
           console.error("[theme-map] Failed to delete from Supabase:", error);
@@ -304,22 +295,24 @@ export async function DELETE() {
         }
       } catch (supabaseError) {
         console.error("[theme-map] Supabase delete error:", supabaseError);
-        // Fall through to file system fallback
       }
     }
     
     // Fallback to file system (local development only)
-    if (!isCloudEnvironment() && fs.existsSync(THEME_MAP_FILE)) {
-      try {
-        fs.unlinkSync(THEME_MAP_FILE);
-        success = true;
-      } catch (unlinkError) {
-        console.error("[theme-map] Failed to delete Theme Map file:", unlinkError);
-        if (!success) {
-          return NextResponse.json(
-            { success: false, error: "Failed to delete Theme Map file" },
-            { status: 500 }
-          );
+    if (!isCloudEnvironment()) {
+      const cacheFile = path.join(THEME_MAPS_DIR, `${cacheKey}.json`);
+      if (fs.existsSync(cacheFile)) {
+        try {
+          fs.unlinkSync(cacheFile);
+          success = true;
+        } catch (unlinkError) {
+          console.error("[theme-map] Failed to delete Theme Map file:", unlinkError);
+          if (!success) {
+            return NextResponse.json(
+              { success: false, error: "Failed to delete Theme Map file" },
+              { status: 500 }
+            );
+          }
         }
       }
     }

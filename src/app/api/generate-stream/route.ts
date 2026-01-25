@@ -29,7 +29,7 @@ async function loadGenerationDefaults(): Promise<GenerationDefaults> {
       }
     }
   } catch (error) {
-    logger.error("[Generate-Stream] Failed to load generation defaults:", error);
+    logger.error("[Generate-Stream] Failed to load generation defaults:", error instanceof Error ? error : String(error));
   }
   return DEFAULT_GENERATION;
 }
@@ -301,7 +301,7 @@ async function runPythonScriptStream(
             }
           }
         } catch (err) {
-          logger.error("[Inspiration] Error during abort cleanup:", err);
+          logger.error("[Inspiration] Error during abort cleanup:", err instanceof Error ? err : String(err));
         }
         resolve();
       });

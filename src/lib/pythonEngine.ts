@@ -112,7 +112,7 @@ async function callPythonEngineHTTP(
       };
     }
     
-    logger.error(`[Inspiration] HTTP error calling Python engine:`, error);
+    logger.error(`[Inspiration] HTTP error calling Python engine:`, error instanceof Error ? error : String(error));
     return {
       stdout: "",
       stderr: error instanceof Error ? error.message : "Unknown error",
@@ -222,7 +222,7 @@ async function callPythonEngineLocal(
             }
           }, 2000);
         } catch (err) {
-          logger.error("[Inspiration] Error killing process:", err);
+          logger.error("[Inspiration] Error killing process:", err instanceof Error ? err : String(err));
         }
         resolve({
           stdout,

@@ -30,7 +30,7 @@ async function loadGenerationDefaults(): Promise<GenerationDefaults> {
       }
     }
   } catch (error) {
-    logger.error("[Generate] Failed to load generation defaults:", error);
+    logger.error("[Generate] Failed to load generation defaults:", error instanceof Error ? error : String(error));
   }
   return DEFAULT_GENERATION;
 }
@@ -289,7 +289,7 @@ export async function POST(request: NextRequest) {
         judgeContent = content; // Judge file is the main output now
         logger.log(`[Generate] Successfully read output file (${content.length} chars)`);
       } catch (err) {
-        logger.log(`[Generate] Could not read output file: ${fullPath}`, err);
+        logger.log(`[Generate] Could not read output file: ${fullPath}`, err instanceof Error ? { error: err.message } : { error: String(err) });
         // Try interpreting outputFile as full path (Python may print full path)
         const fullPathMatch = result.stdout.match(/📄 Output: ([^\n]+)/);
         if (fullPathMatch) {
@@ -299,7 +299,7 @@ export async function POST(request: NextRequest) {
             judgeContent = content;
             logger.log(`[Generate] Read from absolute path: ${absolutePath} (${content.length} chars)`);
           } catch (err2) {
-            logger.log(`[Generate] Could not read absolute path either: ${absolutePath}`, err2);
+            logger.log(`[Generate] Could not read absolute path either: ${absolutePath}`, err2 instanceof Error ? { error: err2.message } : { error: String(err2) });
           }
         }
       }
@@ -314,7 +314,7 @@ export async function POST(request: NextRequest) {
           judgeContent = content;
           logger.log(`[Generate] Read from absolute path: ${absolutePath} (${content.length} chars)`);
         } catch (err) {
-          logger.log(`[Generate] Could not read absolute path: ${absolutePath}`, err);
+          logger.log(`[Generate] Could not read absolute path: ${absolutePath}`, err instanceof Error ? { error: err.message } : { error: String(err) });
         }
       }
     }
@@ -379,7 +379,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error) {
-    logger.error("[Inspiration] Error:", error);
+    logger.error("[Inspiration] Error:", error instanceof Error ? error : String(error));
     return NextResponse.json(
       {
         success: false,
@@ -431,7 +431,7 @@ async function runPythonScript(
             }
           }, 2000);
         } catch (err) {
-          logger.error("[Inspiration] Error killing process:", err);
+          logger.error("[Inspiration] Error killing process:", err instanceof Error ? err : String(err));
         }
         resolve({
           stdout,

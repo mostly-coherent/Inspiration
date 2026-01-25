@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "child_process";
 import path from "path";
+import { readFileSync, existsSync } from "fs";
 import { getPythonPath, checkPythonVersion } from "@/lib/pythonPath";
 
 /**
@@ -15,8 +16,10 @@ export const maxDuration = 120; // 2 minutes max
 interface GenerateThemesRequest {
   days?: number;
   maxConversations?: number;
+  maxSizeMb?: number; // NEW: Size-based limit (takes precedence over days/conversations)
   provider?: "anthropic" | "openai";
   model?: string;
+  source?: "sqlite" | "vectordb"; // Force data source (defaults to "sqlite" for Theme Map generation)
 }
 
 interface ThemeEvidence {
@@ -58,16 +61,19 @@ export async function POST(request: NextRequest) {
   try {
     const body: GenerateThemesRequest = await request.json();
     const { 
-      days = 14, 
-      maxConversations = 80, 
+      days = 14, // Ignored when maxSizeMb is set (size-based takes precedence)
+      maxConversations = 80,
+      maxSizeMb, // Size-based Theme Map (most recent ~500MB) - takes precedence over days
       provider = "anthropic",
-      model 
+      model,
+      source = "sqlite" // Force SQLite for Theme Map generation (local database, not Vector DB)
     } = body;
 
-    // Validate days
-    if (days < 1 || days > 365) {
+    // Validate days only if maxSizeMb is not set (for backward compatibility)
+    // When maxSizeMb is set, days parameter is ignored
+    if (!maxSizeMb && days < 1) {
       return NextResponse.json(
-        { success: false, error: "Days must be between 1 and 365" },
+        { success: false, error: "Days must be at least 1" },
         { status: 400 }
       );
     }
@@ -83,11 +89,50 @@ export async function POST(request: NextRequest) {
       "--provider", provider,
     ];
     
+    if (maxSizeMb) {
+      args.push("--max-size-mb", String(maxSizeMb));
+    }
+    
     if (model) {
       args.push("--model", model);
     }
+    
+    // Force SQLite source for Theme Map generation (always use local database, not Vector DB)
+    if (source) {
+      args.push("--force-source", source);
+    }
 
     console.log(`[GenerateThemes] Running: ${pythonPath} ${args.join(" ")}`);
+
+    // Load OpenAI API key from .env.local if it exists (for Lenny search)
+    // Next.js doesn't auto-reload .env.local after it's written, so we read it explicitly
+    const envLocalPath = path.join(process.cwd(), ".env.local");
+    let openaiApiKey = process.env.OPENAI_API_KEY;
+    
+    if (!openaiApiKey && existsSync(envLocalPath)) {
+      try {
+        const envContent = readFileSync(envLocalPath, "utf-8");
+        // Match OPENAI_API_KEY=value (stop at whitespace or # comment)
+        // Handle: OPENAI_API_KEY=sk-xxx  # comment
+        const openaiMatch = envContent.match(/^OPENAI_API_KEY=([^\s#]+)/m);
+        if (openaiMatch) {
+          openaiApiKey = openaiMatch[1].trim();
+          // Remove quotes if present
+          openaiApiKey = openaiApiKey.replace(/^["']|["']$/g, "");
+          console.log("[GenerateThemes] Loaded OPENAI_API_KEY from .env.local (length:", openaiApiKey.length, ")");
+        } else {
+          console.warn("[GenerateThemes] OPENAI_API_KEY not found in .env.local");
+        }
+      } catch (error) {
+        console.warn("[GenerateThemes] Failed to read .env.local:", error);
+      }
+    }
+    
+    if (openaiApiKey) {
+      console.log("[GenerateThemes] OPENAI_API_KEY will be passed to Python script");
+    } else {
+      console.warn("[GenerateThemes] No OPENAI_API_KEY found - Lenny search will be skipped");
+    }
 
     // Run Python script
     const result = await new Promise<ThemeMapResult>((resolve, reject) => {
@@ -96,6 +141,8 @@ export async function POST(request: NextRequest) {
         env: {
           ...process.env,
           PYTHONUNBUFFERED: "1",
+          // Explicitly pass OpenAI key if found (for Lenny search)
+          ...(openaiApiKey ? { OPENAI_API_KEY: openaiApiKey } : {}),
         },
       });
 

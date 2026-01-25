@@ -53,7 +53,8 @@ interface ThemeMapData {
   generated_at: string;
   conversations_analyzed: number;
   conversations_considered?: number;  // Total found before capping
-  time_window_days: number;
+  time_window_days: number | null; // null = size-based Theme Map
+  max_size_mb?: number; // Size-based Theme Map context (~500MB)
   tech_stack_detected?: string[];
   lennyAvailable?: boolean;
   lennyUnlocked?: boolean;
@@ -63,30 +64,8 @@ interface ThemeMapData {
   };
 }
 
-// Valid days options (must match Fast Start workflow options)
-const VALID_DAYS_OPTIONS = [7, 14, 28, 42];
-
-/**
- * Normalize days value to ensure it's always a valid option.
- * 
- * This ensures the displayed days value always reflects a valid user selection,
- * even if old theme maps have invalid values (e.g., 12 days from old versions).
- * 
- * @param days - Days value from theme map (may be invalid)
- * @returns Valid days value (7, 14, 28, or 42), defaults to 14
- */
-function normalizeDays(days: number | undefined | null): number {
-  if (!days || days < 1) return 14; // Default fallback
-  // If not a valid option, round to nearest valid option
-  if (!VALID_DAYS_OPTIONS.includes(days)) {
-    // Find closest valid option (e.g., 12 → 14, 10 → 7)
-    const closest = VALID_DAYS_OPTIONS.reduce((prev, curr) => 
-      Math.abs(curr - days) < Math.abs(prev - days) ? curr : prev
-    );
-    return closest;
-  }
-  return days;
-}
+// Theme Maps are now size-based (~500MB), not days-based
+// Removed days normalization - no longer needed
 
 export default function ThemeMapPage() {
   const router = useRouter();
@@ -95,11 +74,13 @@ export default function ThemeMapPage() {
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [expandedUnexplored, setExpandedUnexplored] = useState<Set<number>>(new Set());
   
   // Load saved Theme Map
   useEffect(() => {
     const loadThemeMap = async () => {
       try {
+        // Load most recent Theme Map (no days parameter = find most recent)
         const res = await fetch("/api/theme-map");
         if (!res.ok) {
           throw new Error(`API error: ${res.status}`);
@@ -107,17 +88,12 @@ export default function ThemeMapPage() {
         const data = await res.json();
         
         if (data.success && data.exists) {
-          // Normalize days value to ensure it's valid
-          const normalizedData = {
-            ...data.data,
-            time_window_days: normalizeDays(data.data.time_window_days),
-          };
-          setThemeMap(normalizedData);
+          setThemeMap(data.data);
           setSavedAt(data.savedAt);
         } else if (!data.exists) {
-          // No saved Theme Map - redirect to fast onboarding
-          router.push("/onboarding-fast");
-          return;
+          // No saved Theme Map - don't redirect automatically
+          // Show error state with option to generate, but let user stay on page
+          setError("No Theme Map found. Click 'Generate Theme Map' below to create one.");
         } else {
           setError(data.error || "Failed to load Theme Map");
         }
@@ -150,7 +126,7 @@ export default function ThemeMapPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          days: normalizeDays(themeMap?.time_window_days),
+          maxSizeMb: 500, // Size-based regeneration - analyze most recent ~500MB
           provider,
         }),
       });
@@ -167,18 +143,21 @@ export default function ThemeMapPage() {
         throw new Error(errorMsg);
       }
       
-      const data = await res.json();
+      const data = await res.json().catch((parseError) => {
+        throw new Error(`Failed to parse generation response: ${parseError.message}`);
+      });
       
       if (data.success && data.result) {
-        // Persist to file
-        await fetch("/api/theme-map", {
+        // Persist Theme Map
+        const saveRes = await fetch("/api/theme-map", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            themes: data.result.themes.map((t: { title: string; summary: string; evidence: Array<{ chatId: string; snippet: string }>; expertPerspectives?: ExpertQuote[] }) => ({
+            maxSizeMb: 500, // Size-based Theme Map (most recent ~500MB)
+            themes: (data.result.themes || []).map((t: { title: string; summary: string; evidence?: Array<{ chatId: string; snippet: string }>; expertPerspectives?: ExpertQuote[] }) => ({
               name: t.title,
               description: t.summary,
-              evidence: t.evidence.map((e) => ({
+              evidence: (t.evidence || []).map((e) => ({
                 conversation_id: e.chatId,
                 snippet: e.snippet,
               })),
@@ -189,24 +168,36 @@ export default function ThemeMapPage() {
             generated_at: data.result.generatedAt,
             conversations_analyzed: data.result.analyzed.conversationsUsed,
             conversations_considered: data.result.analyzed.conversationsConsidered,
-            time_window_days: normalizeDays(data.result.analyzed.days),
             meta: {
               llm_provider: provider,
             },
           }),
         });
         
-        // Reload
+        if (!saveRes.ok) {
+          const saveErrorText = await saveRes.text().catch(() => `HTTP ${saveRes.status}`);
+          throw new Error(`Failed to save Theme Map: ${saveErrorText}`);
+        }
+        const saveData = await saveRes.json().catch((parseError) => {
+          throw new Error(`Failed to parse save response: ${parseError.message}`);
+        });
+        if (!saveData.success) {
+          throw new Error(`Theme Map save failed: ${saveData.error || "Unknown error"}`);
+        }
+        
+        // Reload Theme Map after save
         const reloadRes = await fetch("/api/theme-map");
-        const reloadData = await reloadRes.json();
+        if (!reloadRes.ok) {
+          throw new Error(`Failed to reload Theme Map: ${reloadRes.status}`);
+        }
+        const reloadData = await reloadRes.json().catch((parseError) => {
+          throw new Error(`Failed to parse reload response: ${parseError.message}`);
+        });
         if (reloadData.success && reloadData.exists) {
-          // Normalize days value to ensure it's valid
-          const normalizedData = {
-            ...reloadData.data,
-            time_window_days: normalizeDays(reloadData.data.time_window_days),
-          };
-          setThemeMap(normalizedData);
+          setThemeMap(reloadData.data);
           setSavedAt(reloadData.savedAt);
+        } else {
+          throw new Error("Theme Map saved but reload failed");
         }
       } else {
         setError(data.error || "Failed to regenerate themes");
@@ -216,7 +207,7 @@ export default function ThemeMapPage() {
     } finally {
       setRegenerating(false);
     }
-  }, [themeMap?.time_window_days]);
+  }, []); // No dependencies - always uses size-based regeneration
 
   // Format date
   const formatDate = (dateStr: string) => {
@@ -244,10 +235,10 @@ export default function ThemeMapPage() {
   if (error && !themeMap) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-indigo-950/30 to-slate-950 p-6">
-        <div className="text-center space-y-6">
-          <span className="text-6xl">⚠️</span>
-          <h1 className="text-2xl font-bold text-white">Error Loading Theme Map</h1>
-          <p className="text-red-400">{error}</p>
+        <div className="text-center space-y-6 max-w-2xl">
+          <span className="text-6xl">🗺️</span>
+          <h1 className="text-2xl font-bold text-white">No Theme Map Yet</h1>
+          <p className="text-slate-400">{error}</p>
           <div className="flex gap-3 justify-center">
             <Link
               href="/"
@@ -338,8 +329,8 @@ export default function ThemeMapPage() {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <span>📅</span>
-              <span>Last <strong className="text-white">{normalizeDays(themeMap.time_window_days)}</strong> days</span>
+              <span>💾</span>
+              <span>Most recent <strong className="text-white">~{themeMap.max_size_mb || 500}MB</strong> analyzed</span>
             </div>
           </div>
         )}
@@ -381,7 +372,7 @@ export default function ThemeMapPage() {
                     <div className="text-xs text-amber-400 mb-2 flex items-center gap-1">
                       <span>🎙️</span> Expert Perspective
                     </div>
-                    {theme.expertPerspectives.slice(0, 1).map((quote, j) => (
+                    {(theme.expertPerspectives || []).slice(0, 1).map((quote, j) => (
                       <div key={j} className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
                         <p className="text-slate-300 italic">&quot;{quote.content}&quot;</p>
                         <div className="flex items-center justify-between mt-2 text-xs">
@@ -429,7 +420,7 @@ export default function ThemeMapPage() {
               <span>💭</span> Counter-Intuitive
             </h2>
             <div className="grid gap-3">
-              {themeMap.counter_intuitive.slice(0, 2).map((item, i) => (
+              {themeMap.counter_intuitive.map((item, i) => (
                 <div key={i} className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-5 space-y-3">
                   <div className="flex items-start gap-3">
                     <span className="text-2xl font-bold text-purple-400">{i + 1}</span>
@@ -485,44 +476,76 @@ export default function ThemeMapPage() {
                 const title = typeof item === 'string' ? item : item.title;
                 const why = typeof item === 'string' ? null : item.why;
                 const expertInsight = typeof item === 'string' ? null : item.expertInsight;
+                const hasDetails = !!(why || expertInsight);
+                const isExpanded = expandedUnexplored.has(i);
+                
                 return (
                   <div key={i} className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-5 space-y-3">
                     <div className="flex items-start gap-3">
                       <span className="text-2xl font-bold text-amber-400">{i + 1}</span>
-                      <div>
+                      <div className="flex-1">
                         <h3 className="font-semibold text-white text-lg">{title}</h3>
+                        {hasDetails && (
+                          <button
+                            onClick={() => {
+                              const newExpanded = new Set(expandedUnexplored);
+                              if (isExpanded) {
+                                newExpanded.delete(i);
+                              } else {
+                                newExpanded.add(i);
+                              }
+                              setExpandedUnexplored(newExpanded);
+                            }}
+                            className="mt-2 text-xs text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1"
+                            aria-expanded={isExpanded}
+                          >
+                            {isExpanded ? (
+                              <>
+                                <span>▼</span> Hide details
+                              </>
+                            ) : (
+                              <>
+                                <span>▶</span> Show details
+                              </>
+                            )}
+                          </button>
+                        )}
                       </div>
                     </div>
-                    {why && (
-                      <div className="pl-9">
-                        <div className="text-xs text-slate-500 mb-1">Why this matters:</div>
-                        <p className="text-sm text-slate-300">{why}</p>
-                      </div>
-                    )}
-                    
-                    {/* Expert Insight from Lenny's Podcast */}
-                    {expertInsight && (
-                      <div className="pl-9 pt-2 border-t border-amber-500/20">
-                        <div className="text-xs text-amber-400 mb-2 flex items-center gap-1">
-                          <span>🎙️</span> Expert Insight
-                        </div>
-                        <div className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
-                          <p className="text-slate-300 italic">&quot;{expertInsight.content}&quot;</p>
-                          <div className="flex items-center justify-between mt-2 text-xs">
-                            <span className="text-amber-400 font-medium">— {expertInsight.guestName}</span>
-                            {expertInsight.youtubeUrl && expertInsight.episodeTitle && (
-                              <a 
-                                href={expertInsight.youtubeUrl} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-slate-500 hover:text-amber-400 transition-colors"
-                              >
-                                📺 {expertInsight.episodeTitle}
-                              </a>
-                            )}
+                    {isExpanded && (
+                      <>
+                        {why && (
+                          <div className="pl-9">
+                            <div className="text-xs text-slate-500 mb-1">Why this matters:</div>
+                            <p className="text-sm text-slate-300">{why}</p>
                           </div>
-                        </div>
-                      </div>
+                        )}
+                        
+                        {/* Expert Insight from Lenny's Podcast */}
+                        {expertInsight && (
+                          <div className="pl-9 pt-2 border-t border-amber-500/20">
+                            <div className="text-xs text-amber-400 mb-2 flex items-center gap-1">
+                              <span>🎙️</span> Expert Insight
+                            </div>
+                            <div className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
+                              <p className="text-slate-300 italic">&quot;{expertInsight.content}&quot;</p>
+                              <div className="flex items-center justify-between mt-2 text-xs">
+                                <span className="text-amber-400 font-medium">— {expertInsight.guestName}</span>
+                                {expertInsight.youtubeUrl && expertInsight.episodeTitle && (
+                                  <a 
+                                    href={expertInsight.youtubeUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-slate-500 hover:text-amber-400 transition-colors"
+                                  >
+                                    📺 {expertInsight.episodeTitle}
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 );

@@ -655,6 +655,9 @@ def _parse_env_file(path: Path) -> None:
                     key, _, value = line.partition("=")
                     key = key.strip()
                     value = value.strip()
+                    # Remove inline comments (everything after #)
+                    if "#" in value:
+                        value = value.split("#")[0].strip()
                     # Remove quotes if present
                     if value and value[0] == value[-1] and value[0] in ('"', "'"):
                         value = value[1:-1]

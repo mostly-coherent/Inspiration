@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
             runs.push(data.summary);
           }
         } catch (e) {
-          logger.error(`Failed to read performance log ${file}:`, e);
+          logger.error(`Failed to read performance log ${file}:`, e instanceof Error ? e : String(e));
         }
       }
 
@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
             errorCount++;
           }
         } catch (e) {
-          logger.error(`Failed to analyze performance log ${file}:`, e);
+          logger.error(`Failed to analyze performance log ${file}:`, e instanceof Error ? e : String(e));
         }
       }
 
@@ -186,7 +186,7 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     );
   } catch (error) {
-    logger.error("[Performance API] Error:", error);
+    logger.error("[Performance API] Error:", error instanceof Error ? error : String(error));
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }

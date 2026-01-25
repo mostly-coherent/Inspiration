@@ -16,6 +16,7 @@ import {
 } from "@/components/settings";
 import { ThemeSynthesisSection } from "@/components/config/ThemeSynthesisSection";
 import { DebugReportSection } from "@/components/DebugReportButton";
+import { ResetOnboardingButton } from "@/components/ResetOnboardingButton";
 
 interface AppConfig {
   version: number;
@@ -521,15 +522,27 @@ export default function SettingsPage() {
 
         {/* Advanced Configuration Section */}
         {config.setupComplete && activeTab === "advanced" && (
-          <SettingsSection
-            title="🔧 Advanced Configuration"
-            description="Global defaults for all generation modes"
-          >
-            <div className="mb-4 p-3 bg-amber-500/10 rounded-lg border border-amber-500/20 text-xs text-slate-400">
-              <strong className="text-amber-400">💡 Quick guide:</strong> These are global defaults — they apply to all modes unless you set a mode-specific override.
-            </div>
-            <AdvancedConfigSection onSave={() => loadConfig()} />
-          </SettingsSection>
+          <>
+            <SettingsSection
+              title="🔧 Advanced Configuration"
+              description="Global defaults for all generation modes"
+            >
+              <div className="mb-4 p-3 bg-amber-500/10 rounded-lg border border-amber-500/20 text-xs text-slate-400">
+                <strong className="text-amber-400">💡 Quick guide:</strong> These are global defaults — they apply to all modes unless you set a mode-specific override.
+              </div>
+              <AdvancedConfigSection onSave={() => loadConfig()} />
+            </SettingsSection>
+
+            {/* Testing & Development Tools */}
+            {process.env.NODE_ENV === "development" && (
+              <SettingsSection
+                title="🧪 Testing & Development"
+                description="Tools for testing and development (dev mode only)"
+              >
+                <ResetOnboardingButton />
+              </SettingsSection>
+            )}
+          </>
         )}
 
         {/* Prompt Templates Section */}

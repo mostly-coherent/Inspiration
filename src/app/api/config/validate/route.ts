@@ -22,14 +22,16 @@ export async function POST(request: Request) {
     };
 
     // Validate Anthropic API Key
-    if (ANTHROPIC_API_KEY) {
+    // Check provided key or fall back to environment variable
+    const anthropicKeyToValidate = ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+    if (anthropicKeyToValidate) {
       try {
         // Make a minimal API call to verify the key works
         const response = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-api-key": ANTHROPIC_API_KEY,
+            "x-api-key": anthropicKeyToValidate,
             "anthropic-version": "2023-06-01",
           },
           body: JSON.stringify({
@@ -69,17 +71,23 @@ export async function POST(request: Request) {
         };
       }
     } else {
-      results.anthropic = { valid: false, error: "API key is required" };
+      // Key not provided - check if it exists in environment
+      if (process.env.ANTHROPIC_API_KEY) {
+        results.anthropic = { valid: true }; // Assume valid if in env
+      } else {
+        results.anthropic = { valid: false, error: "API key is required" };
+      }
     }
 
-    // Validate OpenAI API Key (optional - only validate if provided)
-    if (OPENAI_API_KEY) {
+    // Validate OpenAI API Key (optional - only validate if provided or in env)
+    const openaiKeyToValidate = OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+    if (openaiKeyToValidate) {
       try {
         // Make a minimal API call to verify the key works
         const response = await fetch("https://api.openai.com/v1/models", {
           method: "GET",
           headers: {
-            "Authorization": `Bearer ${OPENAI_API_KEY}`,
+            "Authorization": `Bearer ${openaiKeyToValidate}`,
           },
         });
 

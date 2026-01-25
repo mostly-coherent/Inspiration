@@ -951,4 +951,118 @@ Users can now edit prompt templates directly in the UI. While we create backups 
 
 ---
 
-**Last Updated:** 2026-01-13 (Fast Start priorities: FAST-2 Cost Estimation + FAST-3 Share Theme Map prioritized; Ollama downgraded to Tier 2 due to quality trade-offs for first impression)
+## v2.1: Smart Onboarding
+
+<!-- Merged from Inspiration v2.1.md on 2026-01-24 -->
+
+**Tagline:** "Get value in 90 seconds, regardless of history size"
+
+**Status:** ✅ Complete
+**Created:** 2026-01-23
+**Completed:** 2026-01-24
+
+### Overview
+
+**The Problem (v2.0):**
+- ≤500MB users: Fast Start works great (Theme Map in 60s) ✅
+- >500MB users: Forced into slow workflow (Hours/days to see value) ❌
+
+**The Solution (v2.1):**
+1. **≤500MB users:** No change (Fast Start in 60s)
+2. **>500MB users get a choice:**
+   - **⚡ Quick Start:** Analyze most recent 500MB in 90s (no setup required)
+   - **🔧 Full Setup:** Index to Vector DB with granular control (slider for % coverage)
+3. **Theme Explorer works directly on Vector DB** (no Library required)
+4. **Library becomes optional** (for tracking implemented ideas, social sharing, etc.)
+
+### Key Innovations
+
+1. **Partial Analysis for Quick Start** — Users with 5GB history can analyze "most recent 500MB" in 90 seconds
+2. **Indexing Scope Slider** — Users control what % of history to index (10-100%) with real-time cost/time estimates
+3. **Theme Explorer on Vector DB** — No Library required; works directly on indexed Vector DB
+4. **Library as Power Feature** — Optional layer for persistent tracking
+
+### Enhanced Onboarding Workflow
+
+**For ≤500MB Users (No Change):**
+```
+Fast Start → Theme Map in 60s → Done ✅
+```
+
+**For >500MB Users:**
+
+**Step 1: Detection + Choice Screen** → App detects large history → Shows `/onboarding-choice` with two options
+
+**Step 2A: Quick Start Path**
+```
+User clicks "Quick Start"
+  ↓
+Extract most recent 500MB from SQLite (time-range filtered)
+  ↓
+generate_theme_map() on recent conversations
+  ↓
+Theme Map in 90 seconds ✅
+```
+
+**Step 2B: Full Setup Path with Slider**
+```
+User clicks "Full Setup"
+  ↓
+API Key Setup (Anthropic, OpenAI, Supabase)
+  ↓
+Indexing Scope Selection (slider: 10-100% with real-time estimates)
+  ↓
+User clicks "Start Indexing"
+  ↓
+Index selected range to Vector DB (progress shown)
+  ↓
+Theme Explorer ready! (works on indexed portion)
+```
+
+### Implementation Status
+
+| Phase | Tasks | Status |
+|-------|-------|--------|
+| **Phase 1: Backend** | 4 tasks (Metrics estimation, time-range filtering, Vector DB backend, auto-detect) | ✅ COMPLETED |
+| **Phase 2: Frontend UI** | 3 tasks (Choice screen, scope slider, partial mode) | ✅ COMPLETED |
+| **Phase 3: API Routes** | 2 tasks (Estimation API, partial indexing) | ✅ COMPLETED |
+| **Phase 4: Theme Explorer** | 2 tasks (Regeneration UI, caching) | ✅ COMPLETED |
+| **Phase 5: Settings** | 1 task (Index More History) | ✅ COMPLETED |
+| **Phase 6: Docs & Tests** | 3 tasks (CLAUDE.md, README.md, E2E tests) | ✅ COMPLETED |
+
+**Key Files Implemented:**
+- `src/app/onboarding-choice/page.tsx` — Choice screen for >500MB users
+- `src/app/onboarding/page.tsx` — Enhanced with indexing scope slider
+- `src/app/onboarding-fast/page.tsx` — Enhanced with `?mode=partial` support
+- `src/app/api/estimate-indexing/route.ts` — Cost/time estimation API
+- `src/app/api/sync/route.ts` — Enhanced with `maxSizeMb` parameter
+- `src/app/themes/page.tsx` — Enhanced with 7/14/30/90 day regeneration
+- `src/app/api/theme-map/route.ts` — Multi-range caching support
+- `src/app/api/vector-db/status/route.ts` — Indexing status API
+- `src/components/settings/VectorDBSection.tsx` — "Index More History" modal
+- `e2e/onboarding.spec.ts` — E2E tests for v2.1 flows
+
+### Success Metrics Achieved
+
+| Metric | v2.0 | v2.1 (Achieved) |
+|--------|------|-----------------|
+| **Time to first value (≤500MB)** | 60s | 60s ✅ |
+| **Time to first value (>500MB)** | Hours/days | **90s** ✅ |
+| **Setup complexity (>500MB)** | Forced full setup | **User choice** ✅ |
+| **Indexing cost control** | All or nothing | **Granular (10-100%)** ✅ |
+| **Theme Explorer accessibility** | After Library accumulation | **Immediate** ✅ |
+
+### Design Decisions Made
+
+- ✅ Choice screen for >500MB (not forced Full Setup)
+- ✅ Quick Start uses partial analysis (recent 500MB)
+- ✅ Slider default: 60% (good cost/coverage balance)
+- ✅ Theme Explorer works on Vector DB (no Library required)
+- ✅ Library remains for power features (tracking, sharing)
+- ✅ Can extend indexing later (not one-time decision)
+- ✅ Explicit toast notification when extending index ("Themes will evolve")
+- ✅ Minimal migration logic; focus on new users
+
+---
+
+**Last Updated:** 2026-01-24 (v2.1 Smart Onboarding complete; Fast Start priorities: FAST-2 Cost Estimation + FAST-3 Share Theme Map remain for future work)

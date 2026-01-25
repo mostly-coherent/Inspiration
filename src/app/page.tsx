@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import {
   ToolType,
   PresetMode,
@@ -29,66 +29,198 @@ import { loadThemesAsync } from "@/lib/themes";
 
 export default function Home() {
   const router = useRouter();
+  const pathname = usePathname();
   const [isCheckingSetup, setIsCheckingSetup] = useState(true);
+  const [isSetupComplete, setIsSetupComplete] = useState<boolean | null>(null);
+  const [setupCheckMessage, setSetupCheckMessage] = useState<string>("Checking setup...");
 
   // Check if user has completed onboarding
+  // IMPORTANT: Do NOT redirect if user is already on /onboarding-fast or /onboarding
+  // Allow them to stay on those pages and make their own choices
   useEffect(() => {
     let cancelled = false;
     
+    // CRITICAL: Check current location IMMEDIATELY and synchronously
+    // This must happen before any async operations start
+    const checkCurrentPath = () => {
+      if (typeof window !== 'undefined') {
+        return window.location.pathname;
+      }
+      return pathname || null;
+    };
+    
+    const currentPath = checkCurrentPath();
+    
+    // CRITICAL: Only run redirect logic when user is on the home page ("/")
+    // If user is on ANY other page (theme-map, onboarding, etc.), don't interfere
+    // This prevents redirects when navigating between pages
+    if (currentPath !== "/" && currentPath !== null) {
+      // User is on a different page - don't interfere, just exit
+      if (!cancelled) {
+        setIsCheckingSetup(false);
+      }
+      return;
+    }
+    
+    // Also check pathname hook as backup
+    if (pathname && pathname !== "/") {
+      if (!cancelled) {
+        setIsCheckingSetup(false);
+      }
+      return;
+    }
+    
+    // Helper to check if still on home page (prevents race conditions)
+    const isStillOnHomePage = () => {
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : pathname;
+      return currentPath === "/" && pathname === "/";
+    };
+    
     const checkSetup = async () => {
       try {
+        // Check pathname before each async operation to prevent race conditions
+        if (!isStillOnHomePage() || cancelled) return;
+        
+        // Update loading message
+        if (!cancelled) setSetupCheckMessage("Checking API keys...");
+        
         // First check if environment variables are configured
         const envRes = await fetch("/api/config/env");
-        if (cancelled) return;
+        if (cancelled || !isStillOnHomePage()) return;
         
         if (!envRes.ok) {
           const errorText = await envRes.text().catch(() => `HTTP ${envRes.status}`);
           console.error("Failed to check environment config:", errorText.length > 100 ? envRes.status : errorText);
-          if (!cancelled) router.push("/onboarding-fast");
+          if (!cancelled && isStillOnHomePage()) {
+            setIsSetupComplete(false);
+            router.push("/onboarding-fast");
+          }
           return;
         }
         const envData = await envRes.json().catch((parseError) => {
           throw new Error(`Invalid response format: ${parseError.message}`);
         });
         
-        if (cancelled) return;
+        if (cancelled || !isStillOnHomePage()) return;
         
-        if (!envData || typeof envData !== 'object' || !envData.allRequired) {
-          // Missing required API keys → redirect to Fast Start (simpler onboarding)
-          if (!cancelled) router.push("/onboarding-fast");
+        // Check if API key is missing
+        const hasApiKey = envData && typeof envData === 'object' && envData.allRequired;
+        
+        // Check if user has library items (to determine if they're new)
+        if (!cancelled) setSetupCheckMessage("Checking library...");
+        let hasLibraryItems = false;
+        try {
+          const itemsRes = await fetch("/api/items?view=items&paginate=false");
+          if (!cancelled && isStillOnHomePage() && itemsRes.ok) {
+            const itemsData = await itemsRes.json().catch(() => null);
+            if (itemsData && typeof itemsData === 'object' && itemsData.success) {
+              hasLibraryItems = (itemsData.stats?.totalItems || 0) > 0;
+            }
+          }
+        } catch (itemsError) {
+          // If items check fails, assume no items (new user)
+          console.warn("Failed to check library items:", itemsError);
+        }
+        
+        // Check if user has a saved Theme Map
+        if (!cancelled) setSetupCheckMessage("Checking theme map...");
+        let hasThemeMap = false;
+        try {
+          const themeMapRes = await fetch("/api/theme-map");
+          if (!cancelled && isStillOnHomePage() && themeMapRes.ok) {
+            const themeMapData = await themeMapRes.json().catch(() => null);
+            if (themeMapData && typeof themeMapData === 'object' && themeMapData.success) {
+              // Check if theme map exists and has themes (not empty)
+              hasThemeMap = themeMapData.exists === true && 
+                           themeMapData.data && 
+                           Array.isArray(themeMapData.data.themes) && 
+                           themeMapData.data.themes.length > 0;
+            }
+          }
+        } catch (themeMapError) {
+          // If theme map check fails, assume no theme map (new user)
+          console.warn("Failed to check theme map:", themeMapError);
+        }
+        
+        if (cancelled || !isStillOnHomePage()) return;
+        
+        // NEW USER DETECTION: No API key AND no library items AND no Theme Map = new user
+        // Exception: Creator can comment out API key but keep library items/theme map to test onboarding flow
+        // In that case, missing API key will redirect to onboarding regardless of existing data
+        const isNewUser = !hasApiKey && !hasLibraryItems && !hasThemeMap;
+        
+        // If API key is missing, always redirect to onboarding (allows creator to test onboarding flow)
+        // This works even if user has library items or theme map (exception for creator testing)
+        if (!hasApiKey) {
+          if (!cancelled && isStillOnHomePage()) {
+            setIsSetupComplete(false);
+            router.push("/onboarding-fast");
+          }
           return;
         }
         
+        // If API key exists but user is new (no library items, no theme map), redirect to onboarding
+        if (isNewUser) {
+          if (!cancelled && isStillOnHomePage()) {
+            setIsSetupComplete(false);
+            router.push("/onboarding-fast");
+          }
+          return;
+        }
+        
+        // Check pathname again before next async operation
+        if (!isStillOnHomePage() || cancelled) return;
+        
+        // Update loading message
+        if (!cancelled) setSetupCheckMessage("Checking setup status...");
+        
         // Then check if setup is complete
         const configRes = await fetch("/api/config");
-        if (cancelled) return;
+        if (cancelled || !isStillOnHomePage()) return;
         
         if (!configRes.ok) {
           const errorText = await configRes.text().catch(() => `HTTP ${configRes.status}`);
           console.error("Failed to check config:", errorText.length > 100 ? configRes.status : errorText);
-          if (!cancelled) router.push("/onboarding-fast");
+          // If config check fails but user has API key and library items, assume setup complete
+          if (!cancelled && isStillOnHomePage()) {
+            setIsSetupComplete(true);
+            setIsCheckingSetup(false);
+          }
           return;
         }
         const configData = await configRes.json().catch((parseError) => {
           throw new Error(`Invalid response format: ${parseError.message}`);
         });
         
-        if (cancelled) return;
+        if (cancelled || !isStillOnHomePage()) return;
         
-        if (!configData.success || !configData.config?.setupComplete) {
-          // Setup not complete → redirect to Fast Start
-          // (Fast Start will redirect to full onboarding if chat history > 500MB)
-          router.push("/onboarding-fast");
+        // Check if setup is complete (either Fast Start or Full Setup)
+        const isSetupComplete = configData.config?.setupComplete || configData.config?.fastStartComplete;
+        
+        // If user has API key and (library items OR theme map), they're not new - allow access even if setupComplete is false
+        // (they might have been using the app before we added setupComplete tracking)
+        if (!configData.success || (!isSetupComplete && !hasLibraryItems && !hasThemeMap)) {
+          // Setup not complete AND no library items AND no theme map → redirect to onboarding
+          if (!cancelled && isStillOnHomePage()) {
+            setIsSetupComplete(false);
+            router.push("/onboarding-fast");
+          }
           return;
         }
         
         // All good, show the app
-        setIsCheckingSetup(false);
+        if (!cancelled && isStillOnHomePage()) {
+          setIsSetupComplete(true);
+          setIsCheckingSetup(false);
+        }
       } catch (e) {
-        if (cancelled) return;
+        if (cancelled || !isStillOnHomePage()) return;
         console.error("Failed to check setup:", e);
-        // On error, still show the app (might be first load)
-        setIsCheckingSetup(false);
+        // On error, assume not set up (might be first load)
+        if (!cancelled && isStillOnHomePage()) {
+          setIsSetupComplete(false);
+          setIsCheckingSetup(false);
+        }
       }
     };
     
@@ -97,7 +229,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, pathname]);
 
   // View mode state (Library View vs Comprehensive View)
   const [viewMode, setViewMode] = useState<ViewMode>("comprehensive");
@@ -907,7 +1039,7 @@ export default function Home() {
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-indigo-950/30 to-slate-950">
         <div className="text-center space-y-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto"></div>
-          <p className="text-slate-400">Loading...</p>
+          <p className="text-slate-400">{setupCheckMessage}</p>
         </div>
       </main>
     );
@@ -931,16 +1063,37 @@ export default function Home() {
       <div className="max-w-6xl mx-auto space-y-8">
         {/* Minimal Header */}
         <header className="flex items-center justify-between pt-4">
-          <div className="flex items-center gap-3">
+          <a
+            href={isSetupComplete === false ? "/onboarding-fast" : "/"}
+            onClick={(e) => {
+              // If setup is not complete, prevent default and navigate to onboarding
+              if (isSetupComplete === false) {
+                e.preventDefault();
+                router.push("/onboarding-fast");
+              }
+              // If setup is complete or still checking (null), allow default navigation (stays on home)
+            }}
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
+            title={isSetupComplete === false ? "Complete Setup" : "Home"}
+            aria-label={isSetupComplete === false ? "Complete Setup" : "Home"}
+          >
             <span className="text-3xl">✨</span>
             <h1 className="text-2xl font-bold text-white">Inspiration</h1>
-          </div>
+          </a>
           <div className="flex items-center gap-2">
             <a 
-              href="/theme-map" 
+              href={isSetupComplete === false ? "/onboarding-fast" : "/theme-map"}
+              onClick={(e) => {
+                // If setup is not complete, prevent default and navigate to onboarding
+                if (isSetupComplete === false) {
+                  e.preventDefault();
+                  router.push("/onboarding-fast");
+                }
+                // If setup is complete (true) or still checking (null), allow default navigation to theme-map
+              }}
               className="p-2 text-slate-400 hover:text-indigo-400 transition-colors"
-              title="View Theme Map"
-              aria-label="View Theme Map"
+              title={isSetupComplete === false ? "Complete Setup" : "View Theme Map"}
+              aria-label={isSetupComplete === false ? "Complete Setup" : "View Theme Map"}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
@@ -1151,7 +1304,7 @@ export default function Home() {
                       <button
                         onClick={handleGenerate}
                         className="btn-primary text-xl px-12 py-4 font-semibold shadow-lg shadow-inspiration-ideas/20 hover:shadow-inspiration-ideas/30 transition-all"
-                        aria-busy={isGenerating}
+                        aria-busy={isGenerating ? "true" : "false"}
                         aria-live="polite"
                       >
                         <span className="flex items-center gap-3">

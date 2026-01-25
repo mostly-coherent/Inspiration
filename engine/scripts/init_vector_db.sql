@@ -20,10 +20,23 @@ CREATE TABLE IF NOT EXISTS cursor_messages (
     chat_id TEXT NOT NULL,
     chat_type TEXT NOT NULL,
     message_type TEXT NOT NULL,
+    source TEXT DEFAULT 'cursor',
+    source_detail JSONB DEFAULT '{}'::jsonb,
     indexed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Add source columns if they don't exist (for migration)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cursor_messages' AND column_name = 'source') THEN
+        ALTER TABLE cursor_messages ADD COLUMN source TEXT DEFAULT 'cursor';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cursor_messages' AND column_name = 'source_detail') THEN
+        ALTER TABLE cursor_messages ADD COLUMN source_detail JSONB DEFAULT '{}'::jsonb;
+    END IF;
+END $$;
 
 -- Create indexes for efficient queries
 CREATE INDEX IF NOT EXISTS idx_cursor_messages_timestamp ON cursor_messages(timestamp);
@@ -78,6 +91,88 @@ BEGIN
         AND (1 - (cm.embedding <=> query_embedding)) >= match_threshold
     ORDER BY cm.embedding <=> query_embedding
     LIMIT match_count;
+END;
+$$;
+
+-- Create RPC function for sampling high-signal conversations
+-- Used by Theme Map to find relevant conversations without full scan
+CREATE OR REPLACE FUNCTION sample_high_signal_conversations(
+    days_back int DEFAULT 14,
+    max_conversations int DEFAULT 80
+) RETURNS TABLE (
+    chat_id text,
+    workspace text,
+    chat_type text,
+    message_count bigint,
+    first_user_message text,
+    has_code_blocks boolean,
+    has_technical_terms boolean,
+    avg_message_length float,
+    date_range text,
+    user_effort_score float
+) 
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+DECLARE
+    min_ts bigint;
+BEGIN
+    -- Calculate minimum timestamp (milliseconds)
+    min_ts := (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint - (days_back * 24 * 60 * 60 * 1000);
+
+    RETURN QUERY
+    WITH conversation_stats AS (
+        SELECT
+            cm.chat_id,
+            cm.workspace,
+            cm.chat_type,
+            COUNT(*) as msg_count,
+            -- Get first user message for context
+            (ARRAY_AGG(cm.text ORDER BY cm.timestamp ASC) FILTER (WHERE cm.message_type = 'user'))[1] as first_msg,
+            -- Check for code blocks in any message
+            BOOL_OR(cm.text LIKE '%```%') as has_code,
+            -- Check for technical terms (simple heuristic)
+            BOOL_OR(cm.text ~* '(error|exception|traceback|function|class|import|const|var|let)') as has_tech,
+            AVG(LENGTH(cm.text)) as avg_len,
+            MIN(cm.timestamp) as start_ts,
+            MAX(cm.timestamp) as end_ts,
+            -- Calculate user effort score
+            -- 1. User Input Volume: sum of user message lengths
+            SUM(CASE WHEN cm.message_type = 'user' THEN LENGTH(cm.text) ELSE 0 END) as user_chars,
+            -- 2. Interaction Balance: ratio of user messages
+            COUNT(CASE WHEN cm.message_type = 'user' THEN 1 END)::float / NULLIF(COUNT(*), 0) as user_ratio,
+            -- 3. Structural Diversity: check for markdown lists/headers
+            BOOL_OR(cm.text ~ '^(- |\d+\. |# )') as has_structure
+        FROM cursor_messages cm
+        WHERE cm.timestamp >= min_ts
+        GROUP BY cm.chat_id, cm.workspace, cm.chat_type
+    )
+    SELECT
+        cs.chat_id,
+        cs.workspace,
+        cs.chat_type,
+        cs.msg_count,
+        COALESCE(cs.first_msg, ''),
+        cs.has_code,
+        cs.has_tech,
+        cs.avg_len,
+        TO_CHAR(TO_TIMESTAMP(cs.start_ts / 1000), 'YYYY-MM-DD') || ' to ' || TO_CHAR(TO_TIMESTAMP(cs.end_ts / 1000), 'YYYY-MM-DD'),
+        -- Composite score calculation
+        (
+            -- Base score from user characters (log scale)
+            LEAST(100, LOG(GREATEST(1, cs.user_chars)) * 10) +
+            -- Bonus for code or structure
+            CASE WHEN cs.has_code OR cs.has_structure THEN 20 ELSE 0 END +
+            -- Penalty for very short conversations
+            CASE WHEN cs.msg_count < 4 THEN -50 ELSE 0 END +
+            -- Penalty for extreme ratios (monologues)
+            CASE WHEN cs.user_ratio < 0.1 OR cs.user_ratio > 0.9 THEN -20 ELSE 0 END
+        )::float as score
+    FROM conversation_stats cs
+    WHERE cs.msg_count >= 2 -- Minimum filter
+    ORDER BY score DESC
+    LIMIT max_conversations;
 END;
 $$;
 

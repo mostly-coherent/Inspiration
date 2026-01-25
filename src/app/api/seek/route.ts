@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (error) {
-    logger.error("[Inspiration] Error:", error);
+    logger.error("[Inspiration] Error:", error instanceof Error ? error : String(error));
       return NextResponse.json(
         {
           success: false,

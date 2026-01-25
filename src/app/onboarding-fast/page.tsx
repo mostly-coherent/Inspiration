@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -77,6 +77,9 @@ interface ThemeMapResult {
     days: number;
     conversationsConsidered: number;
     conversationsUsed: number;
+    sizeMb?: number; // Actual size analyzed (when size-based)
+    maxSizeMb?: number; // Size limit (when size-based)
+    sizeBased?: boolean; // Whether this was size-based analysis
   };
   themes: Theme[];
   counterIntuitive?: CounterIntuitive[];
@@ -129,6 +132,7 @@ function FastOnboardingContent() {
   const searchParams = useSearchParams();
   const isPreviewMode = searchParams.get("preview") === "true";
   
+  // Unified onboarding: Always analyze most recent ~500MB
   const [step, setStep] = useState<OnboardingStep>("welcome");
   const [error, setError] = useState<string | null>(null);
   
@@ -139,20 +143,10 @@ function FastOnboardingContent() {
   // Valid days options
   const VALID_DAYS_OPTIONS = [7, 14, 28, 42];
   
-  // Normalize days value to ensure it's valid
-  const normalizeDays = (days: number | undefined | null): number => {
-    if (!days || days < 1) return 14; // Default fallback
-    // If not a valid option, round to nearest valid option
-    if (!VALID_DAYS_OPTIONS.includes(days)) {
-      const closest = VALID_DAYS_OPTIONS.reduce((prev, curr) => 
-        Math.abs(curr - days) < Math.abs(prev - days) ? curr : prev
-      );
-      return closest;
-    }
-    return days;
-  };
+  // Theme Maps are now size-based (~500MB), not days-based
+  // Removed days normalization - no longer needed
   
-  // Time window state
+  // Time window state (kept for UI display only, but generation uses maxSizeMb: 500)
   const [selectedDays, setSelectedDays] = useState(14);
   
   // API key state
@@ -173,6 +167,10 @@ function FastOnboardingContent() {
   const [themeMap, setThemeMap] = useState<ThemeMapResult | null>(null);
   const [generationProgress, setGenerationProgress] = useState("");
   
+  // Lenny auto-download state
+  const [lennyDownloading, setLennyDownloading] = useState(false);
+  const [lennyDownloadProgress, setLennyDownloadProgress] = useState("");
+  
   // Cost estimation state
   const [costEstimate, setCostEstimate] = useState<CostEstimate | null>(null);
   const [loadingCost, setLoadingCost] = useState(false);
@@ -180,6 +178,83 @@ function FastOnboardingContent() {
   
   // Vector DB state (for CTA behavior)
   const [hasVectorDb, setHasVectorDb] = useState(false);
+  
+  // Existing user detection state
+  const [isExistingUser, setIsExistingUser] = useState<boolean | null>(null);
+  const [hasExistingThemeMap, setHasExistingThemeMap] = useState(false);
+  const [hasLibraryItems, setHasLibraryItems] = useState(false);
+  const [checkingExistingUser, setCheckingExistingUser] = useState(true);
+
+  // Check if user is existing (has indexed chat, library items, or theme map)
+  // NOTE: This check does NOT redirect users - existing users can stay on this page
+  // and choose to view Theme Map or continue with onboarding
+  useEffect(() => {
+    let cancelled = false;
+    
+    const checkExistingUser = async () => {
+      try {
+        let hasThemeMap = false;
+        let hasItems = false;
+        let setupComplete = false;
+        
+        // Check for existing theme map
+        const themeMapRes = await fetch("/api/theme-map");
+        if (cancelled) return;
+        
+        if (themeMapRes.ok) {
+          const themeMapData = await themeMapRes.json().catch(() => null);
+          if (themeMapData && typeof themeMapData === 'object' && themeMapData.success && themeMapData.themes && Array.isArray(themeMapData.themes) && themeMapData.themes.length > 0) {
+            hasThemeMap = true;
+          }
+        }
+        
+        // Check for library items
+        const itemsRes = await fetch("/api/items?view=items");
+        if (cancelled) return;
+        
+        if (itemsRes.ok) {
+          const itemsData = await itemsRes.json().catch(() => null);
+          if (itemsData && typeof itemsData === 'object' && itemsData.success && itemsData.stats?.totalItems > 0) {
+            hasItems = true;
+          }
+        }
+        
+        // Check config for setup completion
+        const configRes = await fetch("/api/config");
+        if (cancelled) return;
+        
+        if (configRes.ok) {
+          const configData = await configRes.json().catch(() => null);
+          if (configData && typeof configData === 'object' && configData.success && configData.config?.setupComplete) {
+            setupComplete = true;
+          }
+        }
+        
+        // If any of the above checks found data, user is existing
+        // IMPORTANT: We do NOT redirect existing users - they can stay on this page
+        // and choose to view Theme Map or continue with onboarding.
+        // The banner will show them an option to view Theme Map, but they can also stay.
+        if (!cancelled) {
+          setHasExistingThemeMap(hasThemeMap);
+          setHasLibraryItems(hasItems);
+          setIsExistingUser(hasThemeMap || hasItems || setupComplete);
+          setCheckingExistingUser(false);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.error("Failed to check existing user status:", e);
+          setIsExistingUser(false);
+          setCheckingExistingUser(false);
+        }
+      }
+    };
+    
+    checkExistingUser();
+    
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Detect DB metrics on mount
   useEffect(() => {
@@ -218,16 +293,10 @@ function FastOnboardingContent() {
         if (cancelled) return;
         
         if (data && typeof data === 'object' && data.success && data.metrics) {
-          // Large chat history (>500MB) needs Supabase for good performance
-          // Redirect to full onboarding which includes Supabase setup
-          const LARGE_HISTORY_THRESHOLD_MB = 500;
-          if (data.metrics.size_mb >= LARGE_HISTORY_THRESHOLD_MB) {
-            router.push("/onboarding?reason=large-history");
-            return;
-          }
-          
+          // Set metrics - always analyze most recent ~500MB
           setDbMetrics(data.metrics);
-          setSelectedDays(data.metrics.suggested_days || 14);
+          // Days value doesn't matter since we use maxSizeMb: 500
+          setSelectedDays(30); // Default, but maxSizeMb: 500 will limit it
         } else {
           // Check for Python version errors
           if (data.errorType === "python_version_too_old") {
@@ -261,6 +330,9 @@ function FastOnboardingContent() {
       cancelled = true;
     };
   }, [isPreviewMode, router]);
+  
+  // REMOVED: No longer redirect to /onboarding-choice
+  // All users go through the same unified onboarding flow (~500MB analysis)
 
   // Check for API keys in environment and Vector DB status
   useEffect(() => {
@@ -332,7 +404,7 @@ function FastOnboardingContent() {
     };
   }, []);
 
-  // Fetch cost estimate when provider or days change
+  // Fetch cost estimate when provider or days change (with debouncing)
   useEffect(() => {
     let cancelled = false;
     
@@ -393,10 +465,14 @@ function FastOnboardingContent() {
       }
     };
 
-    fetchCostEstimate();
+    // Debounce cost estimate fetching (300ms delay)
+    const timer = setTimeout(() => {
+      fetchCostEstimate();
+    }, 300);
     
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [selectedDays, selectedProvider, dbMetrics, isPreviewMode]);
 
@@ -492,6 +568,43 @@ function FastOnboardingContent() {
     }
   }, [openaiKey]);
 
+  // Auto-download Lenny embeddings when OpenAI key is available
+  const downloadLennyEmbeddings = useCallback(async () => {
+    if (lennyDownloading) return; // Already downloading
+    
+    setLennyDownloading(true);
+    setLennyDownloadProgress("📥 Downloading Lenny's expert perspectives (~250MB)...");
+    
+    try {
+      const res = await fetch("/api/lenny-download", { method: "POST" });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        const errorMsg = errorData?.error || `HTTP ${res.status}`;
+        console.warn("Lenny download failed (non-critical):", errorMsg);
+        setLennyDownloadProgress("⚠️ Lenny download skipped (will retry later)");
+        // Don't block onboarding - just log warning
+        setTimeout(() => setLennyDownloadProgress(""), 5000);
+        return;
+      }
+      
+      const data = await res.json().catch(() => null);
+      if (data?.success) {
+        setLennyDownloadProgress("✓ Lenny's expert perspectives ready!");
+        setTimeout(() => setLennyDownloadProgress(""), 3000);
+      } else {
+        setLennyDownloadProgress("⚠️ Download in progress (non-blocking)");
+        setTimeout(() => setLennyDownloadProgress(""), 5000);
+      }
+    } catch (e) {
+      console.warn("Lenny download error (non-critical):", e);
+      setLennyDownloadProgress("⚠️ Download skipped (will retry later)");
+      setTimeout(() => setLennyDownloadProgress(""), 5000);
+    } finally {
+      setLennyDownloading(false);
+    }
+  }, [lennyDownloading]);
+
   // Save API key and proceed
   const saveKeyAndProceed = useCallback(async () => {
     if (isPreviewMode) {
@@ -578,11 +691,37 @@ function FastOnboardingContent() {
         throw new Error("Config save returned unsuccessful response");
       }
       
+      // Verify config was actually saved by reading it back (prevents race conditions)
+      const verifyRes = await fetch("/api/config");
+      if (!verifyRes.ok) {
+        throw new Error("Failed to verify config save");
+      }
+      const verifyData = await verifyRes.json().catch(() => null);
+      if (!verifyData || !verifyData.success || !verifyData.config?.fastStartComplete) {
+        throw new Error("Config verification failed - save may not have persisted");
+      }
+      
       setStep("generate");
+      
+      // Auto-download Lenny embeddings for ALL users (not just those with OpenAI key)
+      // Embeddings are pre-computed and can be downloaded without API key
+      // OpenAI key is only needed later when actually searching the embeddings
+      // Do this AFTER setting step to "generate" so it doesn't block the UI
+      fetch("/api/lenny-stats")
+        .then(res => res.json().catch(() => null))
+        .then(lennyStats => {
+          if (lennyStats && !lennyStats.indexed) {
+            // Start download in background (don't block onboarding)
+            downloadLennyEmbeddings();
+          }
+        })
+        .catch(() => {
+          // Silent fail - non-critical
+        });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
     }
-  }, [apiKey, keyFromEnv, keyValid, selectedProvider, validateKey, validateOpenaiKey, isPreviewMode, openaiKey, openaiKeyFromEnv, openaiKeyValid]);
+  }, [apiKey, keyFromEnv, keyValid, selectedProvider, validateKey, validateOpenaiKey, isPreviewMode, openaiKey, openaiKeyFromEnv, openaiKeyValid, downloadLennyEmbeddings]);
 
   // Generate Theme Map
   const generateThemeMap = useCallback(async () => {
@@ -669,13 +808,64 @@ function FastOnboardingContent() {
     setGenerationProgress("Extracting high-signal conversations...");
     setError(null);
     
+    // Wait for Lenny embeddings download to complete if needed (for OpenAI key users)
+    // This ensures Lenny perspectives are included in the Theme Map
+    if (openaiKey || openaiKeyFromEnv) {
+      setGenerationProgress("Checking Lenny's expert perspectives...");
+      
+      // Check if Lenny is already indexed
+      const statsRes = await fetch("/api/lenny-stats").catch(() => null);
+      const stats = statsRes?.ok ? await statsRes.json().catch(() => null) : null;
+      
+      if (!stats?.indexed) {
+        // Files don't exist - wait for download to complete (if in progress)
+        if (lennyDownloading) {
+          setGenerationProgress("Waiting for Lenny's expert perspectives to download (~250MB)...");
+          let attempts = 0;
+          const maxAttempts = 60; // 60 attempts × 2 seconds = 2 minutes max wait
+          
+          while (attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Check every 2 seconds
+            
+            const checkRes = await fetch("/api/lenny-stats").catch(() => null);
+            const checkStats = checkRes?.ok ? await checkRes.json().catch(() => null) : null;
+            
+            if (checkStats?.indexed) {
+              // Download complete - ready to proceed
+              setGenerationProgress("Lenny's expert perspectives ready!");
+              await new Promise(resolve => setTimeout(resolve, 500)); // Brief pause to show message
+              break;
+            }
+            
+            attempts++;
+          }
+          
+          if (attempts >= maxAttempts) {
+            console.warn("Lenny download timeout - proceeding without Lenny perspectives");
+            setGenerationProgress("Proceeding (Lenny perspectives will be available after download completes)...");
+          }
+        } else {
+          // Download not started - trigger it and wait briefly, then proceed
+          // (Download will complete in background, user can regenerate later for Lenny perspectives)
+          console.log("Lenny download not started - triggering download in background");
+          downloadLennyEmbeddings();
+          setGenerationProgress("Lenny's expert perspectives downloading in background (regenerate Theme Map later to include them)...");
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Brief pause
+        }
+      }
+    }
+    
+    setGenerationProgress("Extracting high-signal conversations...");
+    
     try {
       const res = await fetch("/api/generate-themes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          days: selectedDays,
+          // Size-based generation (most recent ~500MB) - days parameter ignored when maxSizeMb is set
+          maxSizeMb: 500,
           provider: selectedProvider,
+          source: "sqlite", // Force SQLite (even if Vector DB exists)
         }),
       });
       
@@ -697,7 +887,49 @@ function FastOnboardingContent() {
       });
       
       if (data && typeof data === 'object' && data.success && data.result) {
+        // Debug: Log Lenny status
+        console.log("[ThemeMap] Lenny status:", {
+          lennyAvailable: data.result.lennyAvailable,
+          lennyUnlocked: data.result.lennyUnlocked,
+          expertPerspectivesCount: data.result.themes?.reduce((sum: number, t: Theme) => sum + (t.expertPerspectives?.length || 0), 0) || 0,
+        });
         setThemeMap(data.result);
+        
+        // Mark Fast Start as complete (setupComplete: true) after successful theme map generation
+        // This prevents redirect loops when user visits home page
+        try {
+          const completeRes = await fetch("/api/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              setupComplete: true, // Mark as complete so home page doesn't redirect
+              fastStartComplete: true,
+            }),
+          });
+          if (!completeRes.ok) {
+            throw new Error(`HTTP ${completeRes.status}`);
+          }
+          
+          // Verify config was actually saved
+          const verifyRes = await fetch("/api/config");
+          if (!verifyRes.ok) {
+            throw new Error("Failed to verify config save");
+          }
+          const verifyData = await verifyRes.json().catch(() => null);
+          if (!verifyData || !verifyData.success || !(verifyData.config?.setupComplete || verifyData.config?.fastStartComplete)) {
+            throw new Error("Config verification failed - completion may not have persisted");
+          }
+        } catch (completeErr) {
+          // Non-critical: Theme Map still displayed even if config update fails
+          const errorMsg = completeErr instanceof Error ? completeErr.message : "Unknown error";
+          console.warn("Failed to mark Fast Start complete:", errorMsg);
+          // Show warning to user (non-blocking)
+          setError(`Theme Map generated successfully, but failed to mark setup complete: ${errorMsg}. You may be redirected to onboarding on refresh.`);
+          // Clear error after 5 seconds
+          setTimeout(() => {
+            setError(null);
+          }, 5000);
+        }
         
         // Persist Theme Map to data/theme_map.json
         try {
@@ -705,6 +937,9 @@ function FastOnboardingContent() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              // Size-based Theme Map (most recent ~500MB) - use consistent cache key
+              days: null, // null = size-based, not days-based
+              maxSizeMb: 500, // Context: this Theme Map is based on ~500MB
               themes: data.result.themes.map((t: Theme) => ({
                 name: t.title,
                 description: t.summary,
@@ -714,11 +949,11 @@ function FastOnboardingContent() {
                 })),
                 expertPerspectives: t.expertPerspectives || [], // Preserve Lenny's wisdom
               })),
-              unexplored_territory: data.result.unexploredTerritory.map((u: UnexploredTerritory) => u.title),
+              counter_intuitive: data.result.counterIntuitive || [],
+              unexplored_territory: data.result.unexploredTerritory || [],
               generated_at: data.result.generatedAt,
               conversations_analyzed: data.result.analyzed.conversationsUsed,
               conversations_considered: data.result.analyzed.conversationsConsidered,
-              time_window_days: normalizeDays(data.result.analyzed.days),
               meta: {
                 llm_provider: selectedProvider,
               },
@@ -726,32 +961,52 @@ function FastOnboardingContent() {
           });
           if (!persistRes.ok) {
             const errorText = await persistRes.text().catch(() => `HTTP ${persistRes.status}`);
-            console.warn("Failed to persist Theme Map (non-critical):", errorText.length > 100 ? persistRes.status : errorText);
+            const errorMsg = errorText.length > 100 ? `HTTP ${persistRes.status}` : errorText;
+            console.warn("Failed to persist Theme Map (non-critical):", errorMsg);
+            // Show warning to user (non-blocking)
+            setError(`Theme Map generated successfully, but failed to save: ${errorMsg}. You may lose it on refresh.`);
+            // Clear error after 5 seconds
+            setTimeout(() => {
+              setError(null);
+            }, 5000);
           }
         } catch (persistErr) {
           // Non-critical: Theme Map still displayed even if persistence fails
-          console.warn("Failed to persist Theme Map:", persistErr);
+          const errorMsg = persistErr instanceof Error ? persistErr.message : "Unknown error";
+          console.warn("Failed to persist Theme Map:", errorMsg);
+          // Show warning to user (non-blocking)
+          setError(`Theme Map generated successfully, but failed to save: ${errorMsg}. You may lose it on refresh.`);
+          // Clear error after 5 seconds
+          setTimeout(() => {
+            setError(null);
+          }, 5000);
         }
-      } else {
-        // Enhanced error handling
-        const errorMsg = (data && typeof data === 'object' && data.error) || "Failed to generate themes";
-        const errorDetails = (data && typeof data === 'object' && data.details) || null;
-        
-        // Format user-friendly error message
-        let friendlyError = errorMsg;
-        if (errorMsg.includes("API key")) {
-          friendlyError = "API key error: Please check your LLM API key is valid and has sufficient credits.";
-        } else if (errorMsg.includes("rate limit") || errorMsg.includes("429")) {
-          friendlyError = "Rate limited: Too many requests. Please wait a minute and try again.";
-        } else if (errorMsg.includes("timeout") || errorMsg.includes("timed out")) {
-          friendlyError = "Request timed out: The generation took too long. Try a smaller time window.";
-        } else if (errorMsg.includes("No conversations")) {
-          friendlyError = "No conversations found in the selected time window. Try a longer period.";
+        } else {
+          // Enhanced error handling with user-friendly messages
+          const errorMsg = (data && typeof data === 'object' && data.error) || "Failed to generate themes";
+          const errorDetails = (data && typeof data === 'object' && data.details) || null;
+          
+          // Format user-friendly error message
+          let friendlyError = errorMsg;
+          if (errorMsg.includes("API key") || errorMsg.includes("authentication") || errorMsg.includes("401") || errorMsg.includes("403")) {
+            friendlyError = "🔑 API Key Issue: Your API key may be invalid or expired. Please check your API key in Settings and try again.";
+          } else if (errorMsg.includes("rate limit") || errorMsg.includes("429")) {
+            friendlyError = "⏱️ Rate Limited: Too many requests. Please wait a minute and try again.";
+          } else if (errorMsg.includes("timeout") || errorMsg.includes("timed out") || errorMsg.includes("504")) {
+            friendlyError = "⏳ Request Timed Out: The generation took too long. Try selecting a smaller time window (e.g., 7 days instead of 14).";
+          } else if (errorMsg.includes("No conversations") || errorMsg.includes("no messages")) {
+            friendlyError = "📭 No Conversations Found: No chat history found in the selected time window. Try selecting a longer period or check if Cursor is installed.";
+          } else if (errorMsg.includes("Python") || errorMsg.includes("python")) {
+            friendlyError = "🐍 Python Issue: Python 3.10+ is required. Please install Python and restart the app.";
+          } else if (errorMsg.includes("database") || errorMsg.includes("DB")) {
+            friendlyError = "💾 Database Issue: Could not access your Cursor chat history. Make sure Cursor is installed and has been used at least once.";
+          } else {
+            friendlyError = `❌ Generation Failed: ${errorMsg}. Please try again or check Settings if the issue persists.`;
+          }
+          
+          setError(friendlyError);
+          console.error("Theme generation failed:", { error: errorMsg, details: errorDetails });
         }
-        
-        setError(friendlyError);
-        console.error("Theme generation failed:", { error: errorMsg, details: errorDetails });
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generation failed");
     } finally {
@@ -760,17 +1015,32 @@ function FastOnboardingContent() {
     }
   }, [selectedDays, selectedProvider, isPreviewMode]);
 
-  // Auto-generate when reaching generate step
+  // Track if we've already attempted generation to prevent infinite loops
+  const hasAttemptedGeneration = useRef(false);
+  
+  // Auto-generate when reaching generate step (only once)
   useEffect(() => {
-    if (step === "generate" && !themeMap && !generating) {
+    if (step === "generate" && !themeMap && !generating && !hasAttemptedGeneration.current) {
+      hasAttemptedGeneration.current = true;
       generateThemeMap();
     }
+    // Reset flag if step changes away from generate
+    if (step !== "generate") {
+      hasAttemptedGeneration.current = false;
+    }
+    // Note: Intentionally only depend on `step` to avoid re-running when selectedDays/selectedProvider change.
+    // Once user reaches generate step, those values are already set and shouldn't change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]); // Only depend on step to avoid infinite loops
 
   // Navigate to main app
   const goToApp = () => {
     router.push("/");
+  };
+
+  // Navigate to Theme Map
+  const goToThemeMap = () => {
+    router.push("/theme-map");
   };
 
   // Navigate to full setup
@@ -786,17 +1056,17 @@ function FastOnboardingContent() {
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
       </div>
 
-      {/* Preview Mode Banner */}
+      {/* Preview Mode Banner - Sticky */}
       {isPreviewMode && (
-        <div className="fixed top-0 left-0 right-0 bg-amber-500/90 text-black text-center py-2 text-sm font-medium z-50">
+        <div className="fixed top-0 left-0 right-0 bg-amber-500/90 text-black text-center py-2 text-sm font-medium z-50 shadow-lg">
           🔬 Preview Mode — No data will be saved.{" "}
-          <Link href="/" className="underline">
+          <Link href="/" className="underline font-semibold hover:bg-amber-400/50 px-2 py-1 rounded">
             Exit Preview
           </Link>
         </div>
       )}
 
-      <div className="w-full max-w-2xl">
+      <div className={`w-full max-w-2xl ${isPreviewMode ? 'mt-12' : ''}`}>
         {/* Progress indicator */}
         <div className="flex justify-center gap-2 mb-8">
           {["welcome", "api-key", "generate"].map((s, i) => (
@@ -812,6 +1082,16 @@ function FastOnboardingContent() {
             />
           ))}
         </div>
+
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {/* Existing User Banner */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {/* 
+          NOTE: Existing users are NOT automatically redirected.
+          They can stay on this page, view their chat history size, 
+          and choose to view Theme Map or continue with onboarding.
+        */}
+        {/* Banner removed as per user request */}
 
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         {/* SCREEN 1: Welcome + Auto-detect */}
@@ -838,8 +1118,7 @@ function FastOnboardingContent() {
                 <div className="flex items-center gap-3">
                   <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
                   <div>
-                    <div className="font-semibold text-white">Detecting your Cursor history...</div>
-                    <div className="text-sm text-slate-400">Looking for local database...</div>
+                    <div className="font-semibold text-white">Detecting your Cursor and Claude Code history</div>
                   </div>
                 </div>
               ) : dbMetrics?.db_path ? (
@@ -848,9 +1127,13 @@ function FastOnboardingContent() {
                     <span className="text-3xl">🧠</span>
                     <div>
                       <div className="font-semibold text-white text-lg">
-                        Found {dbMetrics.size_mb >= 1000 
-                          ? `${(dbMetrics.size_mb / 1024).toFixed(1)} GB` 
-                          : `${dbMetrics.size_mb.toFixed(0)} MB`} of chat history
+                        Found {(() => {
+                          const sizeMb = dbMetrics.size_mb;
+                          if (sizeMb >= 1000) {
+                            return `${(sizeMb / 1000).toFixed(1)} GB`;
+                          }
+                          return `${sizeMb.toFixed(0)} MB`;
+                        })()} of chat history
                       </div>
                       <div className="text-sm text-slate-400">
                         ~{dbMetrics.estimated_conversations_total} conversations • {dbMetrics.explanation}
@@ -858,93 +1141,20 @@ function FastOnboardingContent() {
                     </div>
                   </div>
                   
-                  {/* Time window selector */}
+                  {/* Unified onboarding: Always analyze most recent ~500MB */}
                   <div className="pt-4 border-t border-slate-700/50">
-                    <label className="block text-sm font-medium text-slate-300 mb-3">
-                      Analyze conversations from the last:
-                    </label>
-                    <div className="flex gap-2">
-                      {[
-                        { days: 7, label: "1 week" },
-                        { days: 14, label: "2 weeks" },
-                        { days: 28, label: "4 weeks" },
-                        { days: 42, label: "6 weeks" },
-                      ].map(({ days, label }) => (
-                        <button
-                          key={days}
-                          onClick={() => setSelectedDays(days)}
-                          className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
-                            selectedDays === days
-                              ? "bg-indigo-600 text-white"
-                              : "bg-slate-700/50 text-slate-300 hover:bg-slate-700"
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="mt-2 text-xs text-slate-500">
-                      {dbMetrics.suggested_days === selectedDays ? (
-                        <span className="text-emerald-400">✓ Recommended based on your history density</span>
-                      ) : selectedDays < dbMetrics.suggested_days ? (
-                        "Faster, but fewer patterns"
-                      ) : (
-                        "Richer themes, but takes longer"
-                      )}
-                    </div>
-                    
-                    {/* Cost Estimate */}
-                    {(costEstimate || loadingCost) && (
-                      <div className="mt-4 pt-4 border-t border-slate-700/50">
-                        {loadingCost ? (
-                          <div className="flex items-center gap-2 text-sm text-slate-400">
-                            <span className="animate-pulse">💰</span>
-                            <span>Calculating cost...</span>
-                          </div>
-                        ) : costEstimate && (
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className="text-lg">💰</span>
-                              <div>
-                                <div className="text-sm font-medium text-white">
-                                  Estimated cost: ~${costEstimate.estimatedCostUSD < 0.01 
-                                    ? costEstimate.estimatedCostUSD.toFixed(4) 
-                                    : costEstimate.estimatedCostUSD.toFixed(2)}
-                                </div>
-                                <div className="text-xs text-slate-500">
-                                  {costEstimate.provider} • {costEstimate.conversationCount} conversations
-                                </div>
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => setShowCostBreakdown(!showCostBreakdown)}
-                              className="text-xs text-indigo-400 hover:text-indigo-300"
-                            >
-                              {showCostBreakdown ? "Hide" : "Details"}
-                            </button>
-                          </div>
-                        )}
-                        
-                        {showCostBreakdown && costEstimate && (
-                          <div className="mt-2 p-2 bg-slate-900/50 rounded text-xs text-slate-400 space-y-1">
-                            <div className="flex justify-between">
-                              <span>Input ({costEstimate.inputTokens.toLocaleString()} tokens)</span>
-                              <span>${costEstimate.breakdown.inputCostUSD.toFixed(4)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Output ({costEstimate.outputTokens.toLocaleString()} tokens)</span>
-                              <span>${costEstimate.breakdown.outputCostUSD.toFixed(4)}</span>
-                            </div>
-                            <div className="text-slate-500 italic pt-1 border-t border-slate-700/50">
-                              {costEstimate.disclaimer}
-                            </div>
-                          </div>
-                        )}
+                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                      <div className="text-sm text-slate-300 mb-2">
+                        <span className="text-emerald-400">✓</span> We'll analyze the most recent <strong className="text-indigo-400">~500MB</strong> of your chat history
                       </div>
-                    )}
+                      <div className="text-xs text-slate-400">
+                        Includes Cursor and Claude Code conversations, prioritized by relevance.
+                      </div>
+                    </div>
                   </div>
+                  
                 </div>
-              ) : error && (error.includes("Python") || error.includes("python")) ? (
+              ) : (error && (error.includes("Python") || error.includes("python"))) ? (
                 <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-5">
                   <div className="flex items-start gap-3">
                     <span className="text-3xl">🐍</span>
@@ -994,7 +1204,7 @@ function FastOnboardingContent() {
             </div>
 
             <div className="text-sm text-slate-500">
-              No Supabase needed • Just one API key • ~90 seconds
+              We'll analyze your most recent ~500MB • Just API keys needed • ~90 seconds
             </div>
 
             <button
@@ -1029,7 +1239,7 @@ function FastOnboardingContent() {
             {keyFromEnv && (
               <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4 text-emerald-400 text-sm flex items-center gap-2">
                 <span>✓</span>
-                <span>Found API key in environment. You can proceed directly.</span>
+                <span>Anthropic API key found in environment. You can proceed directly.</span>
               </div>
             )}
 
@@ -1040,6 +1250,10 @@ function FastOnboardingContent() {
                   Anthropic API Key
                   <span className="text-red-400 ml-1">*</span>
                 </label>
+                <p className="text-xs text-slate-400">
+                  Required for generating your <strong className="text-indigo-400">Theme Map</strong> from chat history. 
+                  Analyzes patterns and insights from your conversations.
+                </p>
                 <div className="relative">
                   <input
                     type="password"
@@ -1084,21 +1298,19 @@ function FastOnboardingContent() {
             )}
 
             {/* Optional OpenAI Key for Lenny's Expert Perspectives */}
-            <div className="space-y-2 p-4 bg-gradient-to-r from-amber-500/5 to-orange-500/5 border border-amber-500/20 rounded-lg">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">🎙️</span>
-                <label className="text-sm font-medium text-amber-300">
-                  OpenAI API Key
-                  <span className="text-slate-500 font-normal ml-2">(optional)</span>
-                </label>
-              </div>
-              <p className="text-xs text-slate-400 mb-2">
-                Unlock expert perspectives from <strong className="text-amber-400">300+ Lenny&apos;s Podcast episodes</strong> (updated weekly). 
-                See what industry leaders have said about your themes.
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-300">
+                OpenAI API Key
+                <span className="text-slate-500 font-normal ml-2">(optional)</span>
+              </label>
+              <p className="text-xs text-slate-400">
+                <strong className="text-indigo-400">Optional:</strong> Unlock expert perspectives from <strong className="text-indigo-400">300+ Lenny&apos;s Podcast episodes</strong>. 
+                See what industry leaders have said about your themes. Lenny&apos;s archive downloads automatically; OpenAI key enables semantic search to match your themes with expert quotes.
               </p>
               {openaiKeyFromEnv ? (
-                <div className="text-xs text-emerald-400 flex items-center gap-1">
-                  <span>✓</span> OpenAI key found — expert perspectives enabled
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4 text-emerald-400 text-sm flex items-center gap-2">
+                  <span>✓</span>
+                  <span>OpenAI API key found in environment. Expert perspectives enabled.</span>
                 </div>
               ) : (
                 <div className="relative">
@@ -1117,7 +1329,7 @@ function FastOnboardingContent() {
                     }}
                     placeholder="sk-..."
                     autoComplete="off"
-                    className={`w-full px-4 py-2 pr-10 bg-slate-800/50 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm ${
+                    className={`w-full px-4 py-3 pr-10 bg-slate-800/50 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                       openaiKeyValid === true
                         ? "border-emerald-500"
                         : openaiKeyValid === false
@@ -1126,7 +1338,7 @@ function FastOnboardingContent() {
                     }`}
                   />
                   {openaiKeyValid !== null && (
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-lg">
                       {openaiKeyValid ? "✅" : "❌"}
                     </span>
                   )}
@@ -1139,28 +1351,16 @@ function FastOnboardingContent() {
               )}
               <p className="text-xs text-slate-500">
                 Get one at{" "}
-                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:underline">
+                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">
                   platform.openai.com
                 </a>
               </p>
+              <p className="text-xs text-slate-500 flex items-center gap-1">
+                <span>🔒</span>
+                <span>Saved locally to <code className="text-slate-400">.env.local</code> — never uploaded or shared</span>
+              </p>
             </div>
 
-            {/* Cost Summary */}
-            {costEstimate && (
-              <div className="flex items-center gap-3 p-4 bg-slate-800/50 border border-slate-700 rounded-lg">
-                <span className="text-2xl">💰</span>
-                <div className="flex-1">
-                  <div className="text-sm text-white">
-                    Estimated cost: <strong className="text-emerald-400">~${costEstimate.estimatedCostUSD < 0.01 
-                      ? costEstimate.estimatedCostUSD.toFixed(4) 
-                      : costEstimate.estimatedCostUSD.toFixed(2)}</strong>
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    {selectedDays} days • {costEstimate.conversationCount} conversations • Claude
-                  </div>
-                </div>
-              </div>
-            )}
 
             <div className="flex gap-3">
               <button
@@ -1196,6 +1396,35 @@ function FastOnboardingContent() {
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         {step === "generate" && (
           <div className="space-y-6">
+            {/* Info Banner - Always show what we're analyzing */}
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">ℹ️</span>
+                <div>
+                  <div className="font-semibold text-blue-300">Analyzing Most Recent ~500MB</div>
+                  <div className="text-sm text-slate-300 mt-1">
+                    Mining high-signal conversations from Cursor + Claude Code to generate your Theme Map.
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Lenny Download Progress */}
+            {lennyDownloadProgress && (
+              <div className={`rounded-xl p-4 ${
+                lennyDownloadProgress.startsWith("✓")
+                  ? "bg-emerald-500/10 border border-emerald-500/30"
+                  : lennyDownloadProgress.startsWith("⚠️")
+                  ? "bg-amber-500/10 border border-amber-500/30"
+                  : "bg-blue-500/10 border border-blue-500/30"
+              }`}>
+                <div className="flex items-center gap-3">
+                  {lennyDownloading && <span className="animate-spin">⏳</span>}
+                  <div className="text-sm text-slate-300">{lennyDownloadProgress}</div>
+                </div>
+              </div>
+            )}
+            
             {/* Generating state */}
             {generating && (
               <div className="text-center space-y-6 py-12">
@@ -1236,21 +1465,11 @@ function FastOnboardingContent() {
             {/* Results */}
             {themeMap && !generating && (
               <div className="space-y-6">
+                
                 {/* Header */}
                 <div className="text-center space-y-2">
                   <span className="text-4xl">🎉</span>
                   <h1 className="text-3xl font-bold text-white">Your Theme Map</h1>
-                  <p className="text-slate-400">
-                    {themeMap.analyzed.conversationsConsidered > themeMap.analyzed.conversationsUsed ? (
-                      <>
-                        Up to {themeMap.analyzed.conversationsConsidered} conversations fetched, {themeMap.analyzed.conversationsUsed} analyzed from the last {themeMap.analyzed.days} days
-                      </>
-                    ) : (
-                      <>
-                        Analyzed {themeMap.analyzed.conversationsUsed} conversations from the last {themeMap.analyzed.days} days
-                      </>
-                    )}
-                  </p>
                 </div>
 
                 {/* Themes */}
@@ -1300,9 +1519,9 @@ function FastOnboardingContent() {
                       {theme.expertPerspectives && theme.expertPerspectives.length > 0 && (
                         <div className="pl-9 pt-2 border-t border-amber-500/20">
                           <div className="text-xs text-amber-400 mb-2 flex items-center gap-1">
-                            <span>🎙️</span> Expert Perspective
+                            <span>🎙️</span> Expert Perspectives, Lenny&apos;s Podcast
                           </div>
-                          {theme.expertPerspectives.slice(0, 1).map((quote, j) => (
+                          {theme.expertPerspectives.map((quote, j) => (
                             <div key={j} className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
                               <p className="text-slate-300 italic">&quot;{quote.content}&quot;</p>
                               <div className="flex items-center justify-between mt-2 text-xs">
@@ -1366,7 +1585,7 @@ function FastOnboardingContent() {
                         {item.expertChallenge && (
                           <div className="pl-9 pt-2 border-t border-purple-500/20">
                             <div className="text-xs text-amber-400 mb-2 flex items-center gap-1">
-                              <span>🎙️</span> Expert Challenge
+                              <span>🎙️</span> Expert Perspectives, Lenny&apos;s Podcast
                             </div>
                             <div className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
                               <p className="text-slate-300 italic">&quot;{item.expertChallenge.content}&quot;</p>
@@ -1414,7 +1633,7 @@ function FastOnboardingContent() {
                         {item.expertInsight && (
                           <div className="pl-9 pt-2 border-t border-amber-500/20">
                             <div className="text-xs text-amber-400 mb-2 flex items-center gap-1">
-                              <span>🎙️</span> Expert Insight
+                              <span>🎙️</span> Expert Perspectives, Lenny&apos;s Podcast
                             </div>
                             <div className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
                               <p className="text-slate-300 italic">&quot;{item.expertInsight.content}&quot;</p>
@@ -1443,16 +1662,19 @@ function FastOnboardingContent() {
                 <div className="pt-6 border-t border-slate-700 space-y-4">
                   <h2 className="text-lg font-semibold text-white">What's Next?</h2>
                   
-                  {/* Primary CTA */}
-                  <button
-                    onClick={goToApp}
-                    className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold text-lg rounded-xl transition-all"
-                  >
-                    🚀 Start Using Inspiration
-                  </button>
+                  {/* Full Setup - Main CTA */}
+                  {!hasVectorDb && (
+                    <button
+                      onClick={goToFullSetup}
+                      className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold text-lg rounded-xl transition-all flex items-center justify-center gap-2"
+                    >
+                      <span>⚙️</span>
+                      <span>Full Setup (Unlock Theme Explorer)</span>
+                    </button>
+                  )}
                   
-                  {/* Theme CTAs with locked/unlocked behavior */}
-                  <div className="grid grid-cols-2 gap-3">
+                  {/* Theme CTAs */}
+                  <div className="grid grid-cols-1 gap-3">
                     {/* Regenerate - Always works */}
                     <button
                       onClick={generateThemeMap}
@@ -1460,62 +1682,6 @@ function FastOnboardingContent() {
                     >
                       🔄 Regenerate Theme Map
                     </button>
-                    
-                    {/* Generate Ideas - Requires Vector DB */}
-                    {hasVectorDb ? (
-                      <button
-                        onClick={() => router.push("/?tool=ideas")}
-                        className="py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg transition-colors"
-                      >
-                        💡 Generate Ideas
-                      </button>
-                    ) : (
-                      <button
-                        onClick={goToFullSetup}
-                        className="py-3 bg-slate-800/50 border border-slate-600 text-slate-400 font-medium rounded-lg transition-colors hover:border-slate-500 flex items-center justify-center gap-2"
-                        title="Requires full setup with Vector DB"
-                      >
-                        <span>🔒</span>
-                        <span>Generate Ideas</span>
-                      </button>
-                    )}
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* Seek - Requires Vector DB */}
-                    {hasVectorDb ? (
-                      <button
-                        onClick={() => router.push("/?tool=seek")}
-                        className="py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg transition-colors"
-                      >
-                        🔍 Search History
-                      </button>
-                    ) : (
-                      <button
-                        onClick={goToFullSetup}
-                        className="py-3 bg-slate-800/50 border border-slate-600 text-slate-400 font-medium rounded-lg transition-colors hover:border-slate-500 flex items-center justify-center gap-2"
-                        title="Requires full setup with Vector DB"
-                      >
-                        <span>🔒</span>
-                        <span>Search History</span>
-                      </button>
-                    )}
-                    
-                    {/* Full Setup */}
-                    {hasVectorDb ? (
-                      <div className="py-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-medium rounded-lg flex items-center justify-center gap-2">
-                        <span>✓</span>
-                        <span>Full Setup Complete</span>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={goToFullSetup}
-                        className="py-3 bg-indigo-600/20 border border-indigo-500/50 text-indigo-300 font-medium rounded-lg transition-colors hover:bg-indigo-600/30 flex items-center justify-center gap-2"
-                      >
-                        <span>⚙️</span>
-                        <span>Unlock Full Features</span>
-                      </button>
-                    )}
                   </div>
                   
                   {/* Explanation */}
@@ -1526,7 +1692,8 @@ function FastOnboardingContent() {
                         <div className="text-slate-400">
                           <strong className="text-slate-300">Theme Map gives you a taste.</strong>
                           <br />
-                          Full setup unlocks idea generation, semantic search, and a growing Library.
+                          Full setup unlocks Theme Explorer (generate themes directly from indexed chat history), 
+                          idea generation, semantic search, and a growing Library.
                           Takes ~2 minutes with Supabase (free tier works great).
                         </div>
                       </div>

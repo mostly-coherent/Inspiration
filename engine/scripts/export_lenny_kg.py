@@ -23,12 +23,12 @@ from engine.common.config import get_supabase_client
 
 
 def export_entities(supabase, output_dir: Path):
-    """Export all Lenny entities (source='expert', 'lenny', or 'both' that includes lenny)."""
+    """Export all Lenny entities, including those referenced by mentions/relations."""
     print("📦 Exporting entities...")
     
     entities_dict = {}
     
-    # Try source_type column first (newer schema) with pagination
+    # Step 1: Export entities with source_type IN ('expert', 'lenny')
     try:
         offset = 0
         limit = 1000
@@ -52,67 +52,114 @@ def export_entities(supabase, output_dir: Path):
     except Exception as e:
         print(f"   ⚠️  source_type column not available: {e}")
     
-    # Also try source column (migration may have added it) with pagination
+    # Step 2: Get ALL entity IDs referenced by Lenny mentions (including 'both' or merged entities)
+    print("   Collecting entity IDs from mentions...")
+    lenny_entity_ids = set()
+    offset = 0
+    limit = 1000
+    while True:
+        mentions_response = (
+            supabase.from_("kg_entity_mentions")
+            .select("entity_id")
+            .like("message_id", "lenny-%")
+            .range(offset, offset + limit - 1)
+            .execute()
+        )
+        if not mentions_response.data or len(mentions_response.data) == 0:
+            break
+        lenny_entity_ids.update(m["entity_id"] for m in mentions_response.data)
+        offset += limit
+        if len(mentions_response.data) < limit:
+            break
+    
+    # Also check source column for mentions
     try:
         offset = 0
         limit = 1000
         while True:
-            response_source = (
-                supabase.from_("kg_entities")
-                .select("*")
-                .in_("source", ["expert", "lenny"])
+            mentions_source = (
+                supabase.from_("kg_entity_mentions")
+                .select("entity_id")
+                .in_("source", ["expert", "lenny", "unknown"])
                 .range(offset, offset + limit - 1)
                 .execute()
             )
-            if not response_source.data or len(response_source.data) == 0:
+            if not mentions_source.data or len(mentions_source.data) == 0:
                 break
-            for entity in response_source.data:
-                if entity["id"] not in entities_dict:
-                    entities_dict[entity["id"]] = entity
+            lenny_entity_ids.update(m["entity_id"] for m in mentions_source.data)
             offset += limit
-            if len(response_source.data) < limit:
+            if len(mentions_source.data) < limit:
                 break
-        if entities_dict:
-            print(f"   Found {len(entities_dict)} entities via source column")
-    except Exception as e:
-        print(f"   ⚠️  source column not available: {e}")
+    except Exception:
+        pass
     
-    # If no source columns exist, get entity IDs from mentions and fetch entities
-    if not entities_dict:
-        print("   ⚠️  No source columns found, filtering by mention pattern...")
-        # Get all unique entity IDs that have lenny mentions (with pagination)
-        lenny_entity_ids = set()
-        offset = 0
-        limit = 1000
-        while True:
-            mentions_response = (
-                supabase.from_("kg_entity_mentions")
-                .select("entity_id")
+    # Step 3: Get ALL entity IDs referenced by Lenny relations
+    print("   Collecting entity IDs from relations...")
+    offset = 0
+    limit = 1000
+    while True:
+        try:
+            relations_response = (
+                supabase.from_("kg_relations")
+                .select("source_entity_id, target_entity_id")
                 .like("message_id", "lenny-%")
                 .range(offset, offset + limit - 1)
                 .execute()
             )
-            if not mentions_response.data or len(mentions_response.data) == 0:
+            if not relations_response.data or len(relations_response.data) == 0:
                 break
-            lenny_entity_ids.update(m["entity_id"] for m in mentions_response.data)
+            for rel in relations_response.data:
+                if rel.get("source_entity_id"):
+                    lenny_entity_ids.add(rel["source_entity_id"])
+                if rel.get("target_entity_id"):
+                    lenny_entity_ids.add(rel["target_entity_id"])
             offset += limit
-            if len(mentions_response.data) < limit:
+            if len(relations_response.data) < limit:
                 break
-        
-        lenny_entity_ids = list(lenny_entity_ids)
-        print(f"   Found {len(lenny_entity_ids)} unique entity IDs from mentions")
-        
-        # Fetch entities in batches (Supabase limit is typically 1000 per query)
+        except Exception:
+            break
+    
+    # Also check source column for relations
+    try:
+        offset = 0
+        limit = 1000
+        while True:
+            relations_source = (
+                supabase.from_("kg_relations")
+                .select("source_entity_id, target_entity_id")
+                .in_("source", ["expert", "lenny", "unknown"])
+                .range(offset, offset + limit - 1)
+                .execute()
+            )
+            if not relations_source.data or len(relations_source.data) == 0:
+                break
+            for rel in relations_source.data:
+                if rel.get("source_entity_id"):
+                    lenny_entity_ids.add(rel["source_entity_id"])
+                if rel.get("target_entity_id"):
+                    lenny_entity_ids.add(rel["target_entity_id"])
+            offset += limit
+            if len(relations_source.data) < limit:
+                break
+    except Exception:
+        pass
+    
+    print(f"   Found {len(lenny_entity_ids)} unique entity IDs from mentions/relations")
+    
+    # Step 4: Fetch ALL referenced entities (including 'both' or merged entities)
+    missing_entity_ids = [eid for eid in lenny_entity_ids if eid not in entities_dict]
+    if missing_entity_ids:
+        print(f"   Fetching {len(missing_entity_ids)} additional entities referenced by mentions/relations...")
         batch_size = 1000
-        for i in range(0, len(lenny_entity_ids), batch_size):
-            batch_ids = lenny_entity_ids[i:i + batch_size]
+        for i in range(0, len(missing_entity_ids), batch_size):
+            batch_ids = missing_entity_ids[i:i + batch_size]
             entity_response = supabase.from_("kg_entities").select("*").in_("id", batch_ids).execute()
             if entity_response.data:
                 for entity in entity_response.data:
                     entities_dict[entity["id"]] = entity
     
     entities = list(entities_dict.values())
-    print(f"   Total: {len(entities)} entities")
+    print(f"   Total: {len(entities)} entities (includes all referenced entities)")
     
     # Write to JSON
     output_file = output_dir / "lenny_kg_entities.json"
@@ -150,6 +197,7 @@ def export_mentions(supabase, output_dir: Path):
             break
     
     # Also try source column if it exists (migration may have added it) with pagination
+    # Include 'unknown' source (likely from Lenny's data)
     try:
         offset = 0
         limit = 1000
@@ -157,7 +205,7 @@ def export_mentions(supabase, output_dir: Path):
             response_source = (
                 supabase.from_("kg_entity_mentions")
                 .select("*")
-                .in_("source", ["expert", "lenny"])
+                .in_("source", ["expert", "lenny", "unknown"])
                 .range(offset, offset + limit - 1)
                 .execute()
             )

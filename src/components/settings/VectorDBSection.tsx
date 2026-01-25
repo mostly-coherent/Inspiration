@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface VectorDBConfig {
   provider: "supabase";
@@ -21,12 +21,64 @@ interface ChatHistoryInfo {
   onRefresh: () => void;
 }
 
+interface IndexingStatus {
+  currentPercentage: number;
+  indexedSizeMb: number;
+  totalSizeMb: number;
+  messageCount: number;
+  totalMessages: number;
+  dateRange: string;
+  lastSyncDate: string;
+}
+
 interface VectorDBSectionProps {
   vectordb?: VectorDBConfig;
   chatHistory?: ChatHistoryInfo; // Made optional since it's now in a separate section
 }
 
 export function VectorDBSection({ vectordb, chatHistory }: VectorDBSectionProps) {
+  const [indexingStatus, setIndexingStatus] = useState<IndexingStatus | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [showIndexMore, setShowIndexMore] = useState(false);
+
+  // Fetch indexing status when component mounts or after indexing completes
+  useEffect(() => {
+    if (!vectordb?.initialized) return;
+    
+    let cancelled = false;
+    
+    const fetchStatus = async () => {
+      setLoadingStatus(true);
+      try {
+        const res = await fetch("/api/vector-db/status");
+        if (cancelled) return;
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (cancelled) return;
+          
+          if (data.success && !cancelled) {
+            setIndexingStatus(data);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to fetch indexing status:", err);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingStatus(false);
+        }
+      }
+    };
+
+    fetchStatus();
+    
+    return () => {
+      cancelled = true;
+    };
+  }, [vectordb?.initialized]);
+
   return (
     <div className="space-y-6">
       <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/30">
@@ -39,6 +91,88 @@ export function VectorDBSection({ vectordb, chatHistory }: VectorDBSectionProps)
           (see link below), then enter your credentials here.
         </p>
       </div>
+
+      {/* Indexing Status (NEW for v2.1) */}
+      {vectordb?.initialized && indexingStatus && (
+        <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50 space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-slate-200 font-medium">📊 Indexing Status</h4>
+            {indexingStatus.currentPercentage < 100 && (
+              <button
+                onClick={() => setShowIndexMore(true)}
+                className="text-xs px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 rounded text-indigo-400 transition-colors"
+              >
+                Index More History →
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <span className="text-slate-500">Currently indexed:</span>
+              <div className="text-white font-semibold">
+                {indexingStatus.currentPercentage}% 
+                <span className="text-slate-400 font-normal ml-1">
+                  ({indexingStatus.indexedSizeMb}MB of {indexingStatus.totalSizeMb}MB)
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <span className="text-slate-500">Messages:</span>
+              <div className="text-white font-semibold">
+                {indexingStatus.messageCount.toLocaleString()}
+                <span className="text-slate-400 font-normal ml-1">
+                  of {indexingStatus.totalMessages.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <span className="text-slate-500">Coverage:</span>
+              <div className="text-white">{indexingStatus.dateRange}</div>
+            </div>
+
+            <div>
+              <span className="text-slate-500">Last synced:</span>
+              <div className="text-white">{indexingStatus.lastSyncDate}</div>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="pt-2">
+            <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-300"
+                style={{ width: `${indexingStatus.currentPercentage}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Index More Modal */}
+      {showIndexMore && indexingStatus && (
+        <IndexMoreModal
+          currentPercentage={indexingStatus.currentPercentage}
+          totalSizeMb={indexingStatus.totalSizeMb}
+          onClose={() => setShowIndexMore(false)}
+          onComplete={() => {
+            setShowIndexMore(false);
+            // Refresh status
+            fetch("/api/vector-db/status")
+              .then(r => r.json())
+              .then(data => {
+                if (data.success) {
+                  setIndexingStatus(data);
+                }
+              })
+              .catch(err => {
+                console.error("Failed to refresh indexing status:", err);
+              });
+          }}
+        />
+      )}
 
       {/* Supabase Credentials */}
       <SupabaseCredentialsSection vectordb={vectordb} />
@@ -234,6 +368,223 @@ function SupabaseCredentialsSection({ vectordb }: { vectordb?: VectorDBConfig })
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+// Index More Modal Component (NEW for v2.1)
+interface IndexMoreModalProps {
+  currentPercentage: number;
+  totalSizeMb: number;
+  onClose: () => void;
+  onComplete: () => void;
+}
+
+function IndexMoreModal({ currentPercentage, totalSizeMb, onClose, onComplete }: IndexMoreModalProps) {
+  const [targetPercentage, setTargetPercentage] = useState(Math.min(100, currentPercentage + 20));
+  const [estimate, setEstimate] = useState<any>(null);
+  const [loadingEstimate, setLoadingEstimate] = useState(false);
+  const [indexing, setIndexing] = useState(false);
+
+  // Fetch estimate when percentage changes
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchEstimate = async () => {
+      setLoadingEstimate(true);
+      try {
+        const sizeMb = totalSizeMb * (targetPercentage / 100);
+        const res = await fetch("/api/estimate-indexing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sizeMb }),
+        });
+
+        if (cancelled) return;
+
+        if (res.ok) {
+          const data = await res.json();
+          setEstimate(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch estimate:", err);
+      } finally {
+        if (!cancelled) {
+          setLoadingEstimate(false);
+        }
+      }
+    };
+
+    const timer = setTimeout(fetchEstimate, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [targetPercentage, totalSizeMb]);
+
+  const handleIndexMore = async () => {
+    setIndexing(true);
+
+    try {
+      const maxSizeMb = totalSizeMb * (targetPercentage / 100);
+      
+      const res = await fetch("/api/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "extend",
+          targetPercentage,
+          maxSizeMb,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Indexing failed");
+      }
+
+      const data = await res.json();
+      
+      if (data.success) {
+        // Show success toast (implementation depends on toast library)
+        alert("Indexing started! Your Theme Map will update as more history is processed.");
+        onComplete();
+      } else {
+        throw new Error(data.error || "Indexing failed");
+      }
+    } catch (err) {
+      console.error("Index more failed:", err);
+      alert("Failed to extend indexing. Please try again.");
+    } finally {
+      setIndexing(false);
+    }
+  };
+
+  const additionalPercentage = targetPercentage - currentPercentage;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-lg w-full">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-bold text-white">Extend Indexing</h3>
+          <button
+            onClick={onClose}
+            disabled={indexing}
+            className="text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-6">
+          {/* Current Status */}
+          <div className="p-3 bg-slate-800/50 rounded-lg text-sm">
+            <div className="flex justify-between mb-2">
+              <span className="text-slate-400">Currently indexed:</span>
+              <span className="text-white font-semibold">{currentPercentage}%</span>
+            </div>
+            <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-emerald-500"
+                style={{ width: `${currentPercentage}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Target Slider */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-slate-300">
+                Extend to:
+              </label>
+              <div className="text-3xl font-bold text-indigo-400">{targetPercentage}%</div>
+            </div>
+
+            <input
+              type="range"
+              min={currentPercentage + 5}
+              max="100"
+              step="5"
+              value={targetPercentage}
+              onChange={(e) => setTargetPercentage(parseInt(e.target.value))}
+              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+              style={{
+                background: `linear-gradient(to right, rgb(16 185 129) 0%, rgb(16 185 129) ${currentPercentage}%, rgb(99 102 241) ${currentPercentage}%, rgb(99 102 241) ${targetPercentage}%, rgb(51 65 85) ${targetPercentage}%, rgb(51 65 85) 100%)`
+              }}
+            />
+
+            <div className="text-xs text-slate-500 text-center">
+              +{additionalPercentage}% additional indexing
+            </div>
+          </div>
+
+          {/* Estimates */}
+          {loadingEstimate ? (
+            <div className="flex items-center justify-center gap-2 text-slate-400 py-4">
+              <span className="animate-spin">⏳</span>
+              <span>Calculating...</span>
+            </div>
+          ) : estimate && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-slate-800/50 rounded-lg p-3">
+                <div className="text-xs text-slate-500 mb-1">Additional Size</div>
+                <div className="text-lg font-semibold text-white">
+                  {(totalSizeMb * (additionalPercentage / 100)).toFixed(0)} MB
+                </div>
+              </div>
+
+              <div className="bg-slate-800/50 rounded-lg p-3">
+                <div className="text-xs text-slate-500 mb-1">Est. Time</div>
+                <div className="text-lg font-semibold text-white">
+                  {estimate.timeMinutes} min
+                </div>
+              </div>
+
+              <div className="bg-slate-800/50 rounded-lg p-3">
+                <div className="text-xs text-slate-500 mb-1">Est. Cost</div>
+                <div className="text-lg font-semibold text-emerald-400">
+                  ${estimate.costUsd.toFixed(2)}
+                </div>
+              </div>
+
+              <div className="bg-slate-800/50 rounded-lg p-3">
+                <div className="text-xs text-slate-500 mb-1">Messages</div>
+                <div className="text-lg font-semibold text-white">
+                  +{(estimate.messages || 0).toLocaleString()}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Info */}
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-xs text-slate-300">
+            <div className="flex items-start gap-2">
+              <span>💡</span>
+              <span>
+                Indexing will happen in the background. Your Theme Map will automatically update as more history is processed.
+              </span>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              disabled={indexing}
+              className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleIndexMore}
+              disabled={indexing || loadingEstimate}
+              className="flex-[2] py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all"
+            >
+              {indexing ? "Indexing..." : `Index to ${targetPercentage}%`}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

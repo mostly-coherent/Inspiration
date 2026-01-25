@@ -15,7 +15,7 @@ function isCloudEnvironment(): boolean {
   );
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     // Fast path: If running in cloud, return immediately (cannot sync from cloud)
     if (isCloudEnvironment()) {
@@ -29,13 +29,39 @@ export async function POST() {
       }, { status: 400 });
     }
 
-    // Local environment: spawn Python process as before
+    // Parse request body for partial indexing parameters
+    let maxSizeMb: number | undefined;
+    let percentage: number | undefined;
+    
+    try {
+      const body = await request.json();
+      maxSizeMb = body.maxSizeMb;
+      percentage = body.percentage;
+    } catch {
+      // No body or invalid JSON - use default full sync
+    }
+
+    // Local environment: spawn Python process
     const enginePath = path.resolve(process.cwd(), "engine");
-    const scriptPath = path.join(enginePath, "scripts", "sync_messages.py");
     const pythonPath = getPythonPath();
     
+    // Choose script based on whether this is partial indexing or full sync
+    let scriptPath: string;
+    let args: string[] = [];
+    
+    if (maxSizeMb !== undefined && maxSizeMb > 0) {
+      // Partial indexing with size limit
+      scriptPath = path.join(enginePath, "scripts", "index_all_messages.py");
+      args = ["--batch-size", "200", "--max-size-mb", maxSizeMb.toString()];
+      console.log(`Starting partial indexing: ${maxSizeMb}MB (${percentage}%)`);
+    } else {
+      // Full incremental sync (default)
+      scriptPath = path.join(enginePath, "scripts", "sync_messages.py");
+      console.log("Starting full incremental sync");
+    }
+    
     return new Promise<NextResponse>((resolve, reject) => {
-      const proc = spawn(pythonPath, [scriptPath], {
+      const proc = spawn(pythonPath, [scriptPath, ...args], {
         cwd: enginePath,
       });
 
@@ -145,19 +171,31 @@ export async function POST() {
           const totalIndexed =
             (stats.cursor?.indexed || 0) +
             (stats.claudeCode?.indexed || 0);
+          
+          const totalSkipped =
+            (stats.cursor?.skipped || 0) +
+            (stats.claudeCode?.skipped || 0);
 
           // Check if there were no new messages
           if (totalIndexed === 0) {
             resolve(NextResponse.json({
               success: true,
               message: "Brain is up to date",
-              stats,
+              stats: {
+                ...stats,
+                indexed: totalIndexed,
+                skipped: totalSkipped,
+              },
             }));
           } else {
             resolve(NextResponse.json({
               success: true,
               message: `Synced ${totalIndexed} new message${totalIndexed === 1 ? '' : 's'}`,
-              stats,
+              stats: {
+                ...stats,
+                indexed: totalIndexed,
+                skipped: totalSkipped,
+              },
             }));
           }
         }

@@ -706,3 +706,64 @@ def get_conversations_by_chat_ids(
             f"Traceback:\n{error_details}"
         ) from e
 
+
+def get_high_signal_conversations_vector_db(
+    days_back: int = 14,
+    max_conversations: int = 80,
+) -> list[dict]:
+    """
+    Extract high-signal conversations from Vector DB using server-side sampling.
+    
+    Uses the 'sample_high_signal_conversations' RPC function to filter and score
+    conversations on the database server, minimizing data transfer.
+    
+    Args:
+        days_back: Number of days to look back
+        max_conversations: Maximum number of conversations to return
+        
+    Returns:
+        List of conversation dicts (simplified format for Theme Map)
+    """
+    client = get_supabase_client()
+    if not client:
+        return []
+        
+    try:
+        # Call RPC function
+        result = client.rpc("sample_high_signal_conversations", {
+            "days_back": days_back,
+            "max_conversations": max_conversations
+        }).execute()
+        
+        if not result.data:
+            return []
+            
+        # Transform results into conversation objects
+        # Note: The RPC returns summary data, not full message history.
+        # For Theme Map, we might need full text.
+        # If the RPC returns first_msg only, we might need to fetch full text for selected chats.
+        # Wait, Theme Map needs full text to generate themes?
+        # Yes, usually.
+        # But 'sample_high_signal_conversations' returns summary.
+        
+        # Strategy: Get IDs from RPC, then fetch full messages for those IDs.
+        sampled_chats = result.data
+        chat_ids = [(c["workspace"], c["chat_id"], c["chat_type"]) for c in sampled_chats]
+        
+        # Fetch full conversations for these IDs
+        # We reuse get_conversations_by_chat_ids but we need to construct it carefully
+        # get_conversations_by_chat_ids takes (workspace, chat_id, chat_type) tuples
+        
+        # Calculate date range for fetching
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=days_back + 1) # Add buffer
+        
+        full_conversations = get_conversations_by_chat_ids(chat_ids, start_date, end_date)
+        
+        return full_conversations
+        
+    except Exception as e:
+        import sys
+        print(f"⚠️  Failed to get high signal conversations from Vector DB: {e}", file=sys.stderr)
+        return []
+

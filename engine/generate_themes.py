@@ -25,10 +25,16 @@ from common.cursor_db import (
     get_high_signal_conversations_sqlite_fast,
     estimate_db_metrics,
 )
+from common.vector_db import (
+    get_high_signal_conversations_vector_db,
+    get_message_count,
+    get_supabase_client,
+)
 from common.llm import call_llm
 from common.cost_estimator import estimate_cost, format_cost_display
 from common.lenny_search import search_lenny_archive, is_lenny_indexed
 from common.semantic_search import is_openai_configured
+from typing import Optional
 
 
 def search_lenny_for_theme(theme_title: str, theme_summary: str, top_k: int = 2) -> list[dict]:
@@ -45,8 +51,15 @@ def search_lenny_for_theme(theme_title: str, theme_summary: str, top_k: int = 2)
     
     try:
         # Search with theme title + summary for better context
-        query = f"{theme_title}: {theme_summary}"
-        results = search_lenny_archive(query, top_k=top_k, min_similarity=0.3)
+        # Use title as primary query (more specific) and summary as fallback context
+        query = theme_title if theme_title else theme_summary
+        if theme_summary and theme_summary != theme_title:
+            query = f"{theme_title} {theme_summary[:200]}"  # Limit summary length to avoid dilution
+        # Lower threshold to 0.20 to be more lenient and catch more matches
+        results = search_lenny_archive(query, top_k=top_k, min_similarity=0.20)
+        
+        if not results:
+            print(f"   ℹ️  No expert perspectives found for '{theme_title}' (similarity < 0.20)", file=sys.stderr)
         
         return [
             {
@@ -62,6 +75,8 @@ def search_lenny_for_theme(theme_title: str, theme_summary: str, top_k: int = 2)
         ]
     except Exception as e:
         print(f"⚠️  Lenny search failed for '{theme_title}': {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         return []
 
 
@@ -98,9 +113,11 @@ def enhance_themes_with_lenny(theme_map: dict) -> dict:
             top_k=2
         )
         theme["expertPerspectives"] = quotes
+        theme_display_name = theme.get("title") or theme.get("name", "Theme")
         if quotes:
-            theme_display_name = theme.get("title") or theme.get("name", "Theme")
             print(f"   ✓ {theme_display_name}: {len(quotes)} expert quotes", file=sys.stderr)
+        else:
+            print(f"   ℹ️  {theme_display_name}: No expert quotes found (similarity threshold: 0.20)", file=sys.stderr)
     
     # Enhance counter-intuitive items
     for item in theme_map.get("counterIntuitive", []):
@@ -231,28 +248,53 @@ def format_cards_for_prompt(cards: list[dict]) -> str:
 def generate_theme_map(
     days: int = 14,
     max_conversations: int = 80,
+    max_size_mb: int | None = None,
     provider: str = "anthropic",
     model: str | None = None,
+    force_source: Optional[str] = None,  # "sqlite" | "vectordb" | None (auto)
 ) -> dict:
     """
-    Generate a Theme Map from local Cursor chat history.
+    Generate a Theme Map from Cursor chat history (local or cloud).
     
     Args:
-        days: Number of days to analyze
-        max_conversations: Maximum conversations to include
+        days: Number of days to analyze (ignored if max_size_mb is set)
+        max_conversations: Maximum conversations to include (ignored if max_size_mb is set)
+        max_size_mb: Maximum size in MB to analyze (takes precedence over days/conversations)
         provider: LLM provider ("anthropic", "openai")
         model: Optional model override
+        force_source: Force "sqlite" or "vectordb" source. If None, auto-detects.
         
     Returns:
         Theme Map JSON structure
     """
-    print(f"🔍 Extracting high-signal conversations from last {days} days...", file=sys.stderr)
+    # Auto-detect source
+    source = force_source
+    if source is None:
+        # Check if Vector DB is configured and has data
+        client = get_supabase_client()
+        if client and get_message_count(client) > 1000:
+            source = "vectordb"
+        else:
+            source = "sqlite"
+            
+    print(f"📊 Using {source.upper()} as data source", file=sys.stderr)
+    if max_size_mb:
+        print(f"🔍 Extracting high-signal conversations up to {max_size_mb}MB...", file=sys.stderr)
+    else:
+        print(f"🔍 Extracting high-signal conversations from last {days} days...", file=sys.stderr)
     
-    # Get conversations from SQLite (no Vector DB)
-    conversations = get_high_signal_conversations_sqlite_fast(
-        days_back=days,
-        max_conversations=max_conversations,
-    )
+    if source == "vectordb":
+        conversations = get_high_signal_conversations_vector_db(
+            days_back=days,
+            max_conversations=max_conversations,
+        )
+    else:
+        # Get conversations from SQLite (no Vector DB)
+        conversations = get_high_signal_conversations_sqlite_fast(
+            days_back=days,
+            max_conversations=max_conversations,
+            max_size_mb=max_size_mb,
+        )
     
     if not conversations:
         return {
@@ -270,6 +312,38 @@ def generate_theme_map(
     
     print(f"📊 Found {len(conversations)} high-signal conversations", file=sys.stderr)
     
+    # Calculate actual size analyzed (if size-based)
+    actual_size_mb = None
+    if max_size_mb:
+        total_size_bytes = sum(c.get("_size_bytes", 0) for c in conversations)
+        actual_size_mb = round(total_size_bytes / (1024 * 1024), 1)
+        print(f"📦 Analyzed {actual_size_mb}MB of chat history (limit: {max_size_mb}MB)", file=sys.stderr)
+    
+    # Calculate actual days covered
+    actual_days = days
+    if conversations:
+        timestamps = []
+        for conv in conversations:
+            for msg in conv.get("messages", []):
+                ts = msg.get("timestamp", 0)
+                if ts > 0:
+                    timestamps.append(ts)
+        if timestamps:
+            oldest_ts = min(timestamps)
+            newest_ts = max(timestamps)
+            if oldest_ts > 0 and newest_ts > 0:
+                from datetime import timedelta
+                time_span_seconds = (newest_ts - oldest_ts) / 1000  # Convert to seconds
+                time_span_days = time_span_seconds / 86400  # Convert to days
+                
+                if max_size_mb:
+                    # For size-based: show days from oldest included conversation to newest
+                    actual_days = max(1, int(time_span_days))
+                    print(f"📅 Analyzed conversations span {actual_days} days (from {datetime.fromtimestamp(oldest_ts/1000).strftime('%Y-%m-%d')} to {datetime.fromtimestamp(newest_ts/1000).strftime('%Y-%m-%d')})", file=sys.stderr)
+                else:
+                    # For time-based: use the time window
+                    actual_days = days
+    
     # Create conversation cards
     cards = create_conversation_cards(conversations, max_cards=60)
     print(f"📝 Created {len(cards)} conversation cards for analysis", file=sys.stderr)
@@ -278,7 +352,8 @@ def generate_theme_map(
     cards_text = format_cards_for_prompt(cards)
     
     # Build the prompt
-    prompt = f"""You are analyzing a developer's AI-assisted coding sessions from the last {days} days.
+    if max_size_mb:
+        prompt = f"""You are analyzing a developer's AI-assisted coding sessions from their most recent ~{actual_size_mb}MB of chat history (covering approximately {actual_days} days).
 
 Here are summaries of their recent conversations:
 
@@ -355,14 +430,21 @@ Important:
             max_tokens=4000,
         )
     except Exception as e:
+        # Use already-calculated metrics (actual_days and actual_size_mb calculated above)
+        analyzed_metrics = {
+            "days": actual_days,
+            "conversationsConsidered": len(conversations),
+            "conversationsUsed": len(cards),
+        }
+        if max_size_mb and actual_size_mb:
+            analyzed_metrics["sizeMb"] = actual_size_mb
+            analyzed_metrics["maxSizeMb"] = max_size_mb
+            analyzed_metrics["sizeBased"] = True
+        
         return {
             "error": f"LLM call failed: {str(e)}",
-            "suggestedDays": days,
-            "analyzed": {
-                "days": days,
-                "conversationsConsidered": len(conversations),
-                "conversationsUsed": len(cards),
-            },
+            "suggestedDays": actual_days,
+            "analyzed": analyzed_metrics,
             "themes": [],
             "counterIntuitive": [],
             "unexploredTerritory": [],
@@ -380,29 +462,44 @@ Important:
         theme_data = json.loads(json_str.strip())
     except json.JSONDecodeError as e:
         print(f"⚠️  Failed to parse LLM response: {e}", file=sys.stderr)
+        # Use already-calculated metrics (actual_days and actual_size_mb calculated above)
+        analyzed_metrics = {
+            "days": actual_days,
+            "conversationsConsidered": len(conversations),
+            "conversationsUsed": len(cards),
+        }
+        if max_size_mb and actual_size_mb:
+            analyzed_metrics["sizeMb"] = actual_size_mb
+            analyzed_metrics["maxSizeMb"] = max_size_mb
+            analyzed_metrics["sizeBased"] = True
+        
         return {
             "error": f"Failed to parse LLM response: {str(e)}",
             "raw_response": response[:1000],
-            "suggestedDays": days,
-            "analyzed": {
-                "days": days,
-                "conversationsConsidered": len(conversations),
-                "conversationsUsed": len(cards),
-            },
+            "suggestedDays": actual_days,
+            "analyzed": analyzed_metrics,
             "themes": [],
             "counterIntuitive": [],
             "unexploredTerritory": [],
         }
     
     # Build final Theme Map
+    analyzed_metrics = {
+        "days": actual_days,
+        "conversationsConsidered": len(conversations),
+        "conversationsUsed": len(cards),
+    }
+    
+    # Add size-based metrics if applicable
+    if max_size_mb and actual_size_mb:
+        analyzed_metrics["sizeMb"] = actual_size_mb
+        analyzed_metrics["maxSizeMb"] = max_size_mb
+        analyzed_metrics["sizeBased"] = True
+    
     theme_map = {
         "generatedAt": datetime.now().isoformat(),
-        "suggestedDays": days,
-        "analyzed": {
-            "days": days,
-            "conversationsConsidered": len(conversations),
-            "conversationsUsed": len(cards),
-        },
+        "suggestedDays": actual_days,
+        "analyzed": analyzed_metrics,
         "themes": theme_data.get("themes", []),
         "counterIntuitive": theme_data.get("counterIntuitive", []),
         "unexploredTerritory": theme_data.get("unexploredTerritory", []),
@@ -433,6 +530,12 @@ def main():
         help="Maximum conversations to include (default: 80)"
     )
     parser.add_argument(
+        "--max-size-mb",
+        type=int,
+        default=None,
+        help="Maximum size in MB to analyze (takes precedence over days/conversations)"
+    )
+    parser.add_argument(
         "--provider",
         choices=["anthropic", "openai"],
         default="anthropic",
@@ -443,6 +546,13 @@ def main():
         type=str,
         default=None,
         help="Model override (default: provider's default)"
+    )
+    parser.add_argument(
+        "--force-source",
+        type=str,
+        choices=["sqlite", "vectordb"],
+        default=None,
+        help="Force data source: 'sqlite' (local database) or 'vectordb' (Supabase). If not set, auto-detects."
     )
     parser.add_argument(
         "--output",
@@ -497,8 +607,10 @@ def main():
     theme_map = generate_theme_map(
         days=args.days,
         max_conversations=args.max_conversations,
+        max_size_mb=args.max_size_mb,
         provider=args.provider,
         model=args.model,
+        force_source=args.force_source,
     )
     
     # Output
