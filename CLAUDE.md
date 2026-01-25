@@ -875,6 +875,128 @@ If you're too tired to test properly, **stop and test tomorrow**.
 
 ---
 
+## Onboarding Testing & Auditing
+
+### Quick Start Methods
+
+**Method 1: Preview Mode (Fastest - No Reset Needed)**
+- Navigate to: `http://localhost:3000/onboarding-fast?preview=true`
+- Simulates DB detection, cost estimates, theme map generation
+- **No data is saved** (config, theme maps, etc.)
+- Skips API key validation
+- Fast iteration (no real API calls)
+
+**Method 2: Reset Onboarding Button (Full Reset)**
+- Navigate to Settings → Advanced → Testing & Development
+- Click "Reset Onboarding State" button
+- Resets: Theme map cache, `setupComplete` flag, `fastStartComplete` flag
+- Does NOT reset: Vector DB data, Library items, API keys in `.env.local`
+
+**Method 3: API Reset (Programmatic)**
+```bash
+curl -X POST http://localhost:3000/api/test/reset-onboarding
+```
+
+**Method 4: Manual Config Reset**
+- Edit `data/config.json`: Set `setupComplete: false`, `fastStartComplete: false`
+- Clear theme map cache: `rm -rf data/theme_maps/*.json`
+- If using Supabase, update `app_config` table
+
+### Automated Testing (Playwright E2E)
+
+```bash
+# Run all onboarding tests
+npm test
+
+# Run only Fast Start tests
+npx playwright test e2e/fast-start.spec.ts
+
+# Run only Full Onboarding tests
+npx playwright test e2e/onboarding.spec.ts
+
+# Run with UI (interactive)
+npm run test:ui
+
+# Run in headed mode (watch browser)
+npm run test:headed
+```
+
+### Manual Audit Checklist
+
+**Scenario 1: New User with <500MB History**
+- [ ] Home page redirects to `/onboarding-fast` when not set up
+- [ ] DB detection shows correct size
+- [ ] Time window selector works (1/2/4/6 weeks)
+- [ ] Cost estimate appears and updates when days change
+- [ ] API key validation works (shows ✅/❌)
+- [ ] Theme map generation shows progress
+- [ ] After completion, visiting `/` does NOT redirect
+
+**Scenario 2: New User with >500MB History**
+- [ ] Detects large history (>500MB)
+- [ ] Redirects to `/onboarding-choice` (not `/onboarding`)
+- [ ] Choice screen shows both options
+- [ ] Quick Start button navigates to `/onboarding-fast?mode=partial`
+- [ ] Full Setup button navigates to `/onboarding`
+
+**Scenario 3: Error Scenarios**
+- [ ] Invalid API key shows error message with actionable guidance
+- [ ] DB detection failure shows Python version error or "Cursor database not found"
+- [ ] Theme generation failure shows user-friendly error message
+- [ ] Config save failure shows warning message
+
+### Browser DevTools Commands
+
+```javascript
+// Check current config state
+fetch('/api/config').then(r => r.json()).then(console.log);
+
+// Check environment variables (doesn't return values, just status)
+fetch('/api/config/env').then(r => r.json()).then(console.log);
+
+// Reset onboarding
+fetch('/api/test/reset-onboarding', { method: 'POST' })
+  .then(r => r.json())
+  .then(console.log);
+
+// Check theme map cache
+fetch('/api/theme-map').then(r => r.json()).then(console.log);
+```
+
+### Key URLs for Testing
+
+| Flow | URL | Preview Mode |
+|------|-----|--------------|
+| **Fast Start** | `/onboarding-fast` | `?preview=true` |
+| **Choice Screen** | `/onboarding-choice` | (Mock >500MB) |
+| **Full Setup** | `/onboarding` | `?preview=true` |
+| **Home** | `/` | N/A |
+| **Settings** | `/settings` | N/A |
+
+### Key API Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/config` | GET | Check setup status |
+| `/api/config/env` | GET | Check API keys configured |
+| `/api/generate-themes` | GET | Get DB metrics |
+| `/api/generate-themes` | POST | Generate theme map |
+| `/api/test/reset-onboarding` | POST | Reset onboarding state |
+| `/api/config` | POST | Save config |
+
+### Key Config Flags
+
+| Flag | Purpose | Set When |
+|------|---------|----------|
+| `setupComplete` | Full setup done | After Full Setup sync |
+| `fastStartComplete` | Fast Start done | After Fast Start theme map |
+
+**Note:** After fixes, Fast Start also sets `setupComplete: true` to prevent redirect loops.
+
+<!-- Merged from ONBOARDING_AUDIT_GUIDE.md on 2026-01-23 -->
+
+---
+
 ## Security & Privacy
 
 <!-- Merged from SECURITY_PRIVACY_ASSESSMENT.md on 2026-01-21 -->

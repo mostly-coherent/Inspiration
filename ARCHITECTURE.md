@@ -2423,4 +2423,117 @@ SELECT * FROM tool_chain;
 
 <!-- Merged from KNOWLEDGE_GRAPH_ARCHITECTURE.md on 2026-01-15 -->
 
-**Last Updated:** 2026-01-19
+## Theme Map Generation Architecture
+
+### Size-Based Analysis (Most Recent ~500MB)
+
+**Current Implementation:**
+- Theme Map generation uses `max_size_mb` parameter to analyze most recent ~500MB of chat history
+- Data source: SQLite (local Cursor database) - forced via `--force-source sqlite` flag
+- Conversations are fetched, sorted by timestamp (most recent first), then accumulated up to size limit
+- Top 60 conversations by signal score are analyzed for theme extraction
+
+**Key Design Decisions:**
+- **Size-based vs. Days-based:** Size-based analysis (~500MB) is more reliable than days-based due to varying chat density
+- **SQLite-only:** Theme Map generation always uses local SQLite database, not Vector DB (independent of sync status)
+- **Signal Score Prioritization:** After accumulating ~500MB, conversations are re-sorted by signal score to prioritize high-quality conversations
+
+**Cache Strategy:**
+- Theme Maps saved with cache key `theme_map_latest` (size-based, not days-based)
+- Stored in Supabase `app_config` table (cloud) or `data/theme_maps/theme_map_latest.json` (local)
+- Regeneration always uses size-based approach (most recent ~500MB)
+
+<!-- Merged from THEME_MAP_500MB_ANALYSIS.md on 2026-01-23 -->
+
+### Known Issues & Limitations
+
+**Issue 1: Claude Code Files Not Included**
+- `estimate_db_metrics()` includes Claude Code files in size calculation
+- `get_high_signal_conversations_sqlite_fast()` only queries Cursor's SQLite database
+- **Impact:** Metrics show combined size (Cursor + Claude Code), but Theme Map only analyzes Cursor data
+- **Status:** By design - Theme Map focuses on Cursor conversations for consistency
+
+**Issue 2: Signal Score Reordering**
+- Conversations sorted by timestamp (most recent first) for size accumulation
+- Then re-sorted by signal score for analysis
+- **Impact:** "Most recent ~500MB" becomes "Highest-scoring conversations from within ~500MB"
+- **Status:** Intentional - prioritizes quality over strict chronological order
+
+**Issue 3: Size Calculation Mismatch**
+- `estimate_db_metrics()` calculates size including Claude Code files
+- Theme Map generation only counts Cursor database blobs
+- **Impact:** 500MB limit applies to Cursor-only data, not combined total
+- **Status:** Acceptable trade-off for consistent Cursor-focused analysis
+
+<!-- Merged from THEME_MAP_500MB_ANALYSIS.md on 2026-01-23 -->
+
+## Metrics & Estimation Architecture
+
+### Database Metrics Estimation
+
+**Function:** `estimate_db_metrics()` in `engine/common/cursor_db.py`
+
+**What It Calculates:**
+- Total size (MB): Cursor DB + Claude Code JSONL files
+- Date range: Extracted from random sample of 200 messages
+- Estimated conversations: Based on size and average conversation size
+- Recent 500MB coverage: Proportional calculation `(500 / total_size_mb) * days_span`
+
+**Reliability Analysis:**
+
+| Metric | Reliability | Notes |
+|--------|-------------|-------|
+| **Total Size** | ✅ **VERY HIGH** | Direct file system stat, accurate to the byte |
+| **Total Months** | ⚠️ **MEDIUM** | Depends on timestamp extraction from random sample (200 messages) |
+| **Recent 500MB Coverage** | ⚠️ **MEDIUM** | Proportional calculation, inherits reliability from `days_span` |
+
+**Why `estimate_history_metrics()` Fails:**
+
+1. **Incomplete Timestamp Extraction:** Not all messages have extractable timestamps (regex pattern limitations, nested objects, missing timestamps)
+2. **Uneven Message Size Distribution:** Messages aren't evenly distributed by size over time (recent large conversations vs. older small ones)
+3. **Timestamp Accuracy:** Inconsistent timestamp formats (`createdAt` vs `lastUpdatedAt`, seconds vs milliseconds)
+4. **Database Value Size vs Content Size:** `len(value)` measures raw database value size, not actual message content
+
+**Why Proportional Calculation Works Better:**
+- Uses actual data (real total size and date range)
+- Mathematically correct: `(500 / 4800) * 180 = ~19 days`
+- Assumes reasonable distribution (even chat activity over time)
+- Doesn't depend on perfect timestamp extraction
+
+<!-- Merged from ESTIMATE_HISTORY_METRICS_ISSUES.md and ONBOARDING_CHOICE_NUMBERS_ANALYSIS.md on 2026-01-23 -->
+
+### Onboarding Choice Screen Metrics
+
+**Numbers Displayed:**
+
+1. **Total Size (GB/MB)** ✅ **HIGHLY RELIABLE**
+   - Source: Direct file system stat
+   - Calculation: `combined_size = size_mb + claude_code_size_mb`
+   - Reliability: Very high - accurate to the byte
+
+2. **Total Months** ⚠️ **MEDIUM RELIABILITY**
+   - Source: `actual_months` from date range OR fallback `size_mb / 400`
+   - Calculation: Extracted from random sample of 200 messages
+   - Reliability: Medium - depends on timestamp extraction success
+
+3. **Recent 500MB Coverage** ⚠️ **MEDIUM RELIABILITY**
+   - Source: Proportional calculation `(500 / combined_size) * days_span`
+   - Reliability: Medium - inherits reliability from `days_span` calculation
+
+4. **"Ready in ~90 seconds"** ❌ **NOT RELIABLE (Hardcoded)**
+   - Source: Hardcoded marketing estimate
+   - Reliability: Low - not calculated, just an estimate
+
+5. **"15 min + indexing"** ❌ **NOT RELIABLE (Hardcoded)**
+   - Source: Hardcoded marketing estimate
+   - Reliability: Low - not calculated, just an estimate
+
+**Recommendations:**
+- Total Size: ✅ Keep as-is (highly reliable)
+- Total Months: ⚠️ Could improve by scanning ALL messages (slower but more accurate)
+- Recent 500MB Coverage: ⚠️ Mathematically correct IF `days_span` is accurate
+- Hardcoded Estimates: ❌ Could calculate based on conversation count, but adds complexity
+
+<!-- Merged from ONBOARDING_CHOICE_NUMBERS_ANALYSIS.md on 2026-01-23 -->
+
+**Last Updated:** 2026-01-23
