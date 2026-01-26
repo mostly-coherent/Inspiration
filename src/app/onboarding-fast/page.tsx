@@ -1492,7 +1492,7 @@ function FastOnboardingContent() {
                           <div className="text-xs text-slate-500 mb-1">Why it matters:</div>
                           <ul className="text-sm text-slate-300 space-y-1">
                             {theme.whyItMatters.map((reason, j) => (
-                              <li key={j} className="flex items-start gap-2">
+                              <li key={`reason-${theme.id}-${j}`} className="flex items-start gap-2">
                                 <span className="text-emerald-400">•</span>
                                 <span>{reason}</span>
                               </li>
@@ -1505,7 +1505,7 @@ function FastOnboardingContent() {
                         <div className="pl-9 pt-2 border-t border-slate-700/50">
                           <div className="text-xs text-slate-500 mb-2">Evidence:</div>
                           {theme.evidence.slice(0, 2).map((ev, j) => (
-                            <div key={j} className="text-sm text-slate-400 bg-slate-900/50 rounded p-2 mb-2">
+                            <div key={`evidence-${theme.id}-${j}`} className="text-sm text-slate-400 bg-slate-900/50 rounded p-2 mb-2">
                               <div className="text-xs text-slate-500 mb-1">
                                 {ev.date} • {ev.chatType}
                               </div>
@@ -1522,7 +1522,7 @@ function FastOnboardingContent() {
                             <span>🎙️</span> Expert Perspectives, Lenny&apos;s Podcast
                           </div>
                           {theme.expertPerspectives.map((quote, j) => (
-                            <div key={j} className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
+                            <div key={`expert-${theme.id}-${j}`} className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
                               <p className="text-slate-300 italic">&quot;{quote.content}&quot;</p>
                               <div className="flex items-center justify-between mt-2 text-xs">
                                 <span className="text-amber-400 font-medium">— {quote.guestName}</span>
@@ -1568,7 +1568,7 @@ function FastOnboardingContent() {
                       <span>💭</span> Counter-Intuitive
                     </h2>
                     {themeMap.counterIntuitive.slice(0, 2).map((item, i) => (
-                      <div key={i} className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-5 space-y-3">
+                      <div key={item.title || `counter-intuitive-${i}`} className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-5 space-y-3">
                         <div className="flex items-start gap-3">
                           <span className="text-2xl font-bold text-purple-400">{i + 1}</span>
                           <div>
@@ -1617,7 +1617,7 @@ function FastOnboardingContent() {
                       <span>🔭</span> Unexplored Territory
                     </h2>
                     {themeMap.unexploredTerritory.map((item, i) => (
-                      <div key={i} className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-5 space-y-3">
+                      <div key={item.title || `unexplored-${i}`} className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-5 space-y-3">
                         <div className="flex items-start gap-3">
                           <span className="text-2xl font-bold text-amber-400">{i + 1}</span>
                           <div>

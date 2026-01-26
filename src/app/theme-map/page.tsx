@@ -342,7 +342,7 @@ export default function ThemeMapPage() {
               <span>🎯</span> Top {themeMap.themes.length} {themeMap.themes.length === 1 ? 'Theme' : 'Themes'}
             </h2>
             {themeMap.themes.map((theme, i) => (
-              <div key={i} className="bg-slate-800/50 border border-slate-700 rounded-xl p-5 space-y-3">
+              <div key={(theme as any).id || (theme as any).name || (theme as any).title || `theme-${i}`} className="bg-slate-800/50 border border-slate-700 rounded-xl p-5 space-y-3">
                 <div className="flex items-start gap-3">
                   <span className="text-2xl font-bold text-indigo-400">{i + 1}</span>
                   <div>
@@ -356,7 +356,7 @@ export default function ThemeMapPage() {
                   <div className="pl-9 pt-2 border-t border-slate-700/50">
                     <div className="text-xs text-slate-500 mb-2">Evidence ({theme.evidence.length} conversations):</div>
                     {theme.evidence.slice(0, 3).map((ev, j) => (
-                      <div key={j} className="text-sm text-slate-400 bg-slate-900/50 rounded p-2 mb-2">
+                      <div key={ev.conversation_id || `evidence-${i}-${j}`} className="text-sm text-slate-400 bg-slate-900/50 rounded p-2 mb-2">
                         <div className="text-slate-300 italic">&quot;{ev.snippet}&quot;</div>
                       </div>
                     ))}
@@ -373,7 +373,7 @@ export default function ThemeMapPage() {
                       <span>🎙️</span> Expert Perspective
                     </div>
                     {(theme.expertPerspectives || []).slice(0, 1).map((quote, j) => (
-                      <div key={j} className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
+                      <div key={`expert-${i}-${j}`} className="text-sm bg-amber-500/5 rounded p-3 border border-amber-500/20">
                         <p className="text-slate-300 italic">&quot;{quote.content}&quot;</p>
                         <div className="flex items-center justify-between mt-2 text-xs">
                           <span className="text-amber-400 font-medium">— {quote.guestName}</span>
@@ -421,7 +421,7 @@ export default function ThemeMapPage() {
             </h2>
             <div className="grid gap-3">
               {themeMap.counter_intuitive.map((item, i) => (
-                <div key={i} className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-5 space-y-3">
+                <div key={item.title || `counter-intuitive-${i}`} className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-5 space-y-3">
                   <div className="flex items-start gap-3">
                     <span className="text-2xl font-bold text-purple-400">{i + 1}</span>
                     <div>
@@ -480,7 +480,7 @@ export default function ThemeMapPage() {
                 const isExpanded = expandedUnexplored.has(i);
                 
                 return (
-                  <div key={i} className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-5 space-y-3">
+                  <div key={title || `unexplored-${i}`} className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-5 space-y-3">
                     <div className="flex items-start gap-3">
                       <span className="text-2xl font-bold text-amber-400">{i + 1}</span>
                       <div className="flex-1">
