@@ -6,6 +6,44 @@
 
 ---
 
+## Progress - 2026-01-25 (Cloud Deployment — Lenny Stats Fix)
+
+**Issue Identified:** Lenny stats not showing on cloud (Vercel) deployment
+
+**Root Cause Analysis:**
+- Embeddings ARE on GitHub Releases (282MB total) ✅
+- Download code IS implemented correctly ✅
+- BUT: Download time (60-120s) exceeds Vercel Pro timeout (60s) ⚠️
+- GitHub Releases download fails mid-way due to timeout
+- `/tmp/` storage is ephemeral (cleared on cold starts)
+
+**Solution Created:**
+- ✅ Created issue analysis: `ISSUE_ANALYSIS_LENNY_CLOUD.md` (root cause explanation)
+- ✅ Updated quick fix: `QUICK_FIX_LENNY_CLOUD.md` (2-part guide: embeddings + KG)
+- ✅ Created upload script: `scripts/upload-to-supabase-storage.sh`
+- ✅ Created KG explainer: `LENNY_KG_EXPLAINED.md` (KG vs embeddings differences)
+
+**Issue Expanded:**
+- User confirmed: **Both embeddings AND KG showing 0 stats on cloud**
+- Embeddings: Timeout issue (files too large for Vercel)
+- KG: Not imported yet (needs one-time import to Supabase)
+
+**Technical Details:**
+- Vercel Pro timeout: 60 seconds
+- GitHub download time: 60-120 seconds (250MB + 32MB)
+- Supabase download time: 5-10 seconds (faster, fits in timeout)
+
+**Next Steps:**
+1. Upload files to Supabase Storage bucket `lenny-embeddings`
+2. Verify Vercel environment variables (SUPABASE_URL, SUPABASE_ANON_KEY)
+3. Test cloud app: click "🔄 Sync" button → Should complete in 5-10s
+
+**Status:** Diagnosed — Vercel timeout issue; Supabase upload needed
+
+**Commit:** TBD
+
+---
+
 ## Progress - 2026-01-23 (v2.1 Smart Onboarding — E2E Tests & Observability)
 
 **Done:**

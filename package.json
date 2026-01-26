@@ -16,7 +16,7 @@
     "test:unit:ui": "vitest --ui",
     "test:unit:coverage": "vitest --coverage",
     "bootstrap": "bash scripts/bootstrap.sh",
-    "postinstall": "command -v pip3 >/dev/null 2>&1 && pip3 install -r engine/requirements.txt || echo 'Skipping pip install (Python not available - expected on Vercel)'"
+    "postinstall": "command -v pip3 >/dev/null 2>&1 && pip3 install --break-system-packages -r engine/requirements.txt 2>/dev/null || echo 'Skipping pip install (Python not available or managed - expected on Vercel)'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
