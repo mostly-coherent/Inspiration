@@ -44,7 +44,19 @@ function isSupabaseConfigured(): boolean {
  * Only used if Supabase is configured (not available during new user onboarding).
  * Provides faster downloads (5-10s) for production deployments.
  */
-async function downloadFromSupabaseStorage(): Promise<{ success: boolean; message: string; error?: string; stats?: { indexed: boolean; episodeCount: number; chunkCount: number; embeddingsSizeMB: number | null } }> {
+type DownloadResult = { 
+  success: boolean; 
+  message: string; 
+  error?: string; 
+  stats?: { 
+    indexed: boolean; 
+    episodeCount: number; 
+    chunkCount: number; 
+    embeddingsSizeMB: number | null 
+  } 
+};
+
+async function downloadFromSupabaseStorage(): Promise<DownloadResult> {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
   
@@ -161,7 +173,7 @@ async function downloadFromSupabaseStorage(): Promise<{ success: boolean; messag
 /**
  * Download from GitHub Releases (Fallback)
  */
-async function downloadFromGitHubReleases(): Promise<{ success: boolean; message: string; error?: string; stats?: { indexed: boolean; episodeCount: number; chunkCount: number; embeddingsSizeMB: number | null } }> {
+async function downloadFromGitHubReleases(): Promise<DownloadResult> {
   const GITHUB_RELEASE_URL = "https://github.com/mostly-coherent/Inspiration/releases/download/v1.0.0-lenny";
   const tmpDir = "/tmp/lenny-embeddings";
 
