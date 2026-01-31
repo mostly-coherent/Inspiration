@@ -545,13 +545,19 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
         if (data.stats) {
           console.log("[ScoreboardHeader] Using stats from download response:", data.stats);
           setLennyStats({
-            indexed: data.stats.indexed,
-            episodeCount: data.stats.episodeCount,
-            chunkCount: data.stats.chunkCount,
+            indexed: data.stats.indexed || true, // Ensure indexed is true if stats exist
+            episodeCount: data.stats.episodeCount || 0,
+            chunkCount: data.stats.chunkCount || 0,
             embeddingsSizeMB: data.stats.embeddingsSizeMB || null,
-            cloudMode: lennyStats.cloudMode || false,
+            cloudMode: lennyStats.cloudMode || data.cloudMode || false,
+          });
+          console.log("[ScoreboardHeader] Updated lennyStats state:", {
+            indexed: data.stats.indexed || true,
+            episodeCount: data.stats.episodeCount || 0,
+            chunkCount: data.stats.chunkCount || 0,
           });
         } else {
+          console.warn("[ScoreboardHeader] No stats in download response, falling back to stats API");
           // Fallback: refresh stats after download
           await fetchLennyStats();
         }

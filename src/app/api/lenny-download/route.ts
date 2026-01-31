@@ -78,6 +78,33 @@ async function downloadFromSupabaseStorage(): Promise<{ success: boolean; messag
       };
     }
 
+    // Check if files already exist locally (avoid re-download)
+    const tmpMetadataPath = path.join(tmpDir, "lenny_metadata.json");
+    const tmpEmbeddingsPath = path.join(tmpDir, "lenny_embeddings.npz");
+    if (fs.existsSync(tmpMetadataPath) && fs.existsSync(tmpEmbeddingsPath)) {
+      // Read existing metadata to return stats
+      let stats = undefined;
+      try {
+        const metadataContent = fs.readFileSync(tmpMetadataPath, "utf-8");
+        const metadata = JSON.parse(metadataContent);
+        const embeddingsStats = fs.statSync(tmpEmbeddingsPath);
+        const embeddingsSizeMB = Math.round((embeddingsStats.size / (1024 * 1024)) * 10) / 10;
+        stats = {
+          indexed: true,
+          episodeCount: metadata.stats?.total_episodes || 0,
+          chunkCount: metadata.stats?.total_chunks || 0,
+          embeddingsSizeMB,
+        };
+      } catch (e) {
+        console.warn("[Lenny Download] Failed to parse existing metadata for stats:", e);
+      }
+      return { 
+        success: true, 
+        message: "Embeddings already downloaded from Supabase Storage (cached in /tmp)",
+        stats,
+      };
+    }
+
     // Download embeddings file
     const { data: embeddingsData, error: embeddingsError } = await supabase.storage
       .from(bucket)
@@ -143,7 +170,27 @@ async function downloadFromGitHubReleases(): Promise<{ success: boolean; message
 
     // Check if already downloaded
     if (fs.existsSync(embeddingsPath) && fs.existsSync(metadataPath)) {
-      return { success: true, message: "Embeddings already downloaded from GitHub (cached in /tmp)" };
+      // Read existing metadata to return stats
+      let stats = undefined;
+      try {
+        const metadataContent = fs.readFileSync(metadataPath, "utf-8");
+        const metadata = JSON.parse(metadataContent);
+        const embeddingsStats = fs.statSync(embeddingsPath);
+        const embeddingsSizeMB = Math.round((embeddingsStats.size / (1024 * 1024)) * 10) / 10;
+        stats = {
+          indexed: true,
+          episodeCount: metadata.stats?.total_episodes || 0,
+          chunkCount: metadata.stats?.total_chunks || 0,
+          embeddingsSizeMB,
+        };
+      } catch (e) {
+        console.warn("[Lenny Download] Failed to parse existing metadata for stats:", e);
+      }
+      return { 
+        success: true, 
+        message: "Embeddings already downloaded from GitHub (cached in /tmp)",
+        stats,
+      };
     }
 
     // Download embeddings
