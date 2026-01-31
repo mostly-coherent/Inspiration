@@ -1220,7 +1220,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
               </div>
               
           {/* Episodes (left, centered) → Two branches (right) */}
-          {lennyStats.indexed && lennyStats.episodeCount > 0 ? (
+          {lennyStats.indexed ? (
             <div className="flex flex-wrap items-center gap-4">
               {/* Episodes (leftmost, vertically centered between branches) */}
               <div className="text-center self-center">
