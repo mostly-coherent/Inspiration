@@ -544,17 +544,18 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
         // Use stats from download response if available (avoids /tmp persistence issues on Vercel)
         if (data.stats) {
           console.log("[ScoreboardHeader] Using stats from download response:", data.stats);
-          setLennyStats({
-            indexed: data.stats.indexed || true, // Ensure indexed is true if stats exist
-            episodeCount: data.stats.episodeCount || 0,
-            chunkCount: data.stats.chunkCount || 0,
-            embeddingsSizeMB: data.stats.embeddingsSizeMB || null,
-            cloudMode: lennyStats.cloudMode || data.cloudMode || false,
-          });
+          setLennyStats((prev) => ({
+            indexed: data.stats!.indexed !== false, // Ensure indexed is true if stats exist (unless explicitly false)
+            episodeCount: data.stats!.episodeCount || 0,
+            chunkCount: data.stats!.chunkCount || 0,
+            embeddingsSizeMB: data.stats!.embeddingsSizeMB || null,
+            cloudMode: data.cloudMode !== undefined ? data.cloudMode : prev.cloudMode, // Use response cloudMode, fallback to prev
+          }));
           console.log("[ScoreboardHeader] Updated lennyStats state:", {
-            indexed: data.stats.indexed || true,
+            indexed: data.stats.indexed !== false,
             episodeCount: data.stats.episodeCount || 0,
             chunkCount: data.stats.chunkCount || 0,
+            cloudMode: data.cloudMode,
           });
         } else {
           console.warn("[ScoreboardHeader] No stats in download response, falling back to stats API");

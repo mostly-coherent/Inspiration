@@ -44,7 +44,7 @@ function isSupabaseConfigured(): boolean {
  * Only used if Supabase is configured (not available during new user onboarding).
  * Provides faster downloads (5-10s) for production deployments.
  */
-async function downloadFromSupabaseStorage(): Promise<{ success: boolean; message: string; error?: string }> {
+async function downloadFromSupabaseStorage(): Promise<{ success: boolean; message: string; error?: string; stats?: { indexed: boolean; episodeCount: number; chunkCount: number; embeddingsSizeMB: number | null } }> {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
   
@@ -141,8 +141,11 @@ async function downloadFromSupabaseStorage(): Promise<{ success: boolean; messag
         chunkCount: metadata.stats?.total_chunks || 0,
         embeddingsSizeMB,
       };
+      console.log("[Lenny Download] Parsed stats from Supabase Storage metadata:", stats);
     } catch (e) {
-      console.warn("[Lenny Download] Failed to parse metadata for stats:", e);
+      console.error("[Lenny Download] Failed to parse metadata for stats:", e);
+      console.error("[Lenny Download] Metadata buffer length:", metadataBuffer.length);
+      // Don't set stats = undefined, let it remain undefined so frontend falls back to stats API
     }
 
     return { 
@@ -158,7 +161,7 @@ async function downloadFromSupabaseStorage(): Promise<{ success: boolean; messag
 /**
  * Download from GitHub Releases (Fallback)
  */
-async function downloadFromGitHubReleases(): Promise<{ success: boolean; message: string; error?: string }> {
+async function downloadFromGitHubReleases(): Promise<{ success: boolean; message: string; error?: string; stats?: { indexed: boolean; episodeCount: number; chunkCount: number; embeddingsSizeMB: number | null } }> {
   const GITHUB_RELEASE_URL = "https://github.com/mostly-coherent/Inspiration/releases/download/v1.0.0-lenny";
   const tmpDir = "/tmp/lenny-embeddings";
 
@@ -223,8 +226,11 @@ async function downloadFromGitHubReleases(): Promise<{ success: boolean; message
         chunkCount: metadata.stats?.total_chunks || 0,
         embeddingsSizeMB,
       };
+      console.log("[Lenny Download] Parsed stats from GitHub metadata:", stats);
     } catch (e) {
-      console.warn("[Lenny Download] Failed to parse metadata for stats:", e);
+      console.error("[Lenny Download] Failed to parse metadata for stats:", e);
+      console.error("[Lenny Download] Metadata buffer length:", metadataBuffer.length);
+      // Don't set stats = undefined, let it remain undefined so frontend falls back to stats API
     }
 
     return { 
@@ -291,9 +297,26 @@ export async function POST(): Promise<NextResponse<DownloadResponse>> {
 
     // Check if already downloaded
     if (fs.existsSync(embeddingsPath) && fs.existsSync(metadataPath)) {
+      // Read existing metadata to return stats
+      let stats = undefined;
+      try {
+        const metadataContent = fs.readFileSync(metadataPath, "utf-8");
+        const metadata = JSON.parse(metadataContent);
+        const embeddingsStats = fs.statSync(embeddingsPath);
+        const embeddingsSizeMB = Math.round((embeddingsStats.size / (1024 * 1024)) * 10) / 10;
+        stats = {
+          indexed: true,
+          episodeCount: metadata.stats?.total_episodes || 0,
+          chunkCount: metadata.stats?.total_chunks || 0,
+          embeddingsSizeMB,
+        };
+      } catch (e) {
+        console.warn("[Lenny Download] Failed to parse existing metadata for stats:", e);
+      }
       return NextResponse.json({
         success: true,
         message: "Embeddings already exist. Skipping download.",
+        stats,
       });
     }
 
@@ -339,10 +362,27 @@ export async function POST(): Promise<NextResponse<DownloadResponse>> {
 
       // Verify download succeeded
       if (fs.existsSync(embeddingsPath) && fs.existsSync(metadataPath)) {
+        // Read metadata to return stats
+        let stats = undefined;
+        try {
+          const metadataContent = fs.readFileSync(metadataPath, "utf-8");
+          const metadata = JSON.parse(metadataContent);
+          const embeddingsStats = fs.statSync(embeddingsPath);
+          const embeddingsSizeMB = Math.round((embeddingsStats.size / (1024 * 1024)) * 10) / 10;
+          stats = {
+            indexed: true,
+            episodeCount: metadata.stats?.total_episodes || 0,
+            chunkCount: metadata.stats?.total_chunks || 0,
+            embeddingsSizeMB,
+          };
+        } catch (e) {
+          console.warn("[Lenny Download] Failed to parse metadata for stats after script execution:", e);
+        }
         return NextResponse.json({
           success: true,
           message: "Download complete. Embeddings ready for use.",
           source: "local",
+          stats,
         });
       } else {
         return NextResponse.json(
