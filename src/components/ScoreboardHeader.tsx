@@ -285,6 +285,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
         throw new Error(`HTTP ${res.status}`);
       }
       const data = await res.json();
+      console.log("[ScoreboardHeader] Lenny stats API response:", data);
       if (data.success && isMountedRef.current) {
         setLennyStats({
           indexed: data.indexed,
@@ -293,9 +294,17 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
           embeddingsSizeMB: data.embeddingsSizeMB || null,
           cloudMode: data.cloudMode || false,
         });
+        console.log("[ScoreboardHeader] Set lennyStats:", {
+          indexed: data.indexed,
+          episodeCount: data.episodeCount,
+          chunkCount: data.chunkCount,
+          cloudMode: data.cloudMode,
+        });
+      } else {
+        console.warn("[ScoreboardHeader] Lenny stats API returned success=false or component unmounted");
       }
     } catch (e) {
-      console.error("Failed to fetch Lenny stats:", e);
+      console.error("[ScoreboardHeader] Failed to fetch Lenny stats:", e);
     }
   }, []);
 

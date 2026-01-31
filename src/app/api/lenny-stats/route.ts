@@ -125,41 +125,60 @@ export async function GET(): Promise<NextResponse<LennyStats>> {
       
       // Also check /tmp files in cloud mode (files might be downloaded but not yet indexed)
       // This handles the case where download succeeded but indexing hasn't happened yet
+      // Note: On Vercel, /tmp persists during warm function invocations but not across cold starts
       const tmpMetadataPath = "/tmp/lenny-embeddings/lenny_metadata.json";
       const tmpEmbeddingsPath = "/tmp/lenny-embeddings/lenny_embeddings.npz";
       
-      if (fs.existsSync(tmpMetadataPath)) {
-        try {
-          // Read metadata from /tmp
-          const metadataContent = fs.readFileSync(tmpMetadataPath, "utf-8");
-          const metadata = JSON.parse(metadataContent);
-          
-          // Get embeddings file size
-          let embeddingsSizeMB: number | null = null;
-          if (fs.existsSync(tmpEmbeddingsPath)) {
-            const stats = fs.statSync(tmpEmbeddingsPath);
-            embeddingsSizeMB = Math.round((stats.size / (1024 * 1024)) * 10) / 10;
+      // Check if /tmp directory exists first
+      const tmpDir = "/tmp/lenny-embeddings";
+      if (fs.existsSync(tmpDir)) {
+        console.log("[Lenny Stats] /tmp/lenny-embeddings directory exists");
+        
+        if (fs.existsSync(tmpMetadataPath)) {
+          console.log("[Lenny Stats] Found metadata file in /tmp");
+          try {
+            // Read metadata from /tmp
+            const metadataContent = fs.readFileSync(tmpMetadataPath, "utf-8");
+            const metadata = JSON.parse(metadataContent);
+            
+            // Get embeddings file size
+            let embeddingsSizeMB: number | null = null;
+            if (fs.existsSync(tmpEmbeddingsPath)) {
+              const stats = fs.statSync(tmpEmbeddingsPath);
+              embeddingsSizeMB = Math.round((stats.size / (1024 * 1024)) * 10) / 10;
+              console.log(`[Lenny Stats] Found embeddings file: ${embeddingsSizeMB}MB`);
+            } else {
+              console.warn("[Lenny Stats] Metadata exists but embeddings file missing");
+            }
+            
+            const stats = {
+              success: true,
+              indexed: true,
+              episodeCount: metadata.stats?.total_episodes || 0,
+              chunkCount: metadata.stats?.total_chunks || 0,
+              wordCount: metadata.stats?.total_words || 0,
+              withRichMetadata: metadata.stats?.with_rich_metadata || 0,
+              format: metadata.format || "legacy",
+              indexedAt: metadata.indexed_at || null,
+              embeddingsSizeMB,
+              cloudMode: true,
+            };
+            
+            console.log(`[Lenny Stats] Returning stats from /tmp: ${stats.episodeCount} episodes, ${stats.chunkCount} chunks`);
+            return NextResponse.json(stats);
+          } catch (fileError) {
+            console.error("[Lenny Stats] Failed to read /tmp files:", fileError);
+            // Fall through to return "not indexed"
           }
-          
-          return NextResponse.json({
-            success: true,
-            indexed: true,
-            episodeCount: metadata.stats?.total_episodes || 0,
-            chunkCount: metadata.stats?.total_chunks || 0,
-            wordCount: metadata.stats?.total_words || 0,
-            withRichMetadata: metadata.stats?.with_rich_metadata || 0,
-            format: metadata.format || "legacy",
-            indexedAt: metadata.indexed_at || null,
-            embeddingsSizeMB,
-            cloudMode: true,
-          });
-        } catch (fileError) {
-          console.warn("Failed to read /tmp files:", fileError);
-          // Fall through to return "not indexed"
+        } else {
+          console.log("[Lenny Stats] /tmp directory exists but metadata file not found");
         }
+      } else {
+        console.log("[Lenny Stats] /tmp/lenny-embeddings directory does not exist");
       }
       
       // No Supabase content and no /tmp files - not indexed
+      console.log("[Lenny Stats] No Supabase content and no /tmp files - returning not indexed");
       return NextResponse.json({
         success: true,
         indexed: false,
