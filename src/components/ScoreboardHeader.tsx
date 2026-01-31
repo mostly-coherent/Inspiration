@@ -540,8 +540,21 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
           setLennyDownloadMessage("✓ Download complete!");
         }
         setLennyDownloadStatus("success");
-        // Refresh stats after download
-        await fetchLennyStats();
+        
+        // Use stats from download response if available (avoids /tmp persistence issues on Vercel)
+        if (data.stats) {
+          console.log("[ScoreboardHeader] Using stats from download response:", data.stats);
+          setLennyStats({
+            indexed: data.stats.indexed,
+            episodeCount: data.stats.episodeCount,
+            chunkCount: data.stats.chunkCount,
+            embeddingsSizeMB: data.stats.embeddingsSizeMB || null,
+            cloudMode: lennyStats.cloudMode || false,
+          });
+        } else {
+          // Fallback: refresh stats after download
+          await fetchLennyStats();
+        }
       } else {
         // Handle cloud mode error message
         if (data.cloudMode) {
