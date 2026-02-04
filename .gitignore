@@ -109,4 +109,4 @@ check-lenny-status.sh
 
 # Example/Test Files (not needed for production)
 inspiration.spec.ts.example
-playwright.config.ts.example
+playwright.config.ts.exampledata/lenny-kg/*.json
