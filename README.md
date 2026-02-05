@@ -203,7 +203,6 @@ The novelty is longitudinal intelligence: pattern recognition + relationship for
 
 - See `CLAUDE.md` for detailed development commands, project structure, and environment setup
 - See `PLAN.md` for product requirements and milestones
-- See `BUILD_LOG.md` for implementation progress
 - See `ARCHITECTURE.md` for system design and technical details
 
 </details>

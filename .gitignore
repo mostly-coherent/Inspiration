@@ -89,6 +89,7 @@ data/performance_logs/
 # User-generated data (specific to each user's usage)
 data/saved_reflections.json
 data/theme_map.json
+data/theme_maps/
 data/themes.json
 data/use_cases_output/
 
@@ -98,8 +99,15 @@ engine/data/output/
 # Archive folder (historical planning docs, not needed for app functionality)
 _archive/
 
+# Maintainer-only docs (session logs, decisions; keep local only)
+BUILD_LOG.md
+PIVOT_LOG.md
+
 # Knowledge Graph Documentation
 # INSPIRATION_V2_PLAN.md - Future roadmap (kept for reference)
+
+# Engine scripts internal docs (maintainer-only readmes)
+engine/scripts/*.md
 
 # Knowledge Graph Monitoring Scripts (local development tools, not needed by users)
 monitor-kg-build.sh
@@ -111,5 +119,7 @@ check-lenny-status.sh
 
 # Example/Test Files (not needed for production)
 inspiration.spec.ts.example
-playwright.config.ts.exampledata/lenny-kg/*.json
+playwright.config.ts.example
+
+# Lenny KG exports (distributed via Releases)
 data/lenny-kg/
