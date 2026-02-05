@@ -65,6 +65,8 @@ test-results/
 
 # AI Documentation (Mode A - canonical docs are now published to GitHub)
 # Canonical docs (README.md, CLAUDE.md, Plan.md, BUILD_LOG.md, PIVOTS.md, ARCHITECTURE.md) are tracked
+# docs/ folder is local-only (workspace reference, not needed in repo)
+docs/
 data/items_bank.json
 data/items_bank_backup_*.json
 
