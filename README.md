@@ -1,6 +1,8 @@
 # Inspiration
 
-> **Your AI conversations (Cursor & Claude Code) contain your best problem-solving. Inspiration structures them to reveal patterns, evolution, and connections you missed.**
+> **Treats your Cursor chat history as artifacts of thinking, not disposable logs.**
+
+You have hundreds (or thousands) of conversations with Claude—reasoning through architecture decisions, debugging trade-offs, exploring patterns. Then they disappear. Inspiration mines them.
 
 ![Type](https://img.shields.io/badge/Type-Tool-purple)
 ![Status](https://img.shields.io/badge/Status-Active-green)
@@ -9,75 +11,9 @@
 
 <img src="https://raw.githubusercontent.com/mostly-coherent/Inspiration/main/public/screenshots/homepage.png" alt="Inspiration - Main Interface" width="800">
 
-<details open>
-<summary><strong>📚 Why This Exists</strong></summary>
+**For builders who use AI as a thinking partner** (not just autocomplete). If you've thought *"I solved this before... where is that conversation?"*, this is for you.
 
-Your best problem-solving happens in conversations with AI—reasoning through trade-offs, exploring architectures, and debugging complex issues. But this thinking is usually ephemeral. **Inspiration** analyzes your history to reveal the patterns you miss in the moment.
-
-**What you can discover:**
-- **Hidden Loops:** "I've been circling this same architectural problem for months."
-- **Evolution:** "My focus shifted from UI polish to distributed systems without me noticing."
-- **Cross-Project Insights:** "The auth pattern I rejected in Project A is actually perfect for Project B."
-
-**Who This Is For:**
-Builders who use AI as a **thinking partner** (reasoning, trade-offs, decisions)—not just for autocomplete. If you've ever thought *"I solved this before... where is that conversation?"*, this is for you.
-
-</details>
-
-<details>
-<summary><strong>🔍 What Makes It Different</strong></summary>
-
-Inspiration is designed to work with your chat history over time:
-- **Works across tools:** Unified view of Cursor and Claude Code conversations
-- **Privacy-first:** Your data stays on your machine (local-first). Optional Supabase sync uses your own instance. No tracking, no telemetry.
-- **Longitudinal:** Becomes more useful the longer you use it, revealing evolution in your thinking
-- **Semantic:** Finds conceptual connections, not just keyword matches
-
-After several months of use, your Inspiration contains patterns specific to your workflow—connections between projects, recurring problems you didn't notice, evolution in your approach.
-
-</details>
-
-<details>
-<summary><strong>✨ Features</strong></summary>
-
-| Mode | What It Does |
-|------|-------------|
-| **Theme Explorer** | See patterns in your thinking—3 tabs: Patterns, Unexplored, Counter-Intuitive |
-| **Ideas** | Surface recurring pain points worth building solutions for |
-| **Insights** | Extract learnings worth sharing (blogs, tweets, notes) |
-| **Seek** | "I want to build X"—find similar examples from your own history |
-| **Expert Perspectives** | Connect your thinking with 300+ Lenny's Podcast episodes via semantic search (updated weekly) |
-| **Knowledge Graph** | Entity/relation extraction from conversations, Graph View, Evolution Timeline, Intelligence features |
-
-**How It Gets More Useful:**
-
-| Timeline | What You Can Do |
-|----------|-----------------|
-| **Day 1** | Semantic search across 300+ Lenny's Podcast episodes for expert insights |
-| **Month 1** | See patterns across your conversations; discover how your themes relate to expert discussions |
-| **Month 6** | Your patterns connect with expert knowledge—relationships you didn't know existed |
-
-</details>
-
-<details>
-<summary><strong>🆕 What's New: Lenny's Podcast Integration</strong></summary>
-
-Your patterns now connect with expert knowledge. Semantic search across both your conversations and 300+ Lenny's Podcast episodes (updated weekly from [ChatPRD's archive](https://github.com/ChatPRD/lennys-podcast-transcripts))—**Claire Vo** (ChatPRD), **Dylan Field** (Figma), **Elena Verna** (Lovable, Miro), and other product leaders, engineers, and founders. Discover how expert thinking relates to your own patterns, inspiring outward exploration. Click through to YouTube timestamps.
-
-How it works:
-- **One-time auto-download:** ~250MB embeddings downloaded from GitHub Releases on first run
-- **Requires:** Anthropic API key (Theme Map) + OpenAI API key (expert perspectives unlock)
-- 269 episodes, 44,371 searchable segments, all rich metadata (titles, YouTube URLs, timestamps)
-- Works with Fast Start (Anthropic key)—add OpenAI key to unlock expert perspectives
-- Auto-syncs new episodes when you refresh Memory (pulls from [ChatPRD's archive](https://github.com/ChatPRD/lennys-podcast-transcripts))
-- No embedding cost—everything pre-computed and downloaded once
-
-Theme Explorer tabs:
-- **Patterns** — Themes in your Library connected to related expert discussions
-- **Unexplored** — Topics you discuss but haven't extracted (with expert examples to inspire)
-- **Counter-Intuitive** — Reflection prompts + expert contrarian perspectives
-
-</details>
+---
 
 ## 🚀 Quick Start
 
@@ -92,40 +28,81 @@ npm run dev
 
 | Step | What Happens | Time |
 |------|-------------|------|
-| 1. Auto-detect | Finds your Cursor DB, shows size | ~3s |
-| 2. API Key | Paste your Anthropic key | ~10s |
-| 3. Generate | Creates Theme Map from local SQLite | ~60s |
+| 1. Auto-detect | Finds your Cursor DB | ~3s |
+| 2. API Key | Paste Anthropic key | ~10s |
+| 3. Generate | Maps local chat history | ~60s |
 
-**Fast Start (90s):** Just paste your Anthropic key. Inspiration instantly maps your local chat history (Cursor or Claude Code) to find patterns. No database setup required.
+**Cost:** $0 for local history (<500MB). Optional vector indexing costs ~$0.50–$5 one-time.
 
-**Full Power:** Add an OpenAI key to connect your thinking with **300+ Lenny's Podcast episodes**. See how expert product leaders solved the problems you're facing now.
+**Full Power:** Add an OpenAI key to connect your thinking with **300+ Lenny's Podcast episodes**—Dylan Field (Figma), Elena Verna (Lovable), Claire Vo (ChatPRD), and other product leaders.
 
-**Cost:** **$0** for local history (<500MB). Optional vector indexing (for massive scale) costs ~$0.50–$5 one-time (paid directly to OpenAI/Anthropic for its API usage).
+---
+
+## 🤝 The Thinking Partner Test
+
+A true thinking partner does three things:
+
+**(a) Remembers what you've said before**  
+Reads Cursor's SQLite database directly (`state.vscdb`), converts messages to embeddings, runs semantic similarity across your entire history.
+
+**(b) Connects dots you haven't connected**  
+Knowledge graph extraction maps how concepts link across projects. Reveals that a pattern you rejected in Project A fits Project B.
+
+**(c) Challenges your assumptions**  
+Theme Explorer's Counter-Intuitive tab generates "good opposite" perspectives as reflection prompts. Pushes back on your patterns.
+
+**The gap:** Tools respond to what you ask. Thinking partners surface what you didn't know to ask about. Inspiration does the latter.
+
+---
+
+## 🎯 Where It Helps
+
+**1. Pattern Recognition You Can't Do Yourself**
+
+Surfaces: "You've been circling this same caching problem across three projects for four months." Each conversation felt isolated—a colleague would've noticed.
+
+**2. Cross-Project Connections**
+
+Knowledge graphs synthesize across boundaries you've mentally siloed. A debugging pattern from March connects to work you're doing now.
+
+**3. Blind Spot Detection**
+
+Theme Explorer tabs:
+- **Patterns** — Semantic clustering (forest-level → tree-level zoom)
+- **Unexplored** — Topics discussed but not formalized (gaps in your Library)
+- **Counter-Intuitive** — "Good opposite" perspectives (reflection prompts)
+
+**4. Expert Knowledge Bridging**
+
+300+ Lenny's Podcast episodes pre-indexed and matched against your knowledge graph. Working through growth strategy? See what Elena Verna said about similar patterns. Connects your private thinking with public expertise.
+
+**5. Longitudinal Intelligence**
+
+Compounding factor. Tracks evolution: "Your focus shifted from UI to systems design without you noticing." No single-session tool can do this.
+
+---
+
+## 🔒 Privacy & Performance
+
+- Reads data directly from Cursor's local storage (no plugin, no extension, no modification)
+- <500MB histories: works entirely locally with 90s Fast Start—no database needed
+- Larger histories: choose quick scan (recent 500MB) or full Vector DB indexing
+- Privacy-first: data stays on your machine. Optional Supabase sync uses your own instance.
 
 ---
 
 <details>
 <summary><strong>🧠 How It Works</strong></summary>
 
-Inspiration indexes your Cursor and Claude Code conversations (optionally to a Vector DB for large histories). It uses semantic search to recognize patterns and reveals relationships through semantic analysis. Claude synthesizes these into structured ideas or insights. Your Library grows over time, the Theme Explorer surfaces patterns, and Unexplored Territory shows topics you've discussed but haven't captured yet.
+Conversations with AI capture reasoning in the moment—not polished docs. Inspiration analyzes this in two ways:
 
-**Longitudinal intelligence over your own thinking.**
+**Pattern recognition:** Semantic search finds recurring themes. You keep hitting the same edge case. Your focus shifted from frontend to systems without noticing. You've been circling the same architectural challenge from different angles.
 
-Your conversations with AI capture reasoning at the moment you're working through problems—not polished documentation. Inspiration analyzes this in two ways:
+**Relationship forming:** Semantic connections link conversations. A discussion from March connects to work you're doing now. Three projects share a common problem you didn't notice.
 
-**1. Pattern recognition (semantic search):**  
-Find recurring themes across conversations. You keep hitting the same edge case. Your focus shifted from frontend to systems design. You've been circling the same architectural challenge from different angles.
+**What this reveals:** Git history shows what you shipped. Patterns show how you thought about it—trade-offs, dead-ends, constraints. Sometimes that context is more valuable than the code.
 
-**2. Relationship forming (semantic connections):**  
-Conversations connect through semantic similarity. A discussion from March connects to work you're doing now. Three different projects link through a common problem you didn't notice.
-
-**What this reveals:**
-
-Your git history shows what you shipped. The patterns and relationships show how you thought about it: trade-offs considered, dead-ends explored, constraints that mattered. Sometimes that context is more valuable than the code itself.
-
-**Why it compounds:**
-
-More conversations mean more patterns and more nodes in the graph. The value isn't additive—it's about discovering connections and recurring themes you didn't know existed.
+**Why it compounds:** More conversations = more patterns and graph nodes. The value isn't additive—it's discovering connections and recurring themes you didn't know existed.
 
 </details>
 
@@ -177,24 +154,16 @@ Required environment variables:
 <details>
 <summary><strong>🔧 Technical Implementation</strong></summary>
 
-### Engineering
+**Stack:** Next.js 15, Python, Anthropic Claude, OpenAI embeddings, pgvector
 
-| Aspect | Details |
-|--------|---------|
-| **Multi-Source Extraction** | Reverse-engineered Cursor's "Bubble" format (SQLite) and Claude Code's JSONL |
-| **Relationship Discovery** | RAG over your own chat history to find conceptual relationships |
-| **Dedup Before Presentation** | Generate N×1.5 items, deduplicate via embedding similarity |
-| **Hybrid Local/Cloud** | Local SQLite → Supabase Vector DB sync; works offline, scales to 2GB+ |
+**Key Engineering:**
+- Reverse-engineered Cursor's "Bubble" format (SQLite) + Claude Code's JSONL
+- RAG over your own chat history for conceptual relationships
+- Dedup via embedding similarity (generate N×1.5, present N)
+- Hybrid local/cloud: SQLite → optional Supabase Vector DB sync
+- pgvector for server-side similarity (275x fewer API calls)
 
-### Architecture
-
-- Standard RAG pipeline (embed → analyze → retrieve → synthesize)
-- Semantic search for pattern recognition
-- Cosine similarity for relationship discovery
-- Anthropic Claude for synthesis, OpenAI for embeddings
-- pgvector for server-side similarity search (275x fewer API calls)
-
-The novelty is longitudinal intelligence: pattern recognition + relationship forming over your own thinking.
+**Architecture:** Standard RAG pipeline (embed → analyze → retrieve → synthesize) + semantic search + cosine similarity. Novelty is longitudinal intelligence over your own thinking.
 
 </details>
 
@@ -208,23 +177,11 @@ The novelty is longitudinal intelligence: pattern recognition + relationship for
 </details>
 
 <details>
-<summary><strong>💬 Community</strong></summary>
+<summary><strong>💬 Community & Support</strong></summary>
 
-Early users are finding it useful for discovering patterns they'd missed manually.
+**Bugs/Features:** [GitHub Issues](https://github.com/mostly-coherent/Inspiration/issues) | **Discussion:** [GitHub Discussions](https://github.com/mostly-coherent/Inspiration/discussions) | **Docs:** `ARCHITECTURE.md`, `CLAUDE.md`
 
-*Have something to share? Tag #InspirationDiscoveries on Twitter or open a discussion on GitHub.*
-
-</details>
-
-<details>
-<summary><strong>🆘 Support</strong></summary>
-
-- **Docs:** `ARCHITECTURE.md` (technical), `CLAUDE.md` (AI assistant context)
-- **Bugs:** [GitHub Issues](https://github.com/mostly-coherent/Inspiration/issues)
-- **Features:** [GitHub Issues](https://github.com/mostly-coherent/Inspiration/issues) (label: enhancement)
-- **Discussion:** [GitHub Discussions](https://github.com/mostly-coherent/Inspiration/discussions)
-
-PRs welcome. See issues tagged `good first issue`.
+PRs welcome. See issues tagged `good first issue`. Share discoveries: #InspirationDiscoveries on Twitter.
 
 </details>
 
