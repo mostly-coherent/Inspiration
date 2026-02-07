@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { ThemeExplorerTabs, getTabFromSearchParams } from "@/components/ThemeExplorerTabs";
 import { UnexploredTab } from "@/components/UnexploredTab";
-import { CounterIntuitiveTab } from "@/components/CounterIntuitiveTab";
+import { ReflectTab } from "@/components/ReflectTab";
 
 interface ThemePreview {
   id: string;
@@ -143,6 +143,7 @@ function ThemesPage() {
     minConversations: 5,
     includeLowSeverity: false,
   });
+  // Counter-intuitive config kept for backward compatibility with settings
   const [counterIntuitiveConfig, setCounterIntuitiveConfig] = useState({
     enabled: true,
     minClusterSize: 5,
@@ -565,7 +566,7 @@ function ThemesPage() {
                     ? "See what you've been thinking about most"
                     : activeTab === "unexplored"
                       ? "Topics you chat about but haven't saved yet"
-                      : "What if the opposite is also true?"}
+                      : "Probing questions about your patterns and blind spots"}
                 </p>
               </div>
             </div>
@@ -1053,7 +1054,7 @@ function ThemesPage() {
         </main>
       ) : (
         <main className="max-w-7xl mx-auto px-6 py-8">
-          <CounterIntuitiveTab config={counterIntuitiveConfig} />
+          <ReflectTab />
         </main>
       )}
     </div>

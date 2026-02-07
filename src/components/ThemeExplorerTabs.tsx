@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 
-export type ThemeTab = "patterns" | "unexplored" | "counterIntuitive";
+export type ThemeTab = "patterns" | "unexplored" | "reflect";
 
 interface TabConfig {
   id: ThemeTab;
@@ -21,18 +21,18 @@ const TABS: TabConfig[] = [
     status: "ready",
   },
   {
-    id: "counterIntuitive",
-    label: "Counter-Intuitive",
-    icon: "🔄",
-    description: "Reflection prompts for GOOD OPPOSITES",
-    status: "ready",  // ✅ Phase 3 complete
-  },
-  {
     id: "unexplored",
     label: "Unexplored",
     icon: "🧭",
     description: "Find what's MISSING from Library but in Memory",
-    status: "experimental",  // 🚧 Work in progress - value unclear
+    status: "experimental",
+  },
+  {
+    id: "reflect",
+    label: "Reflect",
+    icon: "🪞",
+    description: "Probing questions about YOUR patterns",
+    status: "ready",
   },
 ];
 
@@ -103,8 +103,12 @@ export function ThemeExplorerTabs({ activeTab, onTabChange }: ThemeExplorerTabsP
 
 export function getTabFromSearchParams(searchParams: URLSearchParams): ThemeTab {
   const tab = searchParams.get("tab");
-  if (tab === "patterns" || tab === "unexplored" || tab === "counterIntuitive") {
+  if (tab === "patterns" || tab === "unexplored" || tab === "reflect") {
     return tab;
+  }
+  // Backward compatibility: redirect old counterIntuitive tab to reflect
+  if (tab === "counterIntuitive") {
+    return "reflect";
   }
   return "patterns"; // Default
 }

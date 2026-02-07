@@ -597,9 +597,158 @@ def sync_claude_code_messages(
     }
 
 
+def sync_workspace_docs(
+    dry_run: bool,
+    client,
+) -> dict:
+    """Sync workspace documents (markdown, TODOs) to Vector DB. Returns stats dict."""
+
+    print(f"\n🔄 Syncing Workspace Documents")
+
+    from common.workspace_scanner import scan_all_workspaces, generate_workspace_doc_id
+
+    # Scan all configured workspaces for thinking artifacts
+    artifacts = scan_all_workspaces()
+
+    if not artifacts:
+        print("   No workspace documents found")
+        return {"indexed": 0, "skipped": 0, "failed": 0}
+
+    print(f"📝 Found {len(artifacts)} documents to check")
+
+    # Generate message IDs (content-hash based, so changed files get new IDs)
+    candidate_messages = []
+    for artifact in artifacts:
+        message_id = generate_workspace_doc_id(artifact["file_path"], artifact["text"])
+
+        candidate_messages.append({
+            "message_id": message_id,
+            "text": artifact["text"],
+            "timestamp": artifact["timestamp"],
+            "workspace": artifact["workspace"],
+            "chat_id": f"doc:{artifact['relative_path']}",  # Group by file path
+            "chat_type": "document",
+            "message_type": "user",  # These are the user's words
+            "source_detail": {
+                "file_path": artifact["file_path"],
+                "relative_path": artifact["relative_path"],
+                "file_type": artifact["file_type"],
+                "file_name": artifact["file_name"],
+            },
+        })
+
+    # Check which ones already exist in Vector DB (deduplication)
+    print("🔍 Checking for duplicates in Vector DB...")
+    all_message_ids = [msg["message_id"] for msg in candidate_messages]
+    existing_ids = get_existing_message_ids(all_message_ids, client)
+
+    # Filter to only new/changed documents
+    new_messages = [msg for msg in candidate_messages if msg["message_id"] not in existing_ids]
+    skipped_count = len(candidate_messages) - len(new_messages)
+
+    if skipped_count > 0:
+        print(f"   ✅ Already indexed (unchanged): {skipped_count} documents (skipping)")
+
+    print(f"   🆕 New/changed documents to index: {len(new_messages)}")
+
+    if dry_run:
+        print("🔍 DRY RUN: Would index documents above")
+        return {"indexed": 0, "skipped": skipped_count, "failed": 0}
+
+    if not new_messages:
+        print("✅ No new documents to sync")
+        return {"indexed": 0, "skipped": skipped_count, "failed": 0}
+
+    # Process in batches
+    indexed_count = 0
+    failed_count = 0
+
+    for i in range(0, len(new_messages), BATCH_SIZE):
+        batch = new_messages[i:i + BATCH_SIZE]
+        batch_texts = [msg["text"] for msg in batch]
+        batch_num = i // BATCH_SIZE + 1
+        total_batches = (len(new_messages) + BATCH_SIZE - 1) // BATCH_SIZE
+
+        print(f"  Processing batch {batch_num}/{total_batches} ({len(batch)} documents)...", flush=True)
+
+        # Get embeddings in batch
+        try:
+            print(f"    → Fetching embeddings from OpenAI...", flush=True)
+            embeddings = batch_get_embeddings(batch_texts, use_cache=True)
+            print(f"    ✓ Got {len(embeddings)} embeddings", flush=True)
+        except Exception as e:
+            print(f"  ⚠️  Failed to get embeddings: {e}", flush=True)
+            failed_count += len(batch)
+            continue
+
+        # Prepare batch data with embeddings and source info
+        batch_data = []
+        for msg, embedding in zip(batch, embeddings):
+            batch_data.append({
+                "message_id": msg["message_id"],
+                "text": msg["text"],
+                "timestamp": msg["timestamp"],
+                "workspace": msg["workspace"],
+                "chat_id": msg["chat_id"],
+                "chat_type": msg["chat_type"],
+                "message_type": msg["message_type"],
+                "embedding": embedding,
+                "source": "workspace_docs",
+                "source_detail": msg["source_detail"],
+            })
+
+        # Index documents in batch
+        print(f"    → Indexing {len(batch_data)} documents to Supabase (batch insert)...", flush=True)
+        try:
+            batch_successful, batch_failed = index_messages_batch(client, batch_data)
+            indexed_count += batch_successful
+            failed_count += batch_failed
+        except Exception as e:
+            print(f"  ⚠️  Batch insert failed, falling back to individual inserts: {e}", flush=True)
+            for j, (msg, embedding) in enumerate(zip(batch, embeddings)):
+                try:
+                    success = index_message(
+                        client,
+                        msg["message_id"],
+                        msg["text"],
+                        msg["timestamp"],
+                        msg["workspace"],
+                        msg["chat_id"],
+                        msg["chat_type"],
+                        msg["message_type"],
+                        embedding=embedding,
+                        source="workspace_docs",
+                        source_detail=msg["source_detail"],
+                    )
+
+                    if success:
+                        indexed_count += 1
+                    else:
+                        failed_count += 1
+                except Exception as e2:
+                    print(f"  ⚠️  Failed to index document {j+1}/{len(batch)}: {e2}", flush=True)
+                    failed_count += 1
+
+        print(f"  ✓ Batch {batch_num}/{total_batches} complete ({indexed_count} indexed, {failed_count} failed)", flush=True)
+
+    # Update sync state for workspace docs
+    if not dry_run:
+        import time
+        update_sync_state("workspace_docs", int(time.time() * 1000), indexed_count)
+
+    print(f"✅ Workspace docs sync complete: {indexed_count} indexed, {skipped_count} skipped, {failed_count} failed")
+
+    return {
+        "indexed": indexed_count,
+        "skipped": skipped_count,
+        "failed": failed_count,
+    }
+
+
 def sync_new_messages(
     days_back: int = 7,
     dry_run: bool = False,
+    include_workspace_docs: bool = True,
 ) -> None:
     """Sync new messages from all detected sources."""
 
@@ -609,7 +758,7 @@ def sync_new_messages(
     print_detection_report(detected_sources)
     print("=" * 60)
 
-    if not detected_sources:
+    if not detected_sources and not include_workspace_docs:
         print("❌ No chat history sources found")
         print("   Make sure you have Cursor or Claude Code installed with conversation history")
         return
@@ -635,6 +784,14 @@ def sync_new_messages(
             except Exception as e:
                 print(f"⚠️  Claude Code sync failed: {e}")
                 stats["claude_code"] = {"indexed": 0, "skipped": 0, "failed": 0}
+
+    # Sync workspace documents (markdown, TODOs)
+    if include_workspace_docs:
+        try:
+            stats["workspace_docs"] = sync_workspace_docs(dry_run, client)
+        except Exception as e:
+            print(f"⚠️  Workspace docs sync failed: {e}")
+            stats["workspace_docs"] = {"indexed": 0, "skipped": 0, "failed": 0}
 
     # Print summary
     print()

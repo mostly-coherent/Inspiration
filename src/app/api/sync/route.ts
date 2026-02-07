@@ -149,6 +149,7 @@ export async function POST(request: Request) {
           // Parse stdout for multi-source stats
           const cursorMatch = stdout.match(/Cursor:\s+(\d+)\s+indexed,\s+(\d+)\s+skipped,\s+(\d+)\s+failed/);
           const claudeMatch = stdout.match(/Claude Code:\s+(\d+)\s+indexed,\s+(\d+)\s+skipped,\s+(\d+)\s+failed/);
+          const workspaceDocsMatch = stdout.match(/Workspace Docs:\s+(\d+)\s+indexed,\s+(\d+)\s+skipped,\s+(\d+)\s+failed/);
 
           const stats: any = {};
 
@@ -168,13 +169,23 @@ export async function POST(request: Request) {
             };
           }
 
+          if (workspaceDocsMatch) {
+            stats.workspaceDocs = {
+              indexed: parseInt(workspaceDocsMatch[1]),
+              skipped: parseInt(workspaceDocsMatch[2]),
+              failed: parseInt(workspaceDocsMatch[3]),
+            };
+          }
+
           const totalIndexed =
             (stats.cursor?.indexed || 0) +
-            (stats.claudeCode?.indexed || 0);
+            (stats.claudeCode?.indexed || 0) +
+            (stats.workspaceDocs?.indexed || 0);
           
           const totalSkipped =
             (stats.cursor?.skipped || 0) +
-            (stats.claudeCode?.skipped || 0);
+            (stats.claudeCode?.skipped || 0) +
+            (stats.workspaceDocs?.skipped || 0);
 
           // Check if there were no new messages
           if (totalIndexed === 0) {

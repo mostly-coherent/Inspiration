@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 /**
- * Get conversation and message count breakdown by source (Cursor vs Claude Code).
+ * Get conversation and message count breakdown by source (Cursor, Claude Code, Workspace Docs).
  *
  * Returns:
  *   {
  *     cursor: { conversations: number, messages: number },
- *     claudeCode: { conversations: number, messages: number }
+ *     claudeCode: { conversations: number, messages: number },
+ *     workspaceDocs: { documents: number }
  *   }
  */
 export async function GET() {
@@ -18,31 +19,42 @@ export async function GET() {
     return NextResponse.json({
       cursor: { conversations: 0, messages: 0 },
       claudeCode: { conversations: 0, messages: 0 },
+      workspaceDocs: { documents: 0 },
     });
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
-    // Use RPC function for efficient counting (single query instead of pagination)
-    const { data, error } = await supabase.rpc("get_source_stats");
+    // Fetch chat source stats and workspace doc count in parallel
+    const [rpcResult, docsResult] = await Promise.all([
+      supabase.rpc("get_source_stats"),
+      supabase
+        .from("cursor_messages")
+        .select("message_id", { count: "exact", head: true })
+        .eq("source", "workspace_docs"),
+    ]);
 
-    if (error) {
-      console.error("Error fetching source stats via RPC:", error);
-      // Fallback to zero counts on error
-      return NextResponse.json({
-        cursor: { conversations: 0, messages: 0 },
-        claudeCode: { conversations: 0, messages: 0 },
-      });
+    const chatStats = rpcResult.error
+      ? { cursor: { conversations: 0, messages: 0 }, claudeCode: { conversations: 0, messages: 0 } }
+      : rpcResult.data;
+
+    if (rpcResult.error) {
+      console.error("Error fetching source stats via RPC:", rpcResult.error);
     }
 
-    // RPC function returns JSON matching our response format
-    return NextResponse.json(data);
+    const docsCount = docsResult.error ? 0 : (docsResult.count ?? 0);
+
+    return NextResponse.json({
+      ...chatStats,
+      workspaceDocs: { documents: docsCount },
+    });
   } catch (error) {
     console.error("Error fetching source breakdown:", error);
     return NextResponse.json({
       cursor: { conversations: 0, messages: 0 },
       claudeCode: { conversations: 0, messages: 0 },
+      workspaceDocs: { documents: 0 },
     });
   }
 }
