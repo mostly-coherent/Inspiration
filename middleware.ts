@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+// Session duration: 2 days (rolling — refreshed on every authenticated request)
+const SESSION_MAX_AGE = 60 * 60 * 24 * 2; // 2 days in seconds
+
 export function middleware(request: NextRequest) {
   // Check if password protection is enabled
   const password = process.env.APP_PASSWORD;
@@ -29,7 +32,17 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  // Rolling session: refresh cookie on every authenticated request
+  const response = NextResponse.next();
+  response.cookies.set("inspiration_auth", "authenticated", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: SESSION_MAX_AGE,
+    path: "/",
+  });
+
+  return response;
 }
 
 export const config = {

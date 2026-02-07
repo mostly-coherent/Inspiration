@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { SessionGuard } from "@/components/SessionGuard";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,6 +30,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} font-sans min-h-screen`}
       >
         <ErrorBoundary>
+          <SessionGuard />
           {children}
         </ErrorBoundary>
       </body>

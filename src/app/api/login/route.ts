@@ -23,13 +23,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Set authentication cookie (expires in 30 days)
+    // Set authentication cookie (2-day rolling session)
     const cookieStore = await cookies();
     cookieStore.set("inspiration_auth", "authenticated", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 30, // 30 days
+      maxAge: 60 * 60 * 24 * 2, // 2 days
       path: "/",
     });
 
