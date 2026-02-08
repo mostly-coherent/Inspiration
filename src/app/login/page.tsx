@@ -40,7 +40,7 @@ function LoginForm() {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-8">
+    <main className="min-h-screen flex items-center justify-center p-4 sm:p-8">
       {/* Background gradient */}
       <div className="fixed inset-0 -z-10">
         <div className="absolute inset-0 bg-gradient-to-br from-adobe-gray-900 via-adobe-gray-800 to-adobe-gray-900" />
@@ -48,7 +48,7 @@ function LoginForm() {
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-inspiration-insights/10 rounded-full blur-3xl" />
       </div>
 
-      <div className="glass-card p-8 max-w-md w-full space-y-6">
+      <div className="glass-card p-6 sm:p-8 max-w-md w-full space-y-6">
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold gradient-text">Inspiration</h1>
           <p className="text-adobe-gray-400">Enter password to access</p>
@@ -93,11 +93,11 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <main className="min-h-screen flex items-center justify-center p-8">
+      <main className="min-h-screen flex items-center justify-center p-4 sm:p-8">
         <div className="fixed inset-0 -z-10">
           <div className="absolute inset-0 bg-gradient-to-br from-adobe-gray-900 via-adobe-gray-800 to-adobe-gray-900" />
         </div>
-        <div className="glass-card p-8 max-w-md w-full">
+        <div className="glass-card p-6 sm:p-8 max-w-md w-full">
           <div className="text-center space-y-2">
             <h1 className="text-3xl font-bold gradient-text">Inspiration</h1>
             <p className="text-adobe-gray-400">Loading...</p>

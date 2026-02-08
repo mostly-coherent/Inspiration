@@ -20,7 +20,7 @@ import { explainError } from "@/lib/errorExplainer";
 import { ModeCard } from "@/components/ModeCard";
 import { AdvancedSettings } from "@/components/AdvancedSettings";
 import { ExpectedOutput } from "@/components/ExpectedOutput";
-import { LogoutButton } from "@/components/LogoutButton";
+// LogoutButton removed — sign-out is now in SessionGuard (consistent across all apps)
 import { SimpleModeSelector } from "@/components/SimpleModeSelector";
 import { ScoreboardHeader } from "@/components/ScoreboardHeader";
 import { ViewToggle, ViewMode } from "@/components/ViewToggle";
@@ -1110,7 +1110,7 @@ export default function Home() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             </a>
-            <LogoutButton />
+            {/* Sign-out is handled by SessionGuard (fixed top-right) */}
           </div>
         </header>
 
