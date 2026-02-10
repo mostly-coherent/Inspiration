@@ -6,13 +6,15 @@
 
 ## Canonical Use Cases (Context)
 
-Before diving into technical details, understand what each mode is for:
+Before diving into technical details, understand what Inspiration does:
 
-- **Generate (Insights):** Extract shareable insights from coding sessions → Social media posts
-- **Generate (Ideas):** Identify problems worth building solutions for → Prototype ideas
+- **Generate (Insights/Ideas/Custom):** Extract ideas and insights from AI conversations + workspace docs
 - **Seek (Use Cases):** "I want to build X, do I have similar examples?" → Synthesized use cases from history
+- **Theme Explorer:** Pattern discovery (Patterns tab), Socratic questioning (Reflect tab), gap detection (Unexplored tab)
+- **Theme Map:** Fast visual overview of top themes, generated from local SQLite with cost estimation
+- **Expert Perspectives:** 300+ Lenny's Podcast episodes matched to your themes, with YouTube timestamp deep-links
 
-See PLAN.md for detailed use case descriptions.
+See PLAN.md for roadmap and CLAUDE.md for development context.
 
 ---
 
@@ -126,54 +128,45 @@ See PLAN.md for detailed use case descriptions.
 
 ### Overview
 
-Inspiration supports multiple AI coding assistant sources with automatic detection and unified storage:
+Inspiration supports 4 sources with automatic detection and unified storage:
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                     MULTI-SOURCE EXTRACTION                         │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌──────────────────┐                 ┌──────────────────┐         │
-│  │   Cursor (SQLite) │                 │ Claude Code (JSONL)│         │
-│  │                  │                 │                  │         │
-│  │  Mac/Windows:    │                 │  Mac/Windows:    │         │
-│  │  ~/Library/...   │                 │  ~/.claude/      │         │
-│  │  %APPDATA%/...   │                 │  projects/       │         │
-│  └────────┬─────────┘                 └────────┬─────────┘         │
-│           │                                    │                   │
-│           │   ┌────────────────────┐           │                   │
-│           └──▶│ Source Detector    │◀──────────┘                   │
-│               │ (Auto-detects both)│                               │
-│               └─────────┬──────────┘                               │
-│                         │                                          │
-│           ┌─────────────┴─────────────┐                            │
-│           ▼                           ▼                            │
-│  ┌────────────────┐          ┌────────────────┐                   │
-│  │ cursor_db.py   │          │claude_code_db.py│                   │
-│  │                │          │                │                   │
-│  │ • Bubble format│          │ • JSONL parser │                   │
-│  │ • SQLite query │          │ • Subagent msgs│                   │
-│  │ • Composer data│          │ • CWD matching │                   │
-│  └────────┬───────┘          └────────┬───────┘                   │
-│           │                           │                            │
-│           └────────┬──────────────────┘                            │
-│                    ▼                                               │
-│          ┌──────────────────┐                                      │
-│          │ sync_messages.py │                                      │
-│          │                  │                                      │
-│          │ • Per-source sync│                                      │
-│          │ • Unified pipeline│                                     │
-│          └────────┬─────────┘                                      │
-│                   ▼                                                │
-│          ┌──────────────────┐                                      │
-│          │ Unified Vector DB │                                      │
-│          │                  │                                      │
-│          │ • source column  │                                      │
-│          │ • source_detail  │                                      │
-│          │ • embeddings     │                                      │
-│          └──────────────────┘                                      │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                       MULTI-SOURCE EXTRACTION (v6)                        │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  │
+│  │Cursor (SQLite)│  │Claude Code   │  │Claude Cowork │  │Workspace   │  │
+│  │              │  │  (JSONL)     │  │  (JSONL)     │  │Docs (.md)  │  │
+│  │ state.vscdb  │  │ ~/.claude/   │  │ local-agent- │  │ TODO/FIXME │  │
+│  │              │  │ projects/    │  │ mode-sessions│  │ comments   │  │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬─────┘  │
+│         │                 │                 │                 │          │
+│         └─────────┬───────┴────────┬────────┘                 │          │
+│                   ▼                ▼                           ▼          │
+│         ┌────────────────┐  ┌────────────────┐  ┌──────────────────┐    │
+│         │ cursor_db.py   │  │claude_code_db  │  │workspace_scanner │    │
+│         │ • Bubble format│  │ • Code + Cowork│  │ • .md files      │    │
+│         │ • SQLite query │  │ • JSONL parser │  │ • TODO/FIXME/    │    │
+│         │ • Composer data│  │ • CWD matching │  │   HACK/NOTE      │    │
+│         └────────┬───────┘  └────────┬───────┘  └────────┬─────────┘    │
+│                  │                   │                    │               │
+│                  └──────────┬────────┴────────────────────┘               │
+│                             ▼                                            │
+│                   ┌──────────────────┐                                    │
+│                   │ sync_messages.py │                                    │
+│                   │ • Per-source sync│                                    │
+│                   │ • Unified pipeline│                                   │
+│                   └────────┬─────────┘                                    │
+│                            ▼                                             │
+│                   ┌──────────────────┐                                    │
+│                   │ Unified Vector DB │                                    │
+│                   │ • source column  │                                    │
+│                   │ • source_detail  │                                    │
+│                   │ • embeddings     │                                    │
+│                   └──────────────────┘                                    │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Source Detection
@@ -186,6 +179,8 @@ Auto-detects available sources on user's system:
 |--------|--------|---------------|------------------|
 | **Cursor** | SQLite | `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` | `%APPDATA%/Cursor/User/globalStorage/state.vscdb` |
 | **Claude Code** | JSONL | `~/.claude/projects/{workspace}/{session}.jsonl` | `%APPDATA%/Claude/projects/{workspace}/{session}.jsonl` |
+| **Claude Cowork** | JSONL | `~/.claude/projects/{workspace}/local-agent-mode-sessions/{session}.jsonl` | Same under `%APPDATA%` |
+| **Workspace Docs** | .md + code | Configured workspace paths (markdown files, TODO/FIXME/HACK/NOTE code comments) | Same |
 
 **Detection Logic:**
 ```python
@@ -193,13 +188,11 @@ sources = detect_sources()  # Returns list of ChatSource objects
 print_detection_report(sources)  # User-friendly summary
 
 # Example output:
-# ✅ Cursor
-#    Location: /Users/user/Library/.../state.vscdb
-#    Format:   sqlite
-# ✅ Claude Code
-#    Location: /Users/user/.claude/projects
-#    Format:   jsonl
-# 📊 Total sources: 2
+# ✅ Cursor        — /Users/user/Library/.../state.vscdb (sqlite)
+# ✅ Claude Code   — /Users/user/.claude/projects (jsonl)
+# ✅ Claude Cowork — /Users/user/.claude/projects/.../local-agent-mode-sessions (jsonl)
+# ✅ Workspace Docs — 3 workspaces configured (md + code comments)
+# 📊 Total sources: 4
 ```
 
 ### Extraction Modules
@@ -2536,4 +2529,109 @@ SELECT * FROM tool_chain;
 
 <!-- Merged from ONBOARDING_CHOICE_NUMBERS_ANALYSIS.md on 2026-01-23 -->
 
-**Last Updated:** 2026-01-23
+---
+
+## Socratic Mode Architecture (v6 — 2026-02-06)
+
+### Overview
+
+Socratic Mode (Reflect tab) generates probing questions from the user's patterns, gaps, and expert knowledge. Built on **themes** (which work well), NOT the user KG (which produced poor results).
+
+### Data Flow
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    SOCRATIC MODE (REFLECT TAB)                    │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Data Sources (aggregated by socratic_engine.py):                │
+│  ┌──────────┐  ┌───────────┐  ┌────────────┐  ┌────────────┐   │
+│  │ Patterns │  │Unexplored │  │  Library   │  │Expert Match│   │
+│  │ (themes) │  │  Topics   │  │   Stats    │  │  (Lenny)   │   │
+│  └────┬─────┘  └─────┬─────┘  └─────┬──────┘  └─────┬──────┘   │
+│       └──────────┬────┴──────────────┴───────────────┘           │
+│                  ▼                                                │
+│       ┌─────────────────────┐                                    │
+│       │  Socratic Engine    │  (engine/common/socratic_engine.py)│
+│       │  • Data aggregation │                                    │
+│       │  • Temporal shifts  │                                    │
+│       │  • Expert matching  │                                    │
+│       └──────────┬──────────┘                                    │
+│                  ▼                                                │
+│       ┌─────────────────────┐                                    │
+│       │  LLM Prompt         │  (engine/prompts/socratic.md)     │
+│       │  → 8-12 questions   │                                    │
+│       │  • Category badges  │                                    │
+│       │  • Difficulty levels│                                    │
+│       │  • Evidence links   │                                    │
+│       └──────────┬──────────┘                                    │
+│                  ▼                                                │
+│       ┌─────────────────────┐                                    │
+│       │  API: /api/themes/  │  24h cache                        │
+│       │  socratic           │                                    │
+│       └──────────┬──────────┘                                    │
+│                  ▼                                                │
+│       ┌─────────────────────┐                                    │
+│       │  ReflectTab.tsx     │  Question cards with actions       │
+│       └─────────────────────┘                                    │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Question Categories:** Pattern, Gap, Tension, Temporal, Expert, Alignment
+**Difficulty levels:** Comfortable (4-5), Uncomfortable (3-4), Confrontational (1-2)
+
+**Key Files:**
+- `engine/common/socratic_engine.py` — Data aggregation + question generation
+- `engine/prompts/socratic_questions.md` — LLM prompt template
+- `src/app/api/themes/socratic/route.ts` — API route (24h cache)
+- `src/components/ReflectTab.tsx` — Reflect tab UI
+
+---
+
+## YouTube Timestamp Deep-Links (LENNY-1 — 2026-02-06)
+
+### Overview
+
+Lenny podcast quotes with `HH:MM:SS` timestamps are converted to YouTube's `?t=seconds` format for one-click access to exact podcast moments.
+
+### Implementation
+
+**Utility:** `src/lib/youtube.ts`
+- `timestampToSeconds("00:15:30")` → `930`
+- `youtubeUrlWithTimestamp(url, timestamp)` → `https://youtube.com/watch?v=xxx&t=930`
+
+**UI locations updated:**
+- Theme Explorer (`themes/page.tsx`) — Expert perspectives quotes
+- Theme Map (`theme-map/page.tsx`) — Expert perspectives, challenges, insights
+- Fast Start (`onboarding-fast/page.tsx`) — Expert quotes
+- Counter-Intuitive (`CounterIntuitiveTab.tsx`) — Expert quotes
+
+**Display:** Links show `Watch @ 00:15:30 →` instead of generic `Watch →` when timestamp is available and non-zero.
+
+---
+
+## Cost Estimation Architecture (FAST-2 — 2026-02-06)
+
+### Overview
+
+Theme Map page shows estimated LLM cost before generation, preventing unexpected charges.
+
+### Data Flow
+
+```
+Page Load → GET /api/generate-themes?estimateCost=true&maxSizeMb=500&provider=anthropic
+         → Python: engine/generate_themes.py --estimate-cost --max-size-mb 500
+         → cost_estimator.py: calculate tokens × pricing
+         → Response: { costEstimate: { estimatedCostUSD, model, conversationCount, disclaimer } }
+         → UI: Shows "~$0.12" badge next to Regenerate button
+         → User clicks Regenerate → Confirmation dialog → POST to generate
+```
+
+**Key Files:**
+- `engine/common/cost_estimator.py` — Token estimation × provider pricing
+- `engine/common/cursor_db.py` → `estimate_db_metrics()` — DB size and conversation count estimates
+- `src/app/api/generate-themes/route.ts` — GET handler for cost estimation
+- `src/app/theme-map/page.tsx` — Cost display + confirmation dialog
+
+**Last Updated:** 2026-02-06

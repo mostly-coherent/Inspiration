@@ -7,6 +7,7 @@ import ReactMarkdown from "react-markdown";
 import { ThemeExplorerTabs, getTabFromSearchParams } from "@/components/ThemeExplorerTabs";
 import { UnexploredTab } from "@/components/UnexploredTab";
 import { ReflectTab } from "@/components/ReflectTab";
+import { youtubeUrlWithTimestamp } from "@/lib/youtube";
 
 interface ThemePreview {
   id: string;
@@ -815,13 +816,13 @@ function ThemesPage() {
                                           </span>
                                           {quote.youtubeUrl && (
                                             <a 
-                                              href={quote.youtubeUrl}
+                                              href={youtubeUrlWithTimestamp(quote.youtubeUrl, quote.timestamp) || quote.youtubeUrl}
                                               target="_blank"
                                               rel="noopener noreferrer"
                                               className="text-amber-400 hover:text-amber-300 hover:underline flex-shrink-0"
                                               onClick={(e) => e.stopPropagation()}
                                             >
-                                              Watch →
+                                              {quote.timestamp && quote.timestamp !== "00:00:00" ? `Watch @ ${quote.timestamp} →` : "Watch →"}
                                             </a>
                                           )}
                                         </div>

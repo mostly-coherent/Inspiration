@@ -6,7 +6,7 @@
 
 ## What This Is
 
-A web UI for extracting ideas and insights from Cursor chat history using Claude Sonnet 4. Now powered by **Supabase Vector DB** for massive scale support (>2GB chat history). **v2.0** introduces Knowledge Graphs for longitudinal intelligence—extracting entities and relations from conversations to reveal connections in your thinking.
+A thinking partner for builders who use AI coding tools. Mines your Cursor conversations, Claude sessions (Code + Cowork), and workspace artifacts (markdown, TODOs, code comments) to surface patterns, blind spots, and probing questions. Powered by Supabase Vector DB (pgvector) for semantic search across your entire history. **v6** adds Multi-Source Memory and Socratic Mode (Reflect tab).
 
 ### Core Concepts
 
@@ -19,21 +19,23 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 
 ### Features
 
-- **Generate (Idea Mode)** — Prototype and tool ideas worth building
-- **Generate (Insight Mode)** — Social media post drafts sharing learnings
-- **Generate (Custom Modes)** — User-defined generation modes
-- **Seek (Use Case Mode)** — Find chat history evidence for use cases
-- **Library** — Items and Categories with automatic grouping via cosine similarity
-- **Memory** — Indexed chat history with sync status and date coverage
-- **Theme Explorer (LIB-8)** — Pattern discovery via dynamic similarity grouping (forest → trees zoom), AI synthesis per theme
-- **Unexplored Territory (LIB-10)** — Find topics discussed in Memory but missing from Library
-- **Counter-Intuitive (LIB-11)** — LLM-generated reflection prompts for "good opposite" perspectives
-- **Expert Perspectives (Lenny's Podcast)** — 300+ expert episodes integrated into Theme Explorer (Patterns + Counter-Intuitive tabs)
-- **Knowledge Graph (v2.0)** — Entity/relation extraction from conversations, Entity Explorer, Graph View, Evolution Timeline, Intelligence features
+- **Generate (Idea/Insight/Custom Modes)** — Extract ideas, insights, or user-defined modes from chat history
+- **Seek (Use Case Mode)** — Find chat history evidence for user-provided queries
+- **Library** — Items and Categories with automatic grouping via cosine similarity (Supabase-backed)
+- **Memory** — Multi-source indexed history: Cursor chats, Claude Code, Claude Cowork, workspace docs
+- **Theme Explorer** — 3 tabs:
+  - **Patterns** — Semantic clustering (forest → tree zoom), AI synthesis per theme
+  - **Reflect** (Socratic Mode) — Probing questions generated from your patterns, gaps, and expert knowledge
+  - **Unexplored** — Topics in Memory but missing from Library (experimental)
+- **Expert Perspectives (Lenny's Podcast)** — 300+ episodes with YouTube timestamp deep-links (`00:15:30` → `?t=930`)
+- **Theme Map** — Fast generation from local SQLite with cost estimation before generation
+- **Knowledge Graph (v2.0)** — Entity Explorer, Graph View, Evolution Timeline (expert KG useful; user KG quality poor)
+- **Scoreboard** — "Your Memory Sources" showing AI chats, workspace docs, and code comments
 
 **Longitudinal Intelligence Status:**
-- ✅ Theme Explorer (v4 Phase 3) — Patterns, Unexplored, Counter-Intuitive tabs operational
-- ✅ Knowledge Graph (v2.0) — Complete foundation: User chat KG (1,571 entities), Lenny's Expert KG (13,878 entities), Entity Explorer, Graph View, Evolution Timeline, Intelligence Panel
+- ✅ Theme Explorer (v4-v6) — Patterns, Reflect, Unexplored tabs operational
+- ✅ Knowledge Graph (v2.0) — Complete foundation: Lenny's Expert KG (13,878 entities), User KG (1,571 entities)
+- ⏳ Learning Trajectory (LIB-9) — Track interest shifts over time (next major feature)
 
 ### Lenny's Podcast Integration
 
@@ -119,52 +121,64 @@ A web UI for extracting ideas and insights from Cursor chat history using Claude
 
 ```
 inspiration/
-├── src/app/              # Next.js 15 App Router
-│   ├── page.tsx          # Main generation UI (redirects to onboarding if new user)
-│   ├── onboarding/       # New user onboarding wizard (3 steps)
-│   ├── themes/           # Theme Explorer (dedicated page)
-│   ├── settings/         # Settings wizard (v1: Mode Settings section)
-│   └── api/
-│       ├── generate/     # Calls Python engine (v1: theme/mode support)
-│       ├── generate-stream/ # Streaming generation with progress markers
-│       ├── seek-stream/  # Streaming seek with progress markers
-│       ├── performance/  # Performance analytics API
-│       ├── config/       # Config CRUD
-│       │   └── env/      # Environment variables API (onboarding)
-│       ├── items/        # Unified Items/Categories API (v1)
-│       │   └── themes/   # Theme grouping + synthesis API
-│       ├── themes/       # Themes configuration API (v1)
-│       ├── modes/        # Mode CRUD API (v1)
-│       └── reverse-match/ # Semantic search chat history
-├── engine/               # Python generation engine
-│   ├── generate.py       # Unified generation CLI (v1: replaces ideas.py/insights.py)
-│   ├── reverse_match.py  # Reverse matching CLI
-│   ├── common/           # Shared utilities
-│   │   ├── cursor_db.py  # Cross-platform Cursor DB extraction (Mac/Windows only)
-│   │   ├── vector_db.py  # Supabase pgvector integration
-│   │   ├── items_bank.py # Unified Items/Categories bank (v1)
-│   │   ├── folder_tracking.py # Folder-based tracking (v1)
-│   │   ├── mode_settings.py # Mode settings loader (v1)
-│   │   ├── llm.py        # Anthropic + OpenAI wrapper
-│   │   ├── config.py     # User config management
-│   │   ├── semantic_search.py # Embedding generation & vector similarity
-│   │   └── progress_markers.py # Progress streaming & performance logging
-│   ├── prompts/          # Prompt templates
-│   │   ├── base_synthesize.md # Common prompt elements
-│   │   ├── ideas_synthesize.md # Idea-specific prompts
-│   │   └── insights_synthesize.md # Insight-specific prompts
-│   └── scripts/          # Database management scripts
-│       ├── index_all_messages.py # One-time bulk indexer
-│       ├── sync_messages.py      # Incremental sync service
-│       ├── init_vector_db.sql    # Supabase schema
-│       ├── migrate_banks_to_v1.py # Bank migration script (one-time use)
-│       └── migrate_voice_profile.py # Voice profile migration script (one-time use)
-└── data/                 # User data (gitignored)
-    ├── config.json       # User configuration (v1: userProfile instead of customVoice)
-    ├── themes.json       # Theme/Mode configuration (v1)
-    ├── items_bank.json   # Unified Items/Categories bank (v1)
+├── src/
+│   ├── app/                  # Next.js 15 App Router
+│   │   ├── page.tsx          # Main UI (redirects to onboarding if new user)
+│   │   ├── onboarding-fast/  # Fast Start (90s, local SQLite)
+│   │   ├── onboarding/       # Full Setup wizard
+│   │   ├── themes/           # Theme Explorer (Patterns, Reflect, Unexplored)
+│   │   ├── theme-map/        # Theme Map viewer (with cost estimation)
+│   │   ├── settings/         # Settings (General, Modes, Advanced, Prompts)
+│   │   ├── entities/         # Entity Explorer (KG)
+│   │   ├── graph/            # Graph View (KG)
+│   │   └── api/
+│   │       ├── generate-themes/ # Theme Map generation + cost estimation
+│   │       ├── theme-map/       # Theme Map persistence
+│   │       ├── themes/socratic/ # Socratic question generation
+│   │       ├── expert-perspectives/ # Lenny semantic search
+│   │       ├── brain-stats/   # Memory stats + source breakdown
+│   │       ├── sync/          # Multi-source sync (Cursor + Claude + Docs)
+│   │       ├── items/         # Library CRUD (Supabase-backed)
+│   │       ├── config/        # Config CRUD
+│   │       ├── kg/            # Knowledge Graph endpoints
+│   │       └── lenny-*/       # Lenny download, sync, stats
+│   ├── components/
+│   │   ├── ScoreboardHeader.tsx    # Memory Sources scoreboard
+│   │   ├── ThemeExplorerTabs.tsx   # Tab config (Patterns | Reflect | Unexplored)
+│   │   ├── ReflectTab.tsx          # Socratic Mode UI
+│   │   ├── UnexploredTab.tsx       # Gap detection UI
+│   │   ├── CounterIntuitiveTab.tsx # Reflection prompts (inside Reflect)
+│   │   ├── EntityExplorer.tsx      # KG Entity browser
+│   │   └── GraphView.tsx           # KG interactive graph
+│   └── lib/
+│       ├── socratic.ts       # Socratic Engine (data aggregation + LLM)
+│       ├── youtube.ts        # YouTube timestamp deep-links (HH:MM:SS → ?t=N)
+│       └── types.ts          # Shared TypeScript types
+├── engine/                   # Python backend
+│   ├── generate.py           # Unified generation CLI (Ideas/Insights/Custom)
+│   ├── generate_themes.py    # Theme Map generation + cost estimation
+│   ├── common/
+│   │   ├── cursor_db.py      # Cursor SQLite extraction (Mac/Windows)
+│   │   ├── claude_code_db.py # Claude Code + Cowork JSONL parsing
+│   │   ├── source_detector.py # Auto-detect chat history locations
+│   │   ├── workspace_scanner.py # Scan .md files + code comments
+│   │   ├── vector_db.py      # Supabase pgvector integration
+│   │   ├── items_bank_supabase.py # Library (Supabase-backed)
+│   │   ├── cost_estimator.py # LLM cost estimation
+│   │   ├── lenny_parser.py   # Transcript parser (YAML + markdown)
+│   │   ├── lenny_search.py   # Local semantic search over embeddings
+│   │   ├── llm.py            # Anthropic + OpenAI wrapper
+│   │   └── config.py         # User config management
+│   ├── prompts/              # LLM prompt templates
+│   └── scripts/
+│       ├── sync_messages.py  # Multi-source incremental sync
+│       ├── get_brain_stats.py # Memory size calculation (all sources)
+│       └── migrations/       # Supabase schema migrations
+└── data/                     # User data (gitignored)
+    ├── config.json           # User configuration
+    ├── themes.json           # Theme/Mode configuration
     ├── vector_db_sync_state.json # Sync tracking
-    └── performance_logs/ # Run performance logs (JSON)
+    └── theme_maps/           # Saved Theme Maps (JSON)
 ```
 
 ---
@@ -203,32 +217,42 @@ npm run dev
 
 | File | Purpose |
 |------|---------|
+| **Frontend — Pages** | |
 | `src/app/page.tsx` | Main UI — redirects to onboarding if new user |
-| `src/app/onboarding/page.tsx` | 3-step onboarding wizard (Welcome → API Keys → Sync) |
-| `src/app/themes/page.tsx` | Theme Explorer (LIB-8/10/11) — Patterns, Unexplored Territory, Counter-Intuitive tabs |
-| `src/components/UnexploredTab.tsx` | Unexplored Territory tab — find Memory topics missing from Library |
-| `src/components/CounterIntuitiveTab.tsx` | Counter-Intuitive tab — LLM reflection prompts |
-| `engine/common/unexplored_territory.py` | Unexplored detection algorithm (Memory vs Library clustering) |
-| `engine/common/counter_intuitive.py` | Counter-perspective LLM generation |
-| `src/app/settings/page.tsx` | Settings wizard (workspaces, VectorDB, voice, LLM, mode settings) |
-| `src/app/api/generate/route.ts` | Generation API with topic filter support |
-| `src/app/api/generate-stream/route.ts` | Streaming generation with real-time progress markers |
-| `src/app/api/seek-stream/route.ts` | Streaming seek with real-time progress markers |
-| `src/app/api/performance/route.ts` | Performance analytics API (run logs, bottleneck analysis) |
-| `src/components/ScoreboardHeader.tsx` | Memory + Library stats header (v3) |
-| `src/components/ProgressPanel.tsx` | Real-time progress display with phases, cost, warnings |
-| `src/lib/errorExplainer.ts` | Classify errors into layman-friendly explanations |
-| `src/components/LibraryView.tsx` | Full-width library browser with detail panel (v3.1) |
-| `engine/generate.py` | Unified generation CLI with topic filter integration |
-| `engine/common/cursor_db.py` | Core DB extraction (Mac/Windows only, handles "Bubble" architecture) |
-| `engine/common/vector_db.py` | Supabase interface for storage & search (server-side RPC) |
-| `engine/common/items_bank_supabase.py` | Supabase-backed ItemsBank with batch operations |
-| `engine/common/topic_filter.py` | Pre-generation topic filtering (IMP-17) |
-| `engine/common/semantic_search.py` | Embedding generation & vector similarity |
-| `engine/common/progress_markers.py` | Progress streaming markers & performance logging |
-| `engine/scripts/sync_messages.py` | Incremental sync service |
-| `engine/scripts/optimize_harmonization.sql` | pgvector optimization schema |
-| `data/themes.json` | Theme/Mode configuration (v1) |
+| `src/app/onboarding-fast/page.tsx` | Fast Start onboarding (90s, local SQLite) |
+| `src/app/themes/page.tsx` | Theme Explorer — Patterns, Reflect, Unexplored tabs |
+| `src/app/theme-map/page.tsx` | Theme Map viewer (with cost estimation + regeneration) |
+| `src/app/settings/page.tsx` | Settings (General, Modes, Advanced, Prompts) |
+| **Frontend — Components** | |
+| `src/components/ScoreboardHeader.tsx` | "Your Memory Sources" — AI chats, docs, code comments |
+| `src/components/ThemeExplorerTabs.tsx` | Tab config (Patterns \| Reflect \| Unexplored) |
+| `src/components/ReflectTab.tsx` | Socratic Mode — probing questions UI |
+| `src/components/UnexploredTab.tsx` | Gap detection — Memory topics missing from Library |
+| `src/components/CounterIntuitiveTab.tsx` | LLM reflection prompts (used within Reflect) |
+| `src/components/LibraryView.tsx` | Full-width library browser with detail panel |
+| **Frontend — Lib** | |
+| `src/lib/socratic.ts` | Socratic Engine — data aggregation + LLM question generation |
+| `src/lib/youtube.ts` | YouTube timestamp deep-links (HH:MM:SS → ?t=seconds) |
+| **API Routes** | |
+| `src/app/api/generate-themes/route.ts` | Theme Map generation + cost estimation API |
+| `src/app/api/themes/socratic/route.ts` | Socratic question generation (24h cache) |
+| `src/app/api/expert-perspectives/route.ts` | Lenny semantic search for Theme Explorer |
+| `src/app/api/brain-stats/sources/route.ts` | Source breakdown (Cursor, Claude, Docs) |
+| `src/app/api/sync/route.ts` | Multi-source sync trigger |
+| **Python — Core** | |
+| `engine/generate.py` | Unified generation CLI (Ideas/Insights/Custom) |
+| `engine/generate_themes.py` | Theme Map generation + cost estimation |
+| `engine/common/cursor_db.py` | Cursor SQLite extraction (Mac/Windows, "Bubble" format) |
+| `engine/common/claude_code_db.py` | Claude Code + Cowork JSONL parsing |
+| `engine/common/source_detector.py` | Auto-detect all chat history locations |
+| `engine/common/workspace_scanner.py` | Scan .md files + TODO/FIXME code comments |
+| `engine/common/vector_db.py` | Supabase pgvector interface (storage + search) |
+| `engine/common/items_bank_supabase.py` | Library storage (Supabase-backed, batch operations) |
+| `engine/common/cost_estimator.py` | LLM cost estimation for Theme Map generation |
+| `engine/common/lenny_parser.py` | Transcript parser (YAML frontmatter + markdown) |
+| `engine/common/lenny_search.py` | Local semantic search over pre-computed embeddings |
+| `engine/scripts/sync_messages.py` | Multi-source incremental sync (Cursor + Claude + Docs) |
+| `engine/scripts/get_brain_stats.py` | Memory size calculation (all sources) |
 
 ---
 
@@ -273,7 +297,7 @@ npm run dev
 - `kg_decisions` — **Phase 1b:** Decision points extracted from user chat (TECHNOLOGY_CHOICE, ARCHITECTURE, DEPENDENCY, ASSUMPTION)
 - `kg_episode_metadata` — Lenny episode metadata (YouTube URLs, titles, guest names)
 
-**Current State (2026-01-19):**
+**Current State (2026-02-06):**
 - ✅ **Phase 0 (Triple-Based Foundation):** Complete — Triple extraction + entity canonicalization implemented
 - ✅ **Phase 1a (Lenny's Expert KG):** Complete — 13,878 entities from 303 episodes indexed
 - ✅ **Phase 1b (User's Chat KG):** Complete — 1,571 entities from Cursor + Claude Code history indexed
@@ -346,26 +370,15 @@ npm run dev
     "lastChecked": "2025-01-30T12:00:00Z"
   },
   "llm": {
-    "provider": "anthropic",  // Options: "anthropic", "openai", "openrouter"
+    "provider": "anthropic",  // Options: "anthropic", "openai"
     "model": "claude-sonnet-4-20250514",
     "fallbackProvider": "openai",
-    "fallbackModel": "gpt-4o",
-    "promptCompression": {
-      "enabled": true,
-      "threshold": 10000,
-      "compressionModel": "gpt-3.5-turbo"
-    }
+    "fallbackModel": "gpt-4o"
   },
   "userProfile": {
     "name": "Your Name",
     "jobContext": "PM at a tech company",
     "styleguide": "Professional, concise"
-  },
-  "features": {
-    "linkedInSync": { "enabled": false, "postsDirectory": null },
-    "solvedStatusSync": { "enabled": false },
-    "customVoice": { "enabled": false },
-    "v1Enabled": true
   }
 }
 ```
@@ -395,34 +408,9 @@ npm run dev
 }
 ```
 
-### Items Bank (`data/items_bank.json`)
+### Items Bank (Supabase `library_items` table)
 
-```json
-{
-  "version": 2,
-  "items": [
-    {
-      "id": "item-xxx",
-      "mode": "idea",
-      "theme": "generation",
-      "name": "Item Name",
-      "content": {...},
-      "occurrence": 3,
-      "implemented": false,
-      "categoryId": "category-xxx"
-    }
-  ],
-  "categories": [
-    {
-      "id": "category-xxx",
-      "name": "Category Name",
-      "theme": "generation",
-      "mode": "idea",
-      "itemIds": ["item-xxx", "item-yyy"]
-    }
-  ]
-}
-```
+Library items are stored in Supabase PostgreSQL (migrated from JSON in v3). Key fields: `id`, `mode`, `name`, `content`, `occurrence`, `first_seen_date`, `last_seen_date`, `embedding` (vector(1536)), `category_id`. See `engine/scripts/add_library_tables.sql` for schema.
 
 ---
 
@@ -460,16 +448,16 @@ APP_PASSWORD=your-secure-password
 
 ## Development Notes
 
-1. **Cursor DB Structure:** Messages are often stored as "Bubbles" (`bubbleId`) separate from `composerData`. `cursor_db.py` handles resolving these links. **v1:** Mac/Windows only (Linux support removed).
-2. **Vector Strategy:** We index everything to Supabase to enable O(1) semantic search via server-side RPC function (`search_cursor_messages`). The app automatically prefers Vector DB over local search if configured. **v1:** No SQLite fallback - Vector DB is the only source.
-3. **Data Ownership:** The Vector DB serves as an independent vault of user history, protecting against Cursor retention policy changes.
-4. **v1 Architecture:** Unified Items/Categories system replaces separate idea/insight banks. Themes contain user-definable Modes. Categories are auto-generated via cosine similarity.
-5. **Folder-Based Tracking:** Items can be marked as "implemented" by scanning folders and matching via cosine similarity (configured per mode in `themes.json`).
-6. **Backward Compatibility:** v0 API calls with `tool` parameter still work - automatically mapped to `theme`/`modeId`.
-7. **Date Range:** No 90-day limit in v1 - Vector DB enables unlimited date ranges.
-8. **Deployment:** Hybrid architecture - Vercel hosts Next.js frontend, Railway hosts Python engine. See `ARCHITECTURE.md` for details.
-9. **v3 Terminology:** "Brain" → "Memory", "Bank" → "Library". Library is the core value prop (scoreboard), not just storage.
-10. **v3 Configuration:** No hardcoding. All parameters (LLM assignments, thresholds, prompts) exposed in Settings.
+1. **Cursor DB Structure:** Messages stored as "Bubbles" (`bubbleId`) separate from `composerData`. `cursor_db.py` handles resolving these links. Mac/Windows only (no Linux).
+2. **Multi-Source Memory:** Indexes 4 sources: Cursor (SQLite), Claude Code (JSONL), Claude Cowork (JSONL), workspace docs (.md + code comments).
+3. **Vector DB:** Required for >500MB histories. Supabase pgvector with RPC for server-side similarity search.
+4. **Library Storage:** Migrated from JSON to Supabase PostgreSQL (v3). Unified Items/Categories with cosine similarity grouping.
+5. **LLM Providers:** Anthropic (generation) + OpenAI (embeddings, judge). OpenRouter removed from UI (backend still supports).
+6. **Terminology:** "Brain" → "Memory", "Bank" → "Library". Theme Explorer tabs: Patterns, Reflect, Unexplored.
+7. **Deployment:** Hybrid — Vercel (frontend) + Railway (Python engine). `PYTHON_ENGINE_URL` env var controls routing.
+8. **Configuration:** No hardcoding. All parameters exposed in Settings (General, Modes, Advanced, Prompts tabs).
+9. **YouTube Deep-Links:** Lenny quotes with `HH:MM:SS` timestamps auto-convert to `?t=seconds` for exact moment links.
+10. **Cost Estimation:** Theme Map page shows estimated cost before generation starts (uses `cost_estimator.py`).
 
 ---
 

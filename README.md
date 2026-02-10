@@ -84,8 +84,8 @@ Knowledge graphs synthesize across boundaries you've mentally siloed. A debuggin
 
 Theme Explorer tabs:
 - **Patterns** — Semantic clustering (forest-level → tree-level zoom)
-- **Unexplored** — Topics discussed but not formalized (gaps in your Library)
 - **Reflect** — Socratic questions generated from your patterns, gaps, and expert knowledge
+- **Unexplored** — Topics discussed but not formalized (gaps in your Library)
 
 **4. Expert Knowledge Bridging**
 

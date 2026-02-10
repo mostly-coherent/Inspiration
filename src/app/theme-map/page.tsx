@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { youtubeUrlWithTimestamp } from "@/lib/youtube";
 
 /**
  * Theme Map Viewer
@@ -67,6 +68,21 @@ interface ThemeMapData {
 // Theme Maps are now size-based (~500MB), not days-based
 // Removed days normalization - no longer needed
 
+interface CostEstimate {
+  estimatedCostUSD: number;
+  inputTokens: number;
+  outputTokens: number;
+  breakdown: {
+    inputCostUSD: number;
+    outputCostUSD: number;
+    pricingPerMTok: { input: number; output: number };
+  };
+  provider: string;
+  model: string;
+  disclaimer: string;
+  conversationCount: number;
+}
+
 export default function ThemeMapPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -75,6 +91,9 @@ export default function ThemeMapPage() {
   const [error, setError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
   const [expandedUnexplored, setExpandedUnexplored] = useState<Set<number>>(new Set());
+  const [costEstimate, setCostEstimate] = useState<CostEstimate | null>(null);
+  const [loadingCost, setLoadingCost] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   
   // Load saved Theme Map
   useEffect(() => {
@@ -107,6 +126,41 @@ export default function ThemeMapPage() {
     
     loadThemeMap();
   }, [router]);
+
+  // Fetch cost estimate on page load
+  useEffect(() => {
+    let cancelled = false;
+    const fetchCost = async () => {
+      setLoadingCost(true);
+      try {
+        // Get provider from config
+        const configRes = await fetch("/api/config");
+        if (cancelled) return;
+        const configData = configRes.ok ? await configRes.json() : {};
+        const provider = configData.config?.llm?.provider || "anthropic";
+
+        const res = await fetch(
+          `/api/generate-themes?estimateCost=true&maxSizeMb=500&provider=${provider}`
+        );
+        if (cancelled) return;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (data?.success && data.costEstimate) {
+          setCostEstimate(data.costEstimate);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.error("Cost estimate failed:", e);
+          // Non-critical — just don't show cost
+        }
+      } finally {
+        if (!cancelled) setLoadingCost(false);
+      }
+    };
+    fetchCost();
+    return () => { cancelled = true; };
+  }, []);
 
   // Regenerate Theme Map
   const regenerate = useCallback(async () => {
@@ -287,22 +341,66 @@ export default function ThemeMapPage() {
               )}
             </div>
           </div>
-          <button
-            onClick={regenerate}
-            disabled={regenerating}
-            className="py-2 px-4 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
-          >
-            {regenerating ? (
-              <>
-                <span className="animate-spin">⏳</span> Regenerating...
-              </>
-            ) : (
-              <>
-                <span>🔄</span> Regenerate
-              </>
+          <div className="flex items-center gap-3">
+            {/* Cost badge */}
+            {loadingCost && (
+              <span className="text-xs text-slate-500 animate-pulse">estimating cost...</span>
             )}
-          </button>
+            {!loadingCost && costEstimate && (
+              <span className="text-xs text-slate-400" title={`${costEstimate.conversationCount} conversations · ${costEstimate.model} · ${costEstimate.disclaimer}`}>
+                ~${costEstimate.estimatedCostUSD < 0.01 ? "<0.01" : costEstimate.estimatedCostUSD.toFixed(2)}
+              </span>
+            )}
+
+            <button
+              onClick={() => setShowConfirm(true)}
+              disabled={regenerating}
+              className="py-2 px-4 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+            >
+              {regenerating ? (
+                <>
+                  <span className="animate-spin">⏳</span> Regenerating...
+                </>
+              ) : (
+                <>
+                  <span>🔄</span> Regenerate
+                </>
+              )}
+            </button>
+          </div>
         </header>
+
+        {/* Regeneration confirmation dialog */}
+        {showConfirm && (
+          <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-xl">💰</span>
+              <div className="flex-1">
+                <h3 className="font-semibold text-indigo-300 text-sm">Confirm Regeneration</h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  This will call your LLM provider ({costEstimate?.provider || "anthropic"}) to re-analyze ~500MB of conversations.
+                  {costEstimate && (
+                    <> Estimated cost: <strong className="text-slate-200">~${costEstimate.estimatedCostUSD < 0.01 ? "<0.01" : costEstimate.estimatedCostUSD.toFixed(2)}</strong> ({costEstimate.conversationCount} conversations, {costEstimate.model}).</>
+                  )}
+                </p>
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={() => { setShowConfirm(false); regenerate(); }}
+                    className="py-1.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Regenerate
+                  </button>
+                  <button
+                    onClick={() => setShowConfirm(false)}
+                    className="py-1.5 px-4 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Error banner */}
         {error && (
@@ -379,12 +477,12 @@ export default function ThemeMapPage() {
                           <span className="text-amber-400 font-medium">— {quote.guestName}</span>
                           {quote.youtubeUrl && quote.episodeTitle && (
                             <a 
-                              href={quote.youtubeUrl} 
+                              href={youtubeUrlWithTimestamp(quote.youtubeUrl, quote.timestamp) || quote.youtubeUrl} 
                               target="_blank" 
                               rel="noopener noreferrer"
                               className="text-slate-500 hover:text-amber-400 transition-colors"
                             >
-                              📺 {quote.episodeTitle}
+                              📺 {quote.episodeTitle}{quote.timestamp && quote.timestamp !== "00:00:00" ? ` @ ${quote.timestamp}` : ""}
                             </a>
                           )}
                         </div>
@@ -446,12 +544,12 @@ export default function ThemeMapPage() {
                           <span className="text-amber-400 font-medium">— {item.expertChallenge.guestName}</span>
                           {item.expertChallenge.youtubeUrl && item.expertChallenge.episodeTitle && (
                             <a 
-                              href={item.expertChallenge.youtubeUrl} 
+                              href={youtubeUrlWithTimestamp(item.expertChallenge.youtubeUrl, item.expertChallenge.timestamp) || item.expertChallenge.youtubeUrl} 
                               target="_blank" 
                               rel="noopener noreferrer"
                               className="text-slate-500 hover:text-amber-400 transition-colors"
                             >
-                              📺 {item.expertChallenge.episodeTitle}
+                              📺 {item.expertChallenge.episodeTitle}{item.expertChallenge.timestamp && item.expertChallenge.timestamp !== "00:00:00" ? ` @ ${item.expertChallenge.timestamp}` : ""}
                             </a>
                           )}
                         </div>
@@ -533,12 +631,12 @@ export default function ThemeMapPage() {
                                 <span className="text-amber-400 font-medium">— {expertInsight.guestName}</span>
                                 {expertInsight.youtubeUrl && expertInsight.episodeTitle && (
                                   <a 
-                                    href={expertInsight.youtubeUrl} 
+                                    href={youtubeUrlWithTimestamp(expertInsight.youtubeUrl, expertInsight.timestamp) || expertInsight.youtubeUrl} 
                                     target="_blank" 
                                     rel="noopener noreferrer"
                                     className="text-slate-500 hover:text-amber-400 transition-colors"
                                   >
-                                    📺 {expertInsight.episodeTitle}
+                                    📺 {expertInsight.episodeTitle}{expertInsight.timestamp && expertInsight.timestamp !== "00:00:00" ? ` @ ${expertInsight.timestamp}` : ""}
                                   </a>
                                 )}
                               </div>

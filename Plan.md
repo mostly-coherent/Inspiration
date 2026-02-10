@@ -20,7 +20,7 @@ All core infrastructure is operational. Here's the stack of completed capabiliti
 | **v2.1** | Smart Onboarding — Quick Start (90s for >500MB), Full Setup with scope slider | ✅ Done |
 | **v6** | Multi-Source Memory (workspace docs, TODOs), Socratic Mode (Reflect tab), removed user KG from scoreboard | ✅ Done |
 
-**Current Theme Explorer tabs:** Patterns, Unexplored, Reflect
+**Current Theme Explorer tabs:** Patterns | Reflect | Unexplored
 
 ---
 
@@ -28,11 +28,11 @@ All core infrastructure is operational. Here's the stack of completed capabiliti
 
 ### Quick Wins (< 1 hour each)
 
-| ID | Feature | Why | Effort |
-|----|---------|-----|--------|
-| LENNY-1 | **YouTube timestamp deep-links** — Convert `00:15:30` → `?t=930` for exact moment links | One click → exact podcast moment. High value. | LOW |
-| FAST-2 | **Cost estimation before Theme Map** — Show "This will cost ~$0.12" before generation | Builds trust. Already specced. | LOW |
-| FAST-3 | **Share Theme Map** — One-click export to PNG/PDF | Enables viral loop. Build after FAST-2. | LOW |
+| ID | Feature | Why | Effort | Status |
+|----|---------|-----|--------|--------|
+| LENNY-1 | **YouTube timestamp deep-links** — Convert `00:15:30` → `?t=930` for exact moment links | One click → exact podcast moment. High value. | LOW | ✅ Done |
+| FAST-2 | **Cost estimation before Theme Map** — Show "This will cost ~$0.12" before generation | Builds trust. Already specced. | LOW | ✅ Done |
+| ~~FAST-3~~ | ~~**Share Theme Map** — One-click export to PNG/PDF~~ | ~~Enables viral loop.~~ Deprioritized. | LOW | Removed |
 
 ### LIB-9: Learning Trajectory (Next Major Feature)
 
@@ -152,4 +152,4 @@ Two features that deepen Inspiration's role as a thinking partner:
 
 ---
 
-**Last Updated:** 2026-02-06 (v6 complete, PLAN.md cleaned up — removed 50+ noise items, focused on thinking partner direction)
+**Last Updated:** 2026-02-06 (v6 complete, LENNY-1 + FAST-2 shipped, FAST-3 removed, only LIB-9 Learning Trajectory remains)

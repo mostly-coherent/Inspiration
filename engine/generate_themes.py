@@ -583,10 +583,20 @@ def main():
     if args.estimate_cost:
         # Get conversation count estimate
         metrics = estimate_db_metrics()
-        estimated_conversations = min(
-            metrics.get("estimatedConversations", 50),
-            args.max_conversations
-        )
+        
+        # Determine conversation count based on mode:
+        # - If max_size_mb is set, use the recent_500mb estimate (if available)
+        # - Otherwise, use the total estimated conversations capped by max_conversations
+        if args.max_size_mb and metrics.get("recent_500mb"):
+            estimated_conversations = min(
+                metrics["recent_500mb"].get("estimated_messages", 50),
+                args.max_conversations,
+            )
+        else:
+            estimated_conversations = min(
+                metrics.get("estimated_conversations_total", 50),
+                args.max_conversations,
+            )
         
         # Calculate cost estimate
         cost_estimate = estimate_cost(

@@ -224,6 +224,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const estimateCost = searchParams.get("estimateCost") === "true";
     const daysParam = searchParams.get("days") || "14";
+    const maxSizeMbParam = searchParams.get("maxSizeMb");
     const provider = searchParams.get("provider") || "anthropic";
     const model = searchParams.get("model");
 
@@ -274,6 +275,12 @@ export async function GET(request: NextRequest) {
       args.push("--estimate-cost");
       args.push("--days", daysParam);
       args.push("--provider", provider);
+      if (maxSizeMbParam) {
+        const maxSizeMb = parseInt(maxSizeMbParam, 10);
+        if (!isNaN(maxSizeMb) && maxSizeMb > 0 && maxSizeMb <= 10000) {
+          args.push("--max-size-mb", String(maxSizeMb));
+        }
+      }
       if (model) {
         args.push("--model", model);
       }

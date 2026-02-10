@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { youtubeUrlWithTimestamp } from "@/lib/youtube";
 
 /**
  * Fast Start Onboarding — Local-first, no Supabase required
@@ -1528,12 +1529,12 @@ function FastOnboardingContent() {
                                 <span className="text-amber-400 font-medium">— {quote.guestName}</span>
                                 {quote.youtubeUrl && quote.episodeTitle && (
                                   <a 
-                                    href={quote.youtubeUrl} 
+                                    href={youtubeUrlWithTimestamp(quote.youtubeUrl, quote.timestamp) || quote.youtubeUrl} 
                                     target="_blank" 
                                     rel="noopener noreferrer"
                                     className="text-slate-500 hover:text-amber-400 transition-colors"
                                   >
-                                    📺 {quote.episodeTitle}
+                                    📺 {quote.episodeTitle}{quote.timestamp && quote.timestamp !== "00:00:00" ? ` @ ${quote.timestamp}` : ""}
                                   </a>
                                 )}
                               </div>
@@ -1593,12 +1594,12 @@ function FastOnboardingContent() {
                                 <span className="text-amber-400 font-medium">— {item.expertChallenge.guestName}</span>
                                 {item.expertChallenge.youtubeUrl && item.expertChallenge.episodeTitle && (
                                   <a 
-                                    href={item.expertChallenge.youtubeUrl} 
+                                    href={youtubeUrlWithTimestamp(item.expertChallenge.youtubeUrl, item.expertChallenge.timestamp) || item.expertChallenge.youtubeUrl} 
                                     target="_blank" 
                                     rel="noopener noreferrer"
                                     className="text-slate-500 hover:text-amber-400 transition-colors"
                                   >
-                                    📺 {item.expertChallenge.episodeTitle}
+                                    📺 {item.expertChallenge.episodeTitle}{item.expertChallenge.timestamp && item.expertChallenge.timestamp !== "00:00:00" ? ` @ ${item.expertChallenge.timestamp}` : ""}
                                   </a>
                                 )}
                               </div>
@@ -1641,12 +1642,12 @@ function FastOnboardingContent() {
                                 <span className="text-amber-400 font-medium">— {item.expertInsight.guestName}</span>
                                 {item.expertInsight.youtubeUrl && item.expertInsight.episodeTitle && (
                                   <a 
-                                    href={item.expertInsight.youtubeUrl} 
+                                    href={youtubeUrlWithTimestamp(item.expertInsight.youtubeUrl, item.expertInsight.timestamp) || item.expertInsight.youtubeUrl} 
                                     target="_blank" 
                                     rel="noopener noreferrer"
                                     className="text-slate-500 hover:text-amber-400 transition-colors"
                                   >
-                                    📺 {item.expertInsight.episodeTitle}
+                                    📺 {item.expertInsight.episodeTitle}{item.expertInsight.timestamp && item.expertInsight.timestamp !== "00:00:00" ? ` @ ${item.expertInsight.timestamp}` : ""}
                                   </a>
                                 )}
                               </div>

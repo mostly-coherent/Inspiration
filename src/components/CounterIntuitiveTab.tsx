@@ -19,6 +19,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { youtubeUrlWithTimestamp } from "@/lib/youtube";
 
 interface CounterIntuitiveSuggestion {
   id: string;
@@ -642,12 +643,12 @@ export function CounterIntuitiveTab({ config }: CounterIntuitiveTabProps) {
                                 </span>
                                 {quote.youtubeUrl && (
                                   <a 
-                                    href={quote.youtubeUrl}
+                                    href={youtubeUrlWithTimestamp(quote.youtubeUrl, quote.timestamp) || quote.youtubeUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-amber-400 hover:text-amber-300 hover:underline flex-shrink-0"
                                   >
-                                    Watch →
+                                    {quote.timestamp && quote.timestamp !== "00:00:00" ? `Watch @ ${quote.timestamp} →` : "Watch →"}
                                   </a>
                                 )}
                               </div>
