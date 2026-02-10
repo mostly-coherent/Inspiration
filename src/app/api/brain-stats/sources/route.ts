@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 /**
- * Get conversation and message count breakdown by source (Cursor, Claude Code, Workspace Docs).
+ * Get conversation and message count breakdown by source (Cursor, Claude, Workspace Docs).
  *
  * Returns:
  *   {

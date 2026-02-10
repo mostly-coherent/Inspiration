@@ -833,7 +833,7 @@ function OnboardingContent() {
               <h1 className="text-4xl font-bold text-white">Inspiration - Full Setup</h1>
               <p className="text-xl text-slate-300">
                 Extract <strong className="text-indigo-300">patterns</strong> and{" "}
-                <strong className="text-purple-300">insights</strong> from your conversations in Cursor and Claude Code
+                <strong className="text-purple-300">insights</strong> from your conversations in Cursor and Claude
               </p>
             </div>
 
@@ -878,7 +878,7 @@ function OnboardingContent() {
                   </div>
                   <div className="text-sm text-slate-400">
                     {detectingDb 
-                      ? "Checking Cursor and Claude Code databases..."
+                      ? "Checking Cursor and Claude databases..."
                       : chatDb.isCloudMode
                         ? "No local chat database found. Supabase required for cloud deployment."
                         : "Setup Supabase Vector DB to unlock Theme Explorer and all other benefits."

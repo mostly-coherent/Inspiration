@@ -1,8 +1,8 @@
 # Inspiration
 
-> **Treats your Cursor chat history as artifacts of thinking, not disposable logs.**
+> **Treats your AI conversations and workspace artifacts as thinking — not disposable logs.**
 
-You have hundreds (or thousands) of conversations with Claude—reasoning through architecture decisions, debugging trade-offs, exploring patterns. Then they disappear. Inspiration mines them.
+You have hundreds (or thousands) of conversations with Claude — reasoning through architecture decisions, debugging trade-offs, exploring patterns. You also have markdown docs, TODOs, and code comments scattered across projects. Then they disappear into the noise. Inspiration mines all of it.
 
 ![Type](https://img.shields.io/badge/Type-Tool-purple)
 ![Status](https://img.shields.io/badge/Status-Active-green)
@@ -28,13 +28,28 @@ npm run dev
 
 | Step | What Happens | Time |
 |------|-------------|------|
-| 1. Auto-detect | Finds your Cursor DB | ~3s |
+| 1. Auto-detect | Finds your Cursor DB + Claude sessions | ~3s |
 | 2. API Key | Paste Anthropic key | ~10s |
 | 3. Generate | Maps local chat history | ~60s |
 
 **Cost:** $0 for local history (<500MB). Optional vector indexing costs ~$0.50–$5 one-time.
 
-**Full Power:** Add an OpenAI key to connect your thinking with **300+ Lenny's Podcast episodes**—Dylan Field (Figma), Elena Verna (Lovable), Claire Vo (ChatPRD), and other product leaders.
+**Full Power:** Add an OpenAI key to connect your thinking with **300+ Lenny's Podcast episodes** — Dylan Field (Figma), Elena Verna (Lovable), Claire Vo (ChatPRD), and other product leaders.
+
+---
+
+## 📥 What Gets Indexed
+
+Inspiration reads from **3 chat sources + workspace documents**, converts everything to embeddings (OpenAI `text-embedding-3-small`), and stores them in Supabase pgvector for semantic search.
+
+| Source | What it reads | Storage format |
+|--------|--------------|----------------|
+| **Cursor** | All Composer/Chat conversations | SQLite (`state.vscdb`) |
+| **Claude Code** | Code mode sessions (CLI or Desktop app) | JSONL (`~/.claude/projects/`) |
+| **Claude Cowork** | Cowork mode sessions (Desktop app) | JSONL (`local-agent-mode-sessions/`) |
+| **Workspace Docs** | Markdown files (.md), TODO/FIXME/HACK/NOTE code comments | Direct filesystem scan |
+
+Everything flows through the same pipeline: **detect → extract → embed → store in Supabase pgvector**. The Sync button on the home page runs all four sources incrementally (only new/changed content gets re-indexed).
 
 ---
 
@@ -43,13 +58,13 @@ npm run dev
 A true thinking partner does three things:
 
 **(a) Remembers what you've said before**  
-Reads Cursor's SQLite database directly (`state.vscdb`), converts messages to embeddings, runs semantic similarity across your entire history.
+Reads from Cursor's SQLite database, Claude's JSONL sessions, and your workspace documents. Converts everything to embeddings, runs semantic similarity across your entire history.
 
 **(b) Connects dots you haven't connected**  
 Knowledge graph extraction maps how concepts link across projects. Reveals that a pattern you rejected in Project A fits Project B.
 
 **(c) Challenges your assumptions**  
-Theme Explorer's Counter-Intuitive tab generates "good opposite" perspectives as reflection prompts. Pushes back on your patterns.
+Theme Explorer's Reflect tab generates probing Socratic questions from your patterns, gaps, and expert knowledge. Pushes back where it matters.
 
 **The gap:** Tools respond to what you ask. Thinking partners surface what you didn't know to ask about. Inspiration does the latter.
 
@@ -70,7 +85,7 @@ Knowledge graphs synthesize across boundaries you've mentally siloed. A debuggin
 Theme Explorer tabs:
 - **Patterns** — Semantic clustering (forest-level → tree-level zoom)
 - **Unexplored** — Topics discussed but not formalized (gaps in your Library)
-- **Counter-Intuitive** — "Good opposite" perspectives (reflection prompts)
+- **Reflect** — Socratic questions generated from your patterns, gaps, and expert knowledge
 
 **4. Expert Knowledge Bridging**
 
@@ -84,8 +99,8 @@ Compounding factor. Tracks evolution: "Your focus shifted from UI to systems des
 
 ## 🔒 Privacy & Performance
 
-- Reads data directly from Cursor's local storage (no plugin, no extension, no modification)
-- <500MB histories: works entirely locally with 90s Fast Start—no database needed
+- Reads data directly from local storage (Cursor SQLite, Claude JSONL, workspace files) — no plugins, no extensions, no modifications
+- <500MB histories: works entirely locally with 90s Fast Start — no database needed
 - Larger histories: choose quick scan (recent 500MB) or full Vector DB indexing
 - Privacy-first: data stays on your machine. Optional Supabase sync uses your own instance.
 
@@ -94,15 +109,15 @@ Compounding factor. Tracks evolution: "Your focus shifted from UI to systems des
 <details>
 <summary><strong>🧠 How It Works</strong></summary>
 
-Conversations with AI capture reasoning in the moment—not polished docs. Inspiration analyzes this in two ways:
+Conversations with AI capture reasoning in the moment — not polished docs. Your workspace markdown and code comments capture decisions and intentions. Inspiration analyzes all of it:
 
-**Pattern recognition:** Semantic search finds recurring themes. You keep hitting the same edge case. Your focus shifted from frontend to systems without noticing. You've been circling the same architectural challenge from different angles.
+**Pattern recognition:** Semantic search finds recurring themes across Cursor chats, Claude sessions, and your workspace docs. You keep hitting the same edge case. Your focus shifted from frontend to systems without noticing.
 
-**Relationship forming:** Semantic connections link conversations. A discussion from March connects to work you're doing now. Three projects share a common problem you didn't notice.
+**Relationship forming:** Semantic connections link conversations and documents. A discussion from March connects to a TODO you wrote last week. Three projects share a common problem you didn't notice.
 
-**What this reveals:** Git history shows what you shipped. Patterns show how you thought about it—trade-offs, dead-ends, constraints. Sometimes that context is more valuable than the code.
+**What this reveals:** Git history shows what you shipped. Patterns show how you thought about it — trade-offs, dead-ends, constraints. Sometimes that context is more valuable than the code.
 
-**Why it compounds:** More conversations = more patterns and graph nodes. The value isn't additive—it's discovering connections and recurring themes you didn't know existed.
+**Why it compounds:** More conversations and documents = more patterns and connections. The value isn't additive — it's discovering recurring themes you didn't know existed.
 
 </details>
 
@@ -118,7 +133,8 @@ Required environment variables:
 
 **Notes:**
 - Cursor chat history auto-detected on macOS and Windows
-- Claude Code JSONL history supported on all platforms
+- Claude Code + Cowork JSONL history auto-detected on macOS, Windows, and Linux
+- Workspace documents (markdown, code comments) scanned from configured workspace paths
 - Cloud deployment (Vercel): Read-only mode
 
 </details>
@@ -147,7 +163,7 @@ Required environment variables:
 | **Python** | 3.10+ (3.11+ recommended) |
 | **Disk Space** | 100MB–2GB (scales with chat history) |
 | **API Keys** | Anthropic (required), OpenAI (optional), Supabase (optional) |
-| **Chat History** | Cursor or Claude Code with existing conversations |
+| **Chat History** | Cursor and/or Claude (Code/Cowork) with existing conversations |
 
 </details>
 
@@ -157,8 +173,9 @@ Required environment variables:
 **Stack:** Next.js 15, Python, Anthropic Claude, OpenAI embeddings, pgvector
 
 **Key Engineering:**
-- Reverse-engineered Cursor's "Bubble" format (SQLite) + Claude Code's JSONL
-- RAG over your own chat history for conceptual relationships
+- Reverse-engineered Cursor's "Bubble" format (SQLite) + Claude's JSONL (Code + Cowork modes)
+- Workspace scanning: markdown docs, TODO/FIXME/HACK/NOTE code comments across all configured workspaces
+- RAG over your own chat history + documents for conceptual relationships
 - Dedup via embedding similarity (generate N×1.5, present N)
 - Hybrid local/cloud: SQLite → optional Supabase Vector DB sync
 - pgvector for server-side similarity (275x fewer API calls)

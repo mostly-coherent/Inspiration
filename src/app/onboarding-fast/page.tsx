@@ -1118,7 +1118,7 @@ function FastOnboardingContent() {
                 <div className="flex items-center gap-3">
                   <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
                   <div>
-                    <div className="font-semibold text-white">Detecting your Cursor and Claude Code history</div>
+                    <div className="font-semibold text-white">Detecting your Cursor and Claude history</div>
                   </div>
                 </div>
               ) : dbMetrics?.db_path ? (
@@ -1148,7 +1148,7 @@ function FastOnboardingContent() {
                         <span className="text-emerald-400">✓</span> We'll analyze the most recent <strong className="text-indigo-400">~500MB</strong> of your chat history
                       </div>
                       <div className="text-xs text-slate-400">
-                        Includes Cursor and Claude Code conversations, prioritized by relevance.
+                        Includes Cursor and Claude conversations, prioritized by relevance.
                       </div>
                     </div>
                   </div>
@@ -1403,7 +1403,7 @@ function FastOnboardingContent() {
                 <div>
                   <div className="font-semibold text-blue-300">Analyzing Most Recent ~500MB</div>
                   <div className="text-sm text-slate-300 mt-1">
-                    Mining high-signal conversations from Cursor + Claude Code to generate your Theme Map.
+                    Mining high-signal conversations from Cursor + Claude to generate your Theme Map.
                   </div>
                 </div>
               </div>

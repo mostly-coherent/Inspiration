@@ -3,7 +3,7 @@ Source Detector — Auto-detect available chat history sources on user's system.
 
 Supports:
 - Cursor (macOS, Windows)
-- Claude Code (macOS, Windows, Linux)
+- Claude (Code mode + Cowork mode via Desktop app) (macOS, Windows, Linux)
 
 Returns detection report with paths, formats, and platform info.
 """
@@ -83,6 +83,51 @@ def get_claude_code_path() -> Optional[Path]:
     return base if base.exists() else None
 
 
+def get_claude_cowork_project_paths() -> List[Path]:
+    """
+    Auto-detect Claude Desktop Cowork session directories.
+
+    Cowork stores JSONL sessions in the same format as Claude Code, but under:
+      ~/Library/Application Support/Claude/local-agent-mode-sessions/
+        {session-group-id}/{account-id}/local_{session-id}/.claude/projects/
+
+    Returns:
+        List of .claude/projects/ Paths found within Cowork sessions (may be empty).
+    """
+    system = platform.system()
+
+    if system == "Darwin":  # macOS
+        base = Path.home() / "Library/Application Support/Claude/local-agent-mode-sessions"
+    elif system == "Windows":
+        appdata = os.getenv("APPDATA")
+        if not appdata:
+            return []
+        base = Path(appdata) / "Claude/local-agent-mode-sessions"
+    else:  # Linux
+        return []  # Cowork currently macOS-only
+
+    if not base.exists():
+        return []
+
+    project_paths = []
+
+    # Walk: {session-group}/{account-id}/local_{session-id}/.claude/projects/
+    for session_group in base.iterdir():
+        if not session_group.is_dir():
+            continue
+        for account_dir in session_group.iterdir():
+            if not account_dir.is_dir():
+                continue
+            for local_dir in account_dir.iterdir():
+                if not local_dir.is_dir() or not local_dir.name.startswith("local_"):
+                    continue
+                projects_dir = local_dir / ".claude" / "projects"
+                if projects_dir.exists() and projects_dir.is_dir():
+                    project_paths.append(projects_dir)
+
+    return project_paths
+
+
 def detect_sources() -> List[ChatSource]:
     """
     Auto-detect all available chat history sources on the system.
@@ -103,12 +148,23 @@ def detect_sources() -> List[ChatSource]:
             platform_name=system
         ))
 
-    # Detect Claude Code
+    # Detect Claude Code (Code mode sessions)
     claude_path = get_claude_code_path()
     if claude_path:
         sources.append(ChatSource(
             name="claude_code",
             path=claude_path,
+            format="jsonl",
+            platform_name=system
+        ))
+
+    # Detect Claude Desktop Cowork sessions
+    cowork_paths = get_claude_cowork_project_paths()
+    if cowork_paths:
+        # Report the parent directory for display, individual paths used internally
+        sources.append(ChatSource(
+            name="claude_cowork",
+            path=cowork_paths[0].parent.parent.parent.parent.parent,  # local-agent-mode-sessions dir
             format="jsonl",
             platform_name=system
         ))

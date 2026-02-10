@@ -423,7 +423,7 @@ export default function SettingsPage() {
 
         {/* Chat History Locations Section */}
         {((!config.setupComplete && currentStep === "vectordb") || (config.setupComplete && activeTab === "general")) && (
-          <SettingsSection title="📁 Chat History Locations" description="Auto-detected paths to your Cursor and Claude Code chat history">
+          <SettingsSection title="📁 Chat History Locations" description="Auto-detected paths to your Cursor and Claude chat history">
             <ChatHistorySection
               chatHistory={{
                 cursor: chatHistoryCursor,

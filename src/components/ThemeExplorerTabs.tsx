@@ -21,18 +21,18 @@ const TABS: TabConfig[] = [
     status: "ready",
   },
   {
-    id: "unexplored",
-    label: "Unexplored",
-    icon: "🧭",
-    description: "Find what's MISSING from Library but in Memory",
-    status: "experimental",
-  },
-  {
     id: "reflect",
     label: "Reflect",
     icon: "🪞",
     description: "Probing questions about YOUR patterns",
     status: "ready",
+  },
+  {
+    id: "unexplored",
+    label: "Unexplored",
+    icon: "🧭",
+    description: "Find what's MISSING from Library but in Memory",
+    status: "experimental",
   },
 ];
 

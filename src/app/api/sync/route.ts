@@ -148,7 +148,7 @@ export async function POST(request: Request) {
         } else {
           // Parse stdout for multi-source stats
           const cursorMatch = stdout.match(/Cursor:\s+(\d+)\s+indexed,\s+(\d+)\s+skipped,\s+(\d+)\s+failed/);
-          const claudeMatch = stdout.match(/Claude Code:\s+(\d+)\s+indexed,\s+(\d+)\s+skipped,\s+(\d+)\s+failed/);
+          const claudeMatch = stdout.match(/Claude:\s+(\d+)\s+indexed,\s+(\d+)\s+skipped,\s+(\d+)\s+failed/);
           const workspaceDocsMatch = stdout.match(/Workspace Docs:\s+(\d+)\s+indexed,\s+(\d+)\s+skipped,\s+(\d+)\s+failed/);
 
           const stats: any = {};

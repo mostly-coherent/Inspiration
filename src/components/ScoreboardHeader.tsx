@@ -522,7 +522,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
               <div className="flex items-center gap-2">
                 {(memoryStats.localSize || memoryStats.vectorSize) ? (
                   <>
-                    <div className="text-center">
+                    <div className="text-center" title="Total raw size: Cursor DB + Claude JSONL + workspace files">
                       <div className="text-lg font-bold text-slate-200">
                         {memoryStats.localSize || "—"}
                       </div>
@@ -609,13 +609,13 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <div className="flex items-center gap-2">
-                <span className="text-xl">💬</span>
+                <span className="text-xl">🧠</span>
                 <h2 className="text-sm font-semibold text-slate-100 uppercase tracking-wide">
-                  Your Cursor & Claude Code Usage
+                  Your Memory Sources
                 </h2>
               </div>
               <p className="text-xs text-slate-300 ml-8">
-                Conversation history and message counts
+                AI chats, workspace docs, and code comments
               </p>
             </div>
           </div>
@@ -632,7 +632,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
               </div>
             )}
 
-            {/* Source Breakdown: Cursor | Claude Code | Workspace Docs */}
+            {/* Source Breakdown: Cursor | Claude | Workspace Docs */}
             {sourceBreakdown && 
               ((sourceBreakdown.cursor.conversations > 0 || sourceBreakdown.cursor.messages > 0) ||
                (sourceBreakdown.claudeCode.conversations > 0 || sourceBreakdown.claudeCode.messages > 0) ||
@@ -658,7 +658,7 @@ export const ScoreboardHeader = memo(function ScoreboardHeader({
                 )}
                 {(sourceBreakdown.claudeCode.conversations > 0 || sourceBreakdown.claudeCode.messages > 0) && (
                   <>
-                    <span className="text-purple-300">Claude Code:</span>
+                    <span className="text-purple-300">Claude:</span>
                     <span className="font-medium text-slate-100">
                       {sourceBreakdown.claudeCode.conversations.toLocaleString()}
                     </span>

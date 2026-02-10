@@ -1,12 +1,16 @@
 """
-Claude Code Database — Extract chat messages from Claude Code's JSONL storage.
+Claude Database — Extract chat messages from Claude's JSONL storage.
 
-Claude Code stores conversations in JSON Lines format:
-  ~/.claude/projects/{url-encoded-workspace}/{session-uuid}.jsonl
-  ~/.claude/projects/{url-encoded-workspace}/{session-uuid}/subagents/agent-{id}.jsonl
+Supports two sources:
+1. Claude Code (Code mode):
+   ~/.claude/projects/{url-encoded-workspace}/{session-uuid}.jsonl
+   ~/.claude/projects/{url-encoded-workspace}/{session-uuid}/subagents/agent-{id}.jsonl
 
-Each line is a JSON event (user message, assistant response, metadata, etc.).
-This module parses these files and extracts messages compatible with the sync pipeline.
+2. Claude Desktop Cowork mode:
+   ~/Library/Application Support/Claude/local-agent-mode-sessions/
+     {group-id}/{account-id}/local_{session-id}/.claude/projects/{session-name}/{uuid}.jsonl
+
+Both use identical JSONL format — same parser handles both.
 """
 
 import json
@@ -233,36 +237,32 @@ def parse_subagent_sessions(workspace_dir: Path, session_id: str) -> List[Dict]:
     return all_messages
 
 
-def get_conversations_for_date(target_date: date, workspace_paths: List[str]) -> List[Dict]:
+def _scan_projects_dir(
+    projects_path: Path,
+    target_ts: int,
+    next_day_ts: int,
+    normalized_workspaces: set,
+    chat_type: str = "claude_code_session",
+    filter_by_workspace: bool = True,
+) -> List[Dict]:
     """
-    Get Claude Code conversations for a specific date.
+    Scan a .claude/projects/ directory for conversations on a specific date.
 
-    API-compatible with cursor_db.get_conversations_for_date().
+    Shared logic for both Code mode and Cowork mode scanning.
 
     Args:
-        target_date: Date to fetch conversations for.
-        workspace_paths: List of workspace paths to include.
+        projects_path: Path to .claude/projects/ directory.
+        target_ts: Start of day timestamp (ms).
+        next_day_ts: End of day timestamp (ms).
+        normalized_workspaces: Set of normalized workspace paths for filtering.
+        chat_type: Type tag for conversations (e.g. "claude_code_session", "claude_cowork_session").
+        filter_by_workspace: Whether to filter by workspace paths (False for Cowork).
 
     Returns:
-        List of conversation dicts with keys:
-            - chat_id: Session UUID
-            - chat_type: "claude_code_session"
-            - workspace: Workspace path
-            - messages: List of message dicts
+        List of conversation dicts.
     """
-    projects_path = get_claude_code_projects_path()
-    if not projects_path:
-        print(f"ℹ️  No Claude Code directory found, skipping", file=sys.stderr)
-        return []
-
     conversations = []
-    target_ts = int(datetime.combine(target_date, datetime.min.time()).timestamp() * 1000)
-    next_day_ts = target_ts + (24 * 60 * 60 * 1000)
 
-    # Normalize workspace paths for matching
-    normalized_workspaces = {os.path.normpath(p) for p in workspace_paths}
-
-    # Iterate through workspace directories
     for workspace_dir in projects_path.iterdir():
         if not workspace_dir.is_dir():
             continue
@@ -285,10 +285,8 @@ def get_conversations_for_date(target_date: date, workspace_paths: List[str]) ->
                 continue
 
             # Extract actual workspace from message metadata (cwd field)
-            # Use the first message's cwd as the session workspace
             actual_workspace = messages[0]["metadata"].get("cwd")
             if not actual_workspace:
-                # Fallback to decoded directory name if cwd not available
                 try:
                     actual_workspace = decode_workspace_name(workspace_dir.name)
                 except Exception:
@@ -296,8 +294,9 @@ def get_conversations_for_date(target_date: date, workspace_paths: List[str]) ->
 
             # Normalize and check if this workspace is in user's config
             normalized_actual = os.path.normpath(actual_workspace)
-            # If workspace_paths is provided, filter by it; if empty, include all workspaces
-            if normalized_workspaces and normalized_actual not in normalized_workspaces:
+
+            # Filter by workspace paths (skip for Cowork — virtual paths don't match)
+            if filter_by_workspace and normalized_workspaces and normalized_actual not in normalized_workspaces:
                 continue
 
             # Filter by date
@@ -309,10 +308,58 @@ def get_conversations_for_date(target_date: date, workspace_paths: List[str]) ->
             if messages_on_date:
                 conversations.append({
                     "chat_id": session_id,
-                    "chat_type": "claude_code_session",
+                    "chat_type": chat_type,
                     "workspace": normalized_actual,
                     "messages": messages_on_date,
                 })
+
+    return conversations
+
+
+def get_conversations_for_date(target_date: date, workspace_paths: List[str]) -> List[Dict]:
+    """
+    Get Claude conversations for a specific date (Code mode + Cowork mode).
+
+    API-compatible with cursor_db.get_conversations_for_date().
+
+    Args:
+        target_date: Date to fetch conversations for.
+        workspace_paths: List of workspace paths to include.
+
+    Returns:
+        List of conversation dicts with keys:
+            - chat_id: Session UUID
+            - chat_type: "claude_code_session" or "claude_cowork_session"
+            - workspace: Workspace path
+            - messages: List of message dicts
+    """
+    conversations = []
+    target_ts = int(datetime.combine(target_date, datetime.min.time()).timestamp() * 1000)
+    next_day_ts = target_ts + (24 * 60 * 60 * 1000)
+    normalized_workspaces = {os.path.normpath(p) for p in workspace_paths}
+
+    # 1. Scan Claude Code sessions (~/.claude/projects/)
+    projects_path = get_claude_code_projects_path()
+    if projects_path:
+        conversations.extend(_scan_projects_dir(
+            projects_path, target_ts, next_day_ts, normalized_workspaces,
+            chat_type="claude_code_session", filter_by_workspace=True,
+        ))
+    else:
+        print(f"ℹ️  No Claude Code directory found, skipping Code mode", file=sys.stderr)
+
+    # 2. Scan Claude Desktop Cowork sessions (local-agent-mode-sessions)
+    try:
+        from .source_detector import get_claude_cowork_project_paths
+        cowork_paths = get_claude_cowork_project_paths()
+        if cowork_paths:
+            for cowork_projects in cowork_paths:
+                conversations.extend(_scan_projects_dir(
+                    cowork_projects, target_ts, next_day_ts, normalized_workspaces,
+                    chat_type="claude_cowork_session", filter_by_workspace=False,
+                ))
+    except Exception as e:
+        print(f"ℹ️  Cowork scanning skipped: {e}", file=sys.stderr)
 
     return conversations
 
@@ -323,7 +370,7 @@ def get_claude_code_conversations(
     workspace_paths: List[str]
 ) -> List[Dict]:
     """
-    Get Claude Code conversations for date range.
+    Get all Claude conversations for date range (Code + Cowork).
 
     API-compatible with cursor_db module.
 

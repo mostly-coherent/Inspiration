@@ -269,16 +269,25 @@ def index_messages_batch(
     if not batch_data:
         return 0, 0
     
-    try:
-        # Bulk upsert (Supabase handles this efficiently)
-        result = client.table("cursor_messages").upsert(batch_data).execute()
-        successful = len(result.data) if result.data else 0
-        failed = len(batch_data) - successful
-        return successful, failed
-    except Exception as e:
-        import sys
-        print(f"⚠️  Batch insert failed: {e}", file=sys.stderr)
-        return 0, len(batch_data)
+    # Upsert in sub-batches of 50 to stay within Supabase statement timeout.
+    # Each row carries a 1536-dim embedding (~12KB), so 50 rows ≈ 600KB per call.
+    import sys
+    upsert_chunk_size = 50
+    total_successful = 0
+    total_failed = 0
+    
+    for i in range(0, len(batch_data), upsert_chunk_size):
+        chunk = batch_data[i:i + upsert_chunk_size]
+        try:
+            result = client.table("cursor_messages").upsert(chunk).execute()
+            successful = len(result.data) if result.data else 0
+            total_successful += successful
+            total_failed += len(chunk) - successful
+        except Exception as e:
+            print(f"⚠️  Batch upsert failed (sub-batch {i//upsert_chunk_size + 1}): {e}", file=sys.stderr)
+            total_failed += len(chunk)
+    
+    return total_successful, total_failed
 
 
 def search_messages_vector_db(
@@ -482,9 +491,11 @@ def get_existing_message_ids(message_ids: list[str], client: Optional[Client] = 
         return set()
     
     try:
-        # Query in chunks to avoid URL length limits (Supabase has limits on query size)
+        # Query in chunks to avoid URL/query size limits
+        # Supabase PostgREST silently fails with large in_() filters (~40K+ chars).
+        # Chunk size 200 keeps queries safely under the limit even for long IDs.
         existing_ids = set()
-        chunk_size = 1000  # Process in chunks of 1000
+        chunk_size = 200
         
         for i in range(0, len(message_ids), chunk_size):
             chunk = message_ids[i:i + chunk_size]

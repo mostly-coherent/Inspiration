@@ -989,71 +989,72 @@ def estimate_history_metrics(db_path: Path | None = None) -> dict:
 
 def _load_claude_code_conversations_for_size_limit() -> list[dict]:
     """
-    Load all Claude Code conversations with their file sizes.
+    Load all Claude conversations (Code + Cowork) with their file sizes.
     Used for size-based analysis (most recent ~500MB).
     
     Returns:
         List of conversation dicts with _size_bytes field (file size).
     """
     try:
-        from .source_detector import get_claude_code_path
+        from .source_detector import get_claude_code_path, get_claude_cowork_project_paths
         from .claude_code_db import parse_jsonl_session, parse_subagent_sessions, decode_workspace_name
-        
-        claude_path = get_claude_code_path()
-        if not claude_path or not claude_path.exists():
-            return []
         
         conversations = []
         
-        # Iterate through workspace directories
-        for workspace_dir in claude_path.iterdir():
-            if not workspace_dir.is_dir():
-                continue
-            
-            # Find all session JSONL files
-            session_files = [f for f in workspace_dir.glob("*.jsonl") if f.is_file()]
-            
-            for session_file in session_files:
-                session_id = session_file.stem
-                
-                # Get file size (this is what we'll use for size limit)
-                file_size_bytes = session_file.stat().st_size
-                
-                # Parse main session
-                messages = parse_jsonl_session(session_file)
-                
-                # Parse subagents
-                subagent_messages = parse_subagent_sessions(workspace_dir, session_id)
-                messages.extend(subagent_messages)
-                
-                # Skip if no messages
-                if not messages:
+        def _scan_projects_dir(projects_path: Path, chat_type: str) -> None:
+            """Scan a .claude/projects/ dir and append conversations."""
+            for workspace_dir in projects_path.iterdir():
+                if not workspace_dir.is_dir():
                     continue
                 
-                # Extract workspace from message metadata
-                actual_workspace = messages[0]["metadata"].get("cwd")
-                if not actual_workspace:
-                    try:
-                        actual_workspace = decode_workspace_name(workspace_dir.name)
-                    except Exception:
+                session_files = [f for f in workspace_dir.glob("*.jsonl") if f.is_file()]
+                
+                for session_file in session_files:
+                    session_id = session_file.stem
+                    file_size_bytes = session_file.stat().st_size
+                    
+                    messages = parse_jsonl_session(session_file)
+                    subagent_messages = parse_subagent_sessions(workspace_dir, session_id)
+                    messages.extend(subagent_messages)
+                    
+                    if not messages:
                         continue
-                
-                # Get timestamp from most recent message
-                last_updated = max(msg.get("timestamp", 0) for msg in messages) if messages else 0
-                
-                conversations.append({
-                    "chat_id": session_id,
-                    "chat_type": "claude_code_session",
-                    "workspace": actual_workspace,
-                    "messages": messages,
-                    "signal_score": 0.0,  # Will be calculated later
-                    "_size_bytes": file_size_bytes,
-                    "_last_updated": last_updated,  # For sorting
-                })
+                    
+                    actual_workspace = messages[0]["metadata"].get("cwd")
+                    if not actual_workspace:
+                        try:
+                            actual_workspace = decode_workspace_name(workspace_dir.name)
+                        except Exception:
+                            continue
+                    
+                    last_updated = max(msg.get("timestamp", 0) for msg in messages) if messages else 0
+                    
+                    conversations.append({
+                        "chat_id": session_id,
+                        "chat_type": chat_type,
+                        "workspace": actual_workspace,
+                        "messages": messages,
+                        "signal_score": 0.0,
+                        "_size_bytes": file_size_bytes,
+                        "_last_updated": last_updated,
+                    })
+        
+        # 1. Claude Code sessions
+        claude_path = get_claude_code_path()
+        if claude_path and claude_path.exists():
+            _scan_projects_dir(claude_path, "claude_code_session")
+        
+        # 2. Claude Desktop Cowork sessions
+        try:
+            cowork_paths = get_claude_cowork_project_paths()
+            for cowork_projects in cowork_paths:
+                _scan_projects_dir(cowork_projects, "claude_cowork_session")
+        except Exception:
+            pass  # Cowork scanning is best-effort
         
         return conversations
     except Exception as e:
-        print(f"⚠️  Failed to load Claude Code conversations: {e}", file=sys.stderr)
+        print(f"⚠️  Failed to load Claude conversations: {e}", file=sys.stderr)
         return []
 
 

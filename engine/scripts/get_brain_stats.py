@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Get brain size statistics (local chat file and vector DB).
+Get brain size statistics (all local sources + vector DB).
 
 Returns JSON with:
-- localSize: Human-readable local chat file size (e.g., "2.1 GB")
+- localSize: Total raw size of ALL local sources (Cursor DB + Claude JSONL + workspace files)
 - vectorSize: Human-readable vector DB size (e.g., "200 MB")
 - localSizeBytes: Size in bytes
 - vectorSizeBytes: Size in bytes
@@ -17,6 +17,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from common.cursor_db import get_cursor_db_path
+from common.source_detector import get_claude_code_path, get_claude_cowork_project_paths
+from common.config import load_config
 from common.vector_db import get_supabase_client
 
 
@@ -32,18 +34,89 @@ def format_bytes(bytes_size: int) -> str:
     return f"{bytes_size:.1f} PB"
 
 
-def get_local_chat_size() -> tuple[int, str]:
-    """Get local Cursor chat database file size."""
+def _dir_total_size(dir_path: Path) -> int:
+    """Recursively sum file sizes in a directory."""
+    total = 0
+    try:
+        for f in dir_path.rglob("*"):
+            if f.is_file():
+                total += f.stat().st_size
+    except (PermissionError, OSError):
+        pass
+    return total
+
+
+def get_local_source_sizes() -> dict:
+    """
+    Get raw sizes for each local source.
+
+    Returns dict with keys: cursor_bytes, claude_bytes, workspace_bytes, total_bytes, total_formatted.
+    """
+    cursor_bytes = 0
+    claude_bytes = 0
+    workspace_bytes = 0
+
+    # 1. Cursor SQLite DB
     try:
         db_path = get_cursor_db_path()
         if db_path.exists():
-            size_bytes = db_path.stat().st_size
-            return size_bytes, format_bytes(size_bytes)
-        else:
-            return 0, "0 B"
-    except Exception as e:
-        # Database not found (cloud environment)
-        return 0, None
+            cursor_bytes = db_path.stat().st_size
+    except Exception:
+        pass
+
+    # 2. Claude Code JSONL (all files under ~/.claude/projects/)
+    try:
+        code_path = get_claude_code_path()
+        if code_path:
+            claude_bytes += _dir_total_size(code_path)
+    except Exception:
+        pass
+
+    # 3. Claude Cowork JSONL sessions
+    try:
+        for projects_dir in get_claude_cowork_project_paths():
+            claude_bytes += _dir_total_size(projects_dir)
+    except Exception:
+        pass
+
+    # 4. Workspace files (only .md files + code files the scanner processes)
+    try:
+        from common.workspace_scanner import CODE_EXTENSIONS, SKIP_DIRS
+        config = load_config()
+        workspace_paths = config.get("workspaces", [])
+        scanned_extensions = {".md"} | CODE_EXTENSIONS
+        seen_files: set[str] = set()
+
+        for ws in workspace_paths:
+            ws_path = Path(ws)
+            if not ws_path.exists():
+                continue
+            for root, dirs, files in __import__("os").walk(ws_path):
+                # Skip excluded directories (same logic as workspace_scanner)
+                dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
+                for filename in files:
+                    ext = Path(filename).suffix.lower()
+                    if ext not in scanned_extensions:
+                        continue
+                    filepath = Path(root) / filename
+                    try:
+                        real = str(filepath.resolve())
+                        if real not in seen_files:
+                            seen_files.add(real)
+                            workspace_bytes += filepath.stat().st_size
+                    except (PermissionError, OSError):
+                        continue
+    except Exception:
+        pass
+
+    total = cursor_bytes + claude_bytes + workspace_bytes
+    return {
+        "cursor_bytes": cursor_bytes,
+        "claude_bytes": claude_bytes,
+        "workspace_bytes": workspace_bytes,
+        "total_bytes": total,
+        "total_formatted": format_bytes(total),
+    }
 
 
 def get_vector_db_date_range() -> tuple[str | None, str | None]:
@@ -179,14 +252,14 @@ def get_vector_db_size() -> tuple[int, str]:
 
 def main():
     """Get and return brain statistics."""
-    local_size_bytes, local_size = get_local_chat_size()
+    source_sizes = get_local_source_sizes()
     vector_size_bytes, vector_size = get_vector_db_size()
     library_size_bytes, library_size = get_library_size()
     earliest_date, latest_date = get_vector_db_date_range()
     
     stats = {
-        "localSizeBytes": local_size_bytes,
-        "localSize": local_size,
+        "localSizeBytes": source_sizes["total_bytes"],
+        "localSize": source_sizes["total_formatted"],
         "vectorSizeBytes": vector_size_bytes,
         "vectorSize": vector_size,
         "librarySizeBytes": library_size_bytes,

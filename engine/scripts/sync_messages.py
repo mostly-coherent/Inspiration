@@ -387,7 +387,7 @@ def sync_claude_code_messages(
 ) -> dict:
     """Sync Claude Code messages to Vector DB. Returns stats dict."""
 
-    print(f"\n🔄 Syncing Claude Code")
+    print(f"\n🔄 Syncing Claude (Code + Cowork)")
 
     last_sync_ts = get_source_last_sync_timestamp("claude_code")
 
@@ -588,7 +588,7 @@ def sync_claude_code_messages(
     if not dry_run:
         update_sync_state("claude_code", max_timestamp, indexed_count)
 
-    print(f"✅ Claude Code sync complete: {indexed_count} indexed, {skipped_count} skipped, {failed_count} failed")
+    print(f"✅ Claude: {indexed_count} indexed, {skipped_count} skipped, {failed_count} failed")
 
     return {
         "indexed": indexed_count,
@@ -760,7 +760,7 @@ def sync_new_messages(
 
     if not detected_sources and not include_workspace_docs:
         print("❌ No chat history sources found")
-        print("   Make sure you have Cursor or Claude Code installed with conversation history")
+        print("   Make sure you have Cursor or Claude installed with conversation history")
         return
 
     # Get Supabase client
@@ -771,6 +771,7 @@ def sync_new_messages(
 
     # Sync each detected source
     stats = {}
+    has_claude = any(s.name in ("claude_code", "claude_cowork") for s in detected_sources)
     for source in detected_sources:
         if source.name == "cursor":
             try:
@@ -778,12 +779,20 @@ def sync_new_messages(
             except Exception as e:
                 print(f"⚠️  Cursor sync failed: {e}")
                 stats["cursor"] = {"indexed": 0, "skipped": 0, "failed": 0}
-        elif source.name == "claude_code":
+        elif source.name == "claude_code" and "claude" not in stats:
+            # Claude sync handles both Code + Cowork sessions (same JSONL format)
             try:
-                stats["claude_code"] = sync_claude_code_messages(days_back, dry_run, client)
+                stats["claude"] = sync_claude_code_messages(days_back, dry_run, client)
             except Exception as e:
-                print(f"⚠️  Claude Code sync failed: {e}")
-                stats["claude_code"] = {"indexed": 0, "skipped": 0, "failed": 0}
+                print(f"⚠️  Claude sync failed: {e}")
+                stats["claude"] = {"indexed": 0, "skipped": 0, "failed": 0}
+        elif source.name == "claude_cowork" and "claude" not in stats:
+            # If only Cowork detected (no Code), still sync via the same pipeline
+            try:
+                stats["claude"] = sync_claude_code_messages(days_back, dry_run, client)
+            except Exception as e:
+                print(f"⚠️  Claude sync failed: {e}")
+                stats["claude"] = {"indexed": 0, "skipped": 0, "failed": 0}
 
     # Sync workspace documents (markdown, TODOs)
     if include_workspace_docs:

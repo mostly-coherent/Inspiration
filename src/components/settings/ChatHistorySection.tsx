@@ -60,7 +60,7 @@ export function ChatHistorySection({ chatHistory }: ChatHistorySectionProps) {
           {chatHistory.claudeCode && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-slate-300">Claude Code:</span>
+                <span className="text-sm font-medium text-slate-300">Claude:</span>
                 {chatHistory.claudeCodeExists ? (
                   <span className="text-emerald-400">✓</span>
                 ) : (
@@ -75,7 +75,7 @@ export function ChatHistorySection({ chatHistory }: ChatHistorySectionProps) {
                 {chatHistory.claudeCodeExists ? (
                   <span className="text-emerald-400">Directory exists</span>
                 ) : (
-                  <span className="text-yellow-400">Directory not found (Claude Code may not be installed)</span>
+                  <span className="text-yellow-400">Directory not found (Claude may not be installed)</span>
                 )}
               </div>
             </div>
@@ -83,7 +83,7 @@ export function ChatHistorySection({ chatHistory }: ChatHistorySectionProps) {
         </div>
       ) : (
         <p className="text-sm text-slate-500">
-          Click &quot;Refresh&quot; to auto-detect your Cursor and Claude Code chat history locations.
+          Click &quot;Refresh&quot; to auto-detect your Cursor and Claude chat history locations.
         </p>
       )}
     </div>

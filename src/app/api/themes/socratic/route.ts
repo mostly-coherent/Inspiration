@@ -1,23 +1,14 @@
 import { NextResponse } from "next/server";
-import { spawn } from "child_process";
-import path from "path";
-import { getPythonPath } from "@/lib/pythonPath";
-import { isCloudEnvironment, getCloudErrorMessage } from "@/lib/vercel";
+import { generateSocraticQuestions } from "@/lib/socratic";
 
 export const maxDuration = 120; // 120 seconds for LLM calls
 
-interface SocraticQuestion {
-  id: string;
-  question: string;
-  category: "pattern" | "gap" | "tension" | "temporal" | "expert" | "alignment";
-  evidence: string;
-  difficulty: "comfortable" | "uncomfortable" | "confrontational";
-}
-
 /**
  * GET /api/themes/socratic
- * 
+ *
  * Generate or return cached Socratic reflection questions.
+ * Pure TypeScript — works on both local and Vercel.
+ *
  * Query params:
  *   - force=true  → Force regeneration (ignore cache)
  */
@@ -25,101 +16,31 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const force = searchParams.get("force") === "true";
 
-  if (isCloudEnvironment()) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: getCloudErrorMessage("Socratic Reflection"),
-        questions: [],
-        cloudMode: true,
-      },
-      { status: 400 }
-    );
-  }
-
   try {
-    const pythonPath = getPythonPath();
-    const scriptPath = path.join(
-      process.cwd(),
-      "engine",
-      "common",
-      "socratic_engine.py"
-    );
+    const result = await generateSocraticQuestions(force);
 
-    const args = [scriptPath, "--json"];
-    if (force) {
-      args.push("--force");
-    }
-
-    const result = await new Promise<string>((resolve, reject) => {
-      const python = spawn(pythonPath, args, {
-        cwd: process.cwd(),
-        env: {
-          ...process.env,
-          PYTHONPATH: path.join(process.cwd(), "engine"),
-        },
-      });
-
-      let stdout = "";
-      let stderr = "";
-
-      python.stdout.on("data", (data) => {
-        stdout += data.toString();
-      });
-
-      python.stderr.on("data", (data) => {
-        stderr += data.toString();
-      });
-
-      python.on("close", (code) => {
-        if (code !== 0) {
-          console.error("Socratic engine stderr:", stderr);
-          reject(new Error(stderr || `Process exited with code ${code}`));
-        } else {
-          resolve(stdout);
-        }
-      });
-
-      python.on("error", (err) => {
-        reject(err);
-      });
-    });
-
-    // Parse the JSON output from stdout
-    // The script outputs progress to stderr and JSON to stdout via --json flag
-    const lines = result.trim().split("\n");
-    let jsonStr = "";
-    
-    // Find the JSON array in stdout (skip progress lines)
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith("[") || jsonStr) {
-        jsonStr += trimmed;
-      }
-    }
-
-    if (!jsonStr) {
+    if (result.questions.length === 0) {
       return NextResponse.json({
         success: true,
         questions: [],
-        message: "No questions generated. Ensure you have Library items and indexed Memory.",
+        message:
+          result.message ||
+          "No questions generated. Ensure you have Library items and indexed Memory.",
       });
     }
 
-    const questions: SocraticQuestion[] = JSON.parse(jsonStr);
-
     return NextResponse.json({
       success: true,
-      questions,
-      count: questions.length,
-      cached: !force,
+      questions: result.questions,
+      count: result.questions.length,
+      cached: result.cached,
     });
   } catch (error) {
     console.error("Socratic API error:", error);
     return NextResponse.json(
       {
         success: false,
-        error: String(error),
+        error: error instanceof Error ? error.message : String(error),
         questions: [],
       },
       { status: 500 }
@@ -129,8 +50,10 @@ export async function GET(request: Request) {
 
 /**
  * POST /api/themes/socratic
- * 
+ *
  * Handle question interactions (dismiss, resonate).
+ * These are tracked client-side; the POST is fire-and-forget for analytics.
+ *
  * Body: { action: "dismiss" | "resonate", questionId: string }
  */
 export async function POST(request: Request) {
@@ -145,36 +68,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const pythonPath = getPythonPath();
-    const scriptCode = action === "dismiss"
-      ? `from common.socratic_engine import dismiss_question; dismiss_question("${questionId}")`
-      : `from common.socratic_engine import mark_resonated; mark_resonated("${questionId}")`;
-
-    const result = await new Promise<string>((resolve, reject) => {
-      const python = spawn(pythonPath, ["-c", scriptCode], {
-        cwd: path.join(process.cwd(), "engine"),
-        env: {
-          ...process.env,
-          PYTHONPATH: path.join(process.cwd(), "engine"),
-        },
-      });
-
-      let stdout = "";
-      let stderr = "";
-
-      python.stdout.on("data", (data) => { stdout += data.toString(); });
-      python.stderr.on("data", (data) => { stderr += data.toString(); });
-
-      python.on("close", (code) => {
-        if (code !== 0) {
-          reject(new Error(stderr || `Process exited with code ${code}`));
-        } else {
-          resolve(stdout);
-        }
-      });
-
-      python.on("error", (err) => { reject(err); });
-    });
+    // Client-side state handles the immediate UX.
+    // This endpoint acknowledges the action for logging/analytics.
+    // Future improvement: persist to Supabase table for cross-session tracking.
 
     return NextResponse.json({
       success: true,
