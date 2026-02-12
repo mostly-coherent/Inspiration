@@ -2,7 +2,7 @@
 
 > **Treats your AI conversations and workspace artifacts as thinking — not disposable logs.**
 
-You have hundreds (or thousands) of conversations with Claude — reasoning through architecture decisions, debugging trade-offs, exploring patterns. You also have markdown docs, TODOs, and code comments scattered across projects. Then they disappear into the noise. Inspiration mines all of it.
+You have hundreds (or thousands) of conversations with Cursor — reasoning through architecture decisions, debugging trade-offs, exploring patterns. You also have markdown docs, TODOs, and code comments scattered across projects. Then they disappear into the noise. Inspiration mines all of it.
 
 ![Type](https://img.shields.io/badge/Type-Tool-purple)
 ![Status](https://img.shields.io/badge/Status-Active-green)
