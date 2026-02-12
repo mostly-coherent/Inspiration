@@ -26,11 +26,11 @@ npm run dev
 
 **→ Open http://localhost:3000/onboarding-fast**
 
-| Step | What Happens | Time |
-|------|-------------|------|
-| 1. Auto-detect | Finds your Cursor DB + Claude sessions | ~3s |
-| 2. API Key | Paste Anthropic key | ~10s |
-| 3. Generate | Maps local chat history | ~60s |
+| Step           | What Happens                           | Time |
+| -------------- | -------------------------------------- | ---- |
+| 1. Auto-detect | Finds your Cursor DB + Claude sessions | ~3s  |
+| 2. API Key     | Paste Anthropic key                    | ~10s |
+| 3. Generate    | Maps local chat history                | ~60s |
 
 **Cost:** $0 for local history (<500MB). Optional vector indexing costs ~$0.50–$5 one-time.
 
@@ -42,12 +42,12 @@ npm run dev
 
 Inspiration reads from **3 chat sources + workspace documents**, converts everything to embeddings (OpenAI `text-embedding-3-small`), and stores them in Supabase pgvector for semantic search.
 
-| Source | What it reads | Storage format |
-|--------|--------------|----------------|
-| **Cursor** | All Composer/Chat conversations | SQLite (`state.vscdb`) |
-| **Claude Code** | Code mode sessions (CLI or Desktop app) | JSONL (`~/.claude/projects/`) |
-| **Claude Cowork** | Cowork mode sessions (Desktop app) | JSONL (`local-agent-mode-sessions/`) |
-| **Workspace Docs** | Markdown files (.md), TODO/FIXME/HACK/NOTE code comments | Direct filesystem scan |
+| Source                   | What it reads                                            | Storage format                         |
+| ------------------------ | -------------------------------------------------------- | -------------------------------------- |
+| **Cursor**         | All Composer/Chat conversations                          | SQLite (`state.vscdb`)               |
+| **Claude Code**    | Code mode sessions (CLI or Desktop app)                  | JSONL (`~/.claude/projects/`)        |
+| **Claude Cowork**  | Cowork mode sessions (Desktop app)                       | JSONL (`local-agent-mode-sessions/`) |
+| **Workspace Docs** | Markdown files (.md), TODO/FIXME/HACK/NOTE code comments | Direct filesystem scan                 |
 
 Everything flows through the same pipeline: **detect → extract → embed → store in Supabase pgvector**. The Sync button on the home page runs all four sources incrementally (only new/changed content gets re-indexed).
 
@@ -57,13 +57,13 @@ Everything flows through the same pipeline: **detect → extract → embed → s
 
 A true thinking partner does three things:
 
-**(a) Remembers what you've said before**  
+**(a) Remembers what you've said before**
 Reads from Cursor's SQLite database, Claude's JSONL sessions, and your workspace documents. Converts everything to embeddings, runs semantic similarity across your entire history.
 
-**(b) Connects dots you haven't connected**  
+**(b) Connects dots you haven't connected**
 Knowledge graph extraction maps how concepts link across projects. Reveals that a pattern you rejected in Project A fits Project B.
 
-**(c) Challenges your assumptions**  
+**(c) Challenges your assumptions**
 Theme Explorer's Reflect tab generates probing Socratic questions from your patterns, gaps, and expert knowledge. Pushes back where it matters.
 
 **The gap:** Tools respond to what you ask. Thinking partners surface what you didn't know to ask about. Inspiration does the latter.
@@ -83,6 +83,7 @@ Knowledge graphs synthesize across boundaries you've mentally siloed. A debuggin
 **3. Blind Spot Detection**
 
 Theme Explorer tabs:
+
 - **Patterns** — Semantic clustering (forest-level → tree-level zoom)
 - **Reflect** — Socratic questions generated from your patterns, gaps, and expert knowledge
 - **Unexplored** — Topics discussed but not formalized (gaps in your Library)
@@ -132,6 +133,7 @@ Required environment variables:
 - **`SUPABASE_ANON_KEY`** – Optional: Supabase anonymous key
 
 **Notes:**
+
 - Cursor chat history auto-detected on macOS and Windows
 - Claude Code + Cowork JSONL history auto-detected on macOS, Windows, and Linux
 - Workspace documents (markdown, code comments) scanned from configured workspace paths
@@ -156,13 +158,13 @@ Required environment variables:
 <details>
 <summary><strong>⚙️ System Requirements</strong></summary>
 
-| Requirement | Version/Details |
-|-------------|-----------------|
-| **OS** | macOS or Windows |
-| **Node.js** | 18.18.0+ |
-| **Python** | 3.10+ (3.11+ recommended) |
-| **Disk Space** | 100MB–2GB (scales with chat history) |
-| **API Keys** | Anthropic (required), OpenAI (optional), Supabase (optional) |
+| Requirement            | Version/Details                                                |
+| ---------------------- | -------------------------------------------------------------- |
+| **OS**           | macOS or Windows                                               |
+| **Node.js**      | 18.18.0+                                                       |
+| **Python**       | 3.10+ (3.11+ recommended)                                      |
+| **Disk Space**   | 100MB–2GB (scales with chat history)                          |
+| **API Keys**     | Anthropic (required), OpenAI (optional), Supabase (optional)   |
 | **Chat History** | Cursor and/or Claude (Code/Cowork) with existing conversations |
 
 </details>
@@ -173,6 +175,7 @@ Required environment variables:
 **Stack:** Next.js 15, Python, Anthropic Claude, OpenAI embeddings, pgvector
 
 **Key Engineering:**
+
 - Reverse-engineered Cursor's "Bubble" format (SQLite) + Claude's JSONL (Code + Cowork modes)
 - Workspace scanning: markdown docs, TODO/FIXME/HACK/NOTE code comments across all configured workspaces
 - RAG over your own chat history + documents for conceptual relationships
