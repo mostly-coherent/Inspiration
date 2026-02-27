@@ -19,6 +19,7 @@ All core infrastructure is operational. Here's the stack of completed capabiliti
 | **v2.0 KG** | Knowledge Graph extraction (entities + relations), Entity Explorer, Graph View — **Note:** User KG quality was poor; expert KG (Lenny) is useful | ✅ Done |
 | **v2.1** | Smart Onboarding — Quick Start (90s for >500MB), Full Setup with scope slider | ✅ Done |
 | **v6** | Multi-Source Memory (workspace docs, TODOs), Socratic Mode (Reflect tab), removed user KG from scoreboard | ✅ Done |
+| **v7** | Builder Assessment — cross-project awareness, evidence-backed weakness analysis, response tracking | ✅ Done |
 
 **Current Theme Explorer tabs:** Patterns | Reflect | Unexplored
 
@@ -34,7 +35,53 @@ All core infrastructure is operational. Here's the stack of completed capabiliti
 | FAST-2 | **Cost estimation before Theme Map** — Show "This will cost ~$0.12" before generation | Builds trust. Already specced. | LOW | ✅ Done |
 | ~~FAST-3~~ | ~~**Share Theme Map** — One-click export to PNG/PDF~~ | ~~Enables viral loop.~~ Deprioritized. | LOW | Removed |
 
-### LIB-9: Learning Trajectory (Next Major Feature)
+### v7: Builder Assessment — Critical Thought Partner
+
+**Tagline:** "See what you're avoiding, where you're blind, and what the evidence says about you as a builder."
+
+**Status:** Done
+**Created:** 2026-02-23
+**Completed:** 2026-02-26
+
+**Problem:** Inspiration is a retrospective museum curator, not a sparring partner. It finds what you thought about (themes, clusters) but doesn't challenge what you're *doing* — your weaknesses, blind spots, and behavioral patterns. The Socratic Mode asks gentle probing questions cached for 24 hours. A real thought partner should be direct, evidence-backed, and confrontational when warranted.
+
+**What it does:** Three phases that progressively deepen Inspiration's ability to surface builder weaknesses:
+
+**Phase 1: Expand Socratic Engine's Vision** — Scan all projects in the workspace for PLAN.md, BUILD_LOG.md, README.md and feed project state (what's planned, what's done, what's stale) into the Socratic engine alongside existing data sources. This immediately makes Socratic questions sharper because they can reference actual project state.
+
+**Phase 2: Builder Assessment Mode** — A new intentionally-triggered feature that generates a deep, evidence-backed assessment of the builder's weaknesses and blind spots. Not questions — direct assertions with specific evidence. Uses all available data: Library clusters, temporal shifts, expert matches, unexplored areas, AND project context from Phase 1. The LLM prompt is fundamentally different from Socratic: "Identify their top 3-5 weaknesses as a builder. Each must be backed by specific evidence."
+
+**Phase 3: Response Tracking + Longitudinal Comparison** — After seeing an assessment, the builder can respond ("I agree, here's my plan" or "I disagree, here's why"). Responses are stored. The next assessment includes prior responses so the LLM can say: "Last time you acknowledged X. Here's what actually happened since then."
+
+**Design principles:**
+- Let the LLM discover patterns organically — no pre-defined behavioral archetypes
+- No new metrics dashboards — the assessment IS the output, in prose
+- Read project docs at generation time — no new database schemas for workspace metrics
+- User-triggered, not auto-generated — this is a deliberate act of self-examination
+
+| ID | Feature | Phase | Status |
+|----|---------|-------|--------|
+| BA-1 | **Project Context Scanner** — Walk workspace dirs, parse PLAN.md/BUILD_LOG.md/README.md, return project snapshots | 1 | ✅ Done |
+| BA-2 | **Enrich Socratic Context** — Add `projectContext` to SocraticContext, feed into existing question generation | 1 | ✅ Done |
+| BA-3 | **Builder Assessment API** — `GET /api/themes/builder-assessment` with assessment-specific LLM prompt | 2 | ✅ Done |
+| BA-4 | **Builder Assessment Prompt** — Direct, evidence-backed weakness identification (assertions, not questions) | 2 | ✅ Done |
+| BA-5 | **Builder Assessment UI** — Section in Reflect tab with "Run Builder Assessment" trigger + rendered results | 2 | ✅ Done |
+| BA-6 | **Assessment Storage** — `builder_assessments` Supabase table for results + user responses | 3 | ✅ Done |
+| BA-7 | **Response UI** — User can respond to each weakness; responses stored for next assessment | 3 | ✅ Done |
+| BA-8 | **Longitudinal Comparison** — Next assessment includes prior assessment + responses as LLM context | 3 | ✅ Done |
+
+**Key Files (new):**
+- `src/lib/projectScanner.ts` — Workspace project doc scanner
+- `src/app/api/themes/builder-assessment/route.ts` — Builder Assessment API
+- `src/components/BuilderAssessment.tsx` — Assessment results UI
+
+**Key Files (modified):**
+- `src/lib/socratic.ts` — Add projectContext to SocraticContext + aggregation
+- `src/components/ReflectTab.tsx` — Add Builder Assessment section
+
+---
+
+### LIB-9: Learning Trajectory (Deferred)
 
 **Problem:** Theme Explorer shows your thinking as a snapshot. None of the three tabs (Patterns, Unexplored, Reflect) show how your thinking has *changed over time*. That's the missing dimension.
 
@@ -152,4 +199,4 @@ Two features that deepen Inspiration's role as a thinking partner:
 
 ---
 
-**Last Updated:** 2026-02-06 (v6 complete, LENNY-1 + FAST-2 shipped, FAST-3 removed, only LIB-9 Learning Trajectory remains)
+**Last Updated:** 2026-02-23 (v7 Builder Assessment in progress; LIB-9 deferred)

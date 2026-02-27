@@ -202,7 +202,7 @@ async function saveConfig(config: AppConfig): Promise<boolean> {
       // CRITICAL: For JSONB columns, Supabase upsert REPLACES the entire value
       // But to be absolutely sure, we'll delete then insert if update doesn't work
       // First try UPDATE (explicitly replaces the entire JSONB value)
-      let updateResult = await writeClient
+      const updateResult = await writeClient
         .from('app_config')
         .update({ 
           value: config,  // Replace entire JSONB value

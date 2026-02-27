@@ -43,7 +43,7 @@ export function PromptTemplateEditor() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
-  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [_validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [showAutoFix, setShowAutoFix] = useState(false);
 
   // Load prompts list

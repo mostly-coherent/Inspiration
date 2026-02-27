@@ -18,7 +18,7 @@ export async function POST(request: Request) {
 
     // Read existing .env.local if it exists to preserve existing keys
     const envPath = path.join(process.cwd(), ".env.local");
-    let existingEnv: Record<string, string> = {};
+    const existingEnv: Record<string, string> = {};
     
     try {
       const existingContent = await fs.readFile(envPath, "utf-8");

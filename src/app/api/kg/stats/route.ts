@@ -198,7 +198,7 @@ export async function GET(request: Request) {
       const pageSize = 1000; // Supabase default limit
       
       while (true) {
-        let typeQuery = entitiesTypeQuery.range(offset, offset + pageSize - 1);
+        const typeQuery = entitiesTypeQuery.range(offset, offset + pageSize - 1);
         const typeResult = await typeQuery;
         
         if (typeResult.error) {
@@ -226,7 +226,7 @@ export async function GET(request: Request) {
 
     // Count mentions - use source column directly (more efficient than filtering through entities)
     let totalMentions = 0;
-    let mentionsQuery = supabase
+    const mentionsQuery = supabase
       .from("kg_entity_mentions")
       .select("id", { count: "exact", head: true });
     

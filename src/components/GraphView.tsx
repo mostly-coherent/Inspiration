@@ -506,7 +506,7 @@ export default function GraphView({
         const existingNodeIds = new Set(dataToLayout.nodes.map((n) => n.id));
         const newNodes = Array.from(expandedNodes).map((nodeId) => {
           // Find node in message data
-          for (const [convId, messageData] of messageLevelData.entries()) {
+          for (const [_convId, messageData] of messageLevelData.entries()) {
             const node = messageData.nodes.find((n: GraphNode) => n.id === nodeId);
             if (node) return node;
           }
@@ -579,7 +579,7 @@ export default function GraphView({
       ctx.arc(node.x || 0, node.y || 0, nodeSize, 0, 2 * Math.PI);
 
       // Visual Encoding: Bright colors for focus, muted for context
-      let baseColor = getNodeColor(node);
+      const baseColor = getNodeColor(node);
       const colorWithOpacity = opacity < 1 
         ? baseColor + Math.floor(255 * opacity).toString(16).padStart(2, "0")
         : baseColor;
@@ -740,7 +740,7 @@ export default function GraphView({
         ? (link.strength * 1 + 0.3) / globalScale
         : (link.strength * 2 + 0.5) / globalScale;
       
-      let linkColor = isHovered ? "#ffffff" : getLinkColor(link);
+      const linkColor = isHovered ? "#ffffff" : getLinkColor(link);
       
       ctx.strokeStyle = linkColor;
       ctx.lineWidth = isHovered ? 2 / globalScale : baseLineWidth;

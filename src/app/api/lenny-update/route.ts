@@ -165,7 +165,7 @@ export async function GET(): Promise<NextResponse> {
         currentEpisodes,
         message: "Check GitHub Release for latest version",
       });
-    } catch (parseError) {
+    } catch {
       // Corrupted metadata file
       return NextResponse.json({
         updateAvailable: false,

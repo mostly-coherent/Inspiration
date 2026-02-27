@@ -428,7 +428,7 @@ export function SeekSection({
               const newCount = data.stats?.totalItems || 0;
               // S8 Fix: Use ref instead of state
               const useCasesAdded = progressDataRef.current.useCasesAdded || 0;
-              const useCasesMerged = progressDataRef.current.useCasesMerged || 0;
+              const _useCasesMerged = progressDataRef.current.useCasesMerged || 0;
               
               // If we added items but count didn't increase, retry
               // If all items were duplicates (useCasesAdded=0, useCasesMerged>0), count won't increase but that's expected

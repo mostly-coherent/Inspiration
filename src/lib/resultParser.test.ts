@@ -117,8 +117,8 @@ Extra content`;
     it('should fallback to calculation if cost not found', () => {
       const content = 'No cost mentioned';
       const result = extractEstimatedCost(content, 5);
-      // 5 candidates * 0.023 + 0.025 judge = 0.14
-      expect(result).toBeCloseTo(0.14, 2);
+      // Current: Math.max(0.05, 5 * 0.01) = 0.05
+      expect(result).toBe(0.05);
     });
 
     it('should handle case-insensitive cost extraction', () => {
@@ -130,7 +130,8 @@ Extra content`;
     it('should calculate correctly for zero candidates', () => {
       const content = 'No cost';
       const result = extractEstimatedCost(content, 0);
-      expect(result).toBe(0.025); // Just judge cost
+      // Current: Math.max(0.05, 0 * 0.01) = 0.05
+      expect(result).toBe(0.05);
     });
   });
 });

@@ -10,7 +10,7 @@ Before diving into technical details, understand what Inspiration does:
 
 - **Generate (Insights/Ideas/Custom):** Extract ideas and insights from AI conversations + workspace docs
 - **Seek (Use Cases):** "I want to build X, do I have similar examples?" → Synthesized use cases from history
-- **Theme Explorer:** Pattern discovery (Patterns tab), Socratic questioning (Reflect tab), gap detection (Unexplored tab)
+- **Theme Explorer:** Pattern discovery (Patterns tab), Socratic questioning (Reflect tab), gap detection (Unexplored tab), Builder Assessment (evidence-backed weakness analysis)
 - **Theme Map:** Fast visual overview of top themes, generated from local SQLite with cost estimation
 - **Expert Perspectives:** 300+ Lenny's Podcast episodes matched to your themes, with YouTube timestamp deep-links
 
@@ -2582,10 +2582,75 @@ Socratic Mode (Reflect tab) generates probing questions from the user's patterns
 **Difficulty levels:** Comfortable (4-5), Uncomfortable (3-4), Confrontational (1-2)
 
 **Key Files:**
-- `engine/common/socratic_engine.py` — Data aggregation + question generation
-- `engine/prompts/socratic_questions.md` — LLM prompt template
+- `src/lib/socratic.ts` — TypeScript Socratic engine (cloud-compatible; replaces Python socratic_engine.py)
 - `src/app/api/themes/socratic/route.ts` — API route (24h cache)
 - `src/components/ReflectTab.tsx` — Reflect tab UI
+
+---
+
+## Builder Assessment Architecture (v7 — 2026-02-26)
+
+### Overview
+
+Builder Assessment is a direct, evidence-backed weakness analysis that runs on demand. Unlike Socratic Mode (probing questions), it makes clear assertions about the builder's blind spots, backed by specific evidence from Library patterns, project state, conversation history, and expert perspectives. User responses are stored and fed into the next assessment for longitudinal comparison.
+
+### Data Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        BUILDER ASSESSMENT (v7)                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Data Sources (aggregated by socratic.ts):                                 │
+│  ┌──────────┐ ┌───────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐ │
+│  │ Patterns │ │Unexplored │ │  Library   │ │Expert Match│ │  Project   │ │
+│  │ (themes) │ │  Topics   │ │   Stats    │ │  (Lenny)   │ │  Context   │ │
+│  └────┬─────┘ └─────┬─────┘ └─────┬──────┘ └─────┬──────┘ └─────┬──────┘ │
+│       └─────────────┴─────────────┴─────────────┴──────────────┘          │
+│                                    │                                        │
+│  Project Scanner (projectScanner.ts):                                       │
+│  • Walks workspace root, finds sibling project dirs                        │
+│  • Parses PLAN.md (planned vs. completed), BUILD_LOG.md (last activity)     │
+│  • Extracts stated priorities, completion rates, days since activity       │
+│                                    │                                        │
+│                                    ▼                                        │
+│       ┌─────────────────────────────────────────┐                          │
+│       │  generateBuilderAssessment()            │                          │
+│       │  • Loads previous assessment + responses│                          │
+│       │  • Sanitizes context (token savings)    │                          │
+│       │  • LLM: direct assertions, not questions│                          │
+│       └──────────────────┬──────────────────────┘                          │
+│                          ▼                                                  │
+│       ┌─────────────────────────────────────────┐                          │
+│       │  API: GET /api/themes/builder-assessment│                          │
+│       │  POST (save responses)                  │                          │
+│       └──────────────────┬──────────────────────┘                          │
+│                          ▼                                                  │
+│       ┌─────────────────────────────────────────┐                          │
+│       │  builder_assessments (Supabase)          │                          │
+│       │  • weaknesses (JSONB), user_responses   │                          │
+│       └──────────────────┬──────────────────────┘                          │
+│                          ▼                                                  │
+│       ┌─────────────────────────────────────────┐                          │
+│       │  BuilderAssessment.tsx (Reflect tab)     │                          │
+│       │  • Expandable weakness cards            │                          │
+│       │  • Response textarea per weakness       │                          │
+│       │  • Save Responses → longitudinal loop   │                          │
+│       └─────────────────────────────────────────┘                          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Files:**
+- `src/lib/projectScanner.ts` — Workspace project doc scanner (PLAN.md, BUILD_LOG.md, README.md)
+- `src/lib/socratic.ts` — `aggregateSocraticContext()`, `generateBuilderAssessment()`, persistence helpers
+- `src/app/api/themes/builder-assessment/route.ts` — GET (generate or ?latest=true), POST (save responses)
+- `src/components/BuilderAssessment.tsx` — Assessment UI with response flow
+- `engine/scripts/migrations/007_builder_assessments.sql` — Supabase table schema
+
+**Database:** `builder_assessments` — id (UUID), generated_at, weaknesses (JSONB), data_sources_summary, user_responses (JSONB), responded_at
+
+**Last Updated:** 2026-02-26
 
 ---
 

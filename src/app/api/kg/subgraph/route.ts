@@ -18,11 +18,6 @@ interface GraphLink {
   evidence?: string;
 }
 
-interface GraphData {
-  nodes: GraphNode[];
-  links: GraphLink[];
-}
-
 /**
  * GET /api/kg/subgraph
  *
@@ -163,7 +158,7 @@ async function buildCenteredSubgraph(
       }
 
       // Add link (avoid duplicates)
-      const linkKey = `${rel.source_entity_id}-${rel.target_entity_id}-${rel.relation_type}`;
+      const _linkKey = `${rel.source_entity_id}-${rel.target_entity_id}-${rel.relation_type}`;
       const existingLink = links.find(
         (l) =>
           l.source === rel.source_entity_id &&
@@ -249,7 +244,7 @@ async function buildTopEntitiesGraph(
   const { data: degreeData, error: degreeError } = await supabase.rpc("get_entity_degrees", {});
   
   // If RPC doesn't exist, fall back to computing degrees manually
-  let degreeMap = new Map<string, number>();
+  const degreeMap = new Map<string, number>();
   if (degreeError) {
     // Fallback: fetch all relations and count manually (less efficient but works)
     const { data: allRelations } = await supabase

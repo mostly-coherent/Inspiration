@@ -23,6 +23,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { BuilderAssessment } from "./BuilderAssessment";
 
 interface SocraticQuestion {
   id: string;
@@ -259,6 +260,9 @@ export function ReflectTab() {
           Cached for 24 hours. Click &quot;Ask harder questions&quot; to regenerate.
         </p>
       </div>
+
+      {/* Builder Assessment — Deep weakness analysis */}
+      <BuilderAssessment />
     </div>
   );
 }

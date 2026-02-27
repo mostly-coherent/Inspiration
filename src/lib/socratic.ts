@@ -15,6 +15,7 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
+import { aggregateProjectContext, ProjectContext } from "./projectScanner";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,6 +74,7 @@ interface SocraticContext {
   libraryStats: LibraryStats;
   expertMatches: ExpertMatch[];
   temporalShifts: TemporalShift[];
+  projectContext: ProjectContext | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,14 +102,23 @@ function saveToCache(questions: SocraticQuestion[]): void {
 }
 
 // ---------------------------------------------------------------------------
-// Supabase client helper
+// Supabase client helper (lazy singleton — avoids creating a new client per call)
 // ---------------------------------------------------------------------------
+
+let _supabaseClient: SupabaseClient | null = null;
+let _supabaseEnvKey: string | null = null;
 
 function getSupabaseClient(): SupabaseClient | null {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
   if (!url || !key) return null;
-  return createClient(url, key);
+
+  const envKey = `${url}:${key}`;
+  if (_supabaseClient && _supabaseEnvKey === envKey) return _supabaseClient;
+
+  _supabaseClient = createClient(url, key);
+  _supabaseEnvKey = envKey;
+  return _supabaseClient;
 }
 
 // ---------------------------------------------------------------------------
@@ -172,8 +183,6 @@ async function aggregatePatterns(supabase: SupabaseClient): Promise<PatternClust
 
   if (error || !items || items.length < 5) return [];
 
-  // Parse embeddings: Supabase returns them as JSON strings, not arrays
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const itemsWithEmbeddings: Array<(typeof items)[number] & { embedding: number[] }> = [];
   for (const item of items) {
     if (!item.embedding) continue;
@@ -515,11 +524,15 @@ async function aggregateSocraticContext(): Promise<SocraticContext | null> {
     return null;
   }
 
-  // Run independent aggregations in parallel
-  const [patterns, libraryStats, unexplored] = await Promise.all([
+  // Run independent aggregations in parallel (including project context)
+  const [patterns, libraryStats, unexplored, projectContext] = await Promise.all([
     aggregatePatterns(supabase),
     aggregateLibraryStats(supabase),
     aggregateUnexplored(supabase),
+    aggregateProjectContext().catch((e) => {
+      console.warn("[Socratic] Project context scan failed:", e);
+      return null;
+    }),
   ]);
 
   // Expert matches depend on patterns, temporal shifts is independent
@@ -531,10 +544,11 @@ async function aggregateSocraticContext(): Promise<SocraticContext | null> {
   return {
     patterns,
     unexplored,
-    counterIntuitive: { saved: [], dismissed: [] }, // Not applicable in cloud mode
+    counterIntuitive: { saved: [], dismissed: [] },
     libraryStats,
     expertMatches,
     temporalShifts,
+    projectContext,
   };
 }
 
@@ -549,11 +563,12 @@ You are a sharp, perceptive thinking partner. Your job is to generate probing qu
 ## Rules
 
 1. **Questions only.** Never answer, explain, or advise. Just ask.
-2. **Every question must cite specific evidence** from the data provided (cluster names, item counts, date ranges, expert quotes). No generic questions.
+2. **Every question must cite specific evidence** from the data provided (cluster names, item counts, date ranges, expert quotes, project names, completion rates). No generic questions.
 3. **Be uncomfortable.** At least 2 questions should make the user pause and reconsider something they've assumed.
 4. **No flattery.** Don't validate patterns — probe them.
 5. **Vary the categories.** Mix pattern, gap, tension, temporal, expert, and alignment questions.
 6. **Keep questions concise.** One to two sentences maximum per question.
+7. **Use project context aggressively.** If project data is provided, reference specific project names, completion rates, stale dates, and gaps between stated priorities and actual work.
 
 ## Question Categories
 
@@ -562,7 +577,7 @@ You are a sharp, perceptive thinking partner. Your job is to generate probing qu
 - **tension**: Questions about contradictions within the user's own patterns. ("Your Library has both X and anti-X items. How do you reconcile these?")
 - **temporal**: Questions about shifts, disappearances, or stagnation over time. ("X disappeared from your conversations 3 months ago. What changed?")
 - **expert**: Questions about divergence from expert thinking. ("Experts treat X as foundational. You've never mentioned it.")
-- **alignment**: Questions about gaps between plans/docs and actual conversations. ("Your docs prioritize X but your chats focus on Y.")
+- **alignment**: Questions about gaps between plans/docs and actual work. If project context is provided, this is where you compare what was planned vs. what was actually done across projects. ("Project X lists Y as 'next up' but it's been 45 days with no progress. What's blocking you — or have you silently abandoned it?")
 
 ## Output Format
 
@@ -725,4 +740,365 @@ export async function generateSocraticQuestions(
   saveToCache(questions);
 
   return { questions, cached: false };
+}
+
+// ---------------------------------------------------------------------------
+// Builder Assessment — Direct, evidence-backed weakness analysis
+// ---------------------------------------------------------------------------
+
+export interface BuilderWeakness {
+  id: string;
+  title: string;
+  evidence: string;
+  whyItMatters: string;
+  suggestion: string;
+  severity: "significant" | "moderate" | "emerging";
+}
+
+export interface BuilderAssessmentResult {
+  weaknesses: BuilderWeakness[];
+  generatedAt: string;
+  dataSourcesSummary: string;
+}
+
+const BUILDER_ASSESSMENT_PROMPT = `# Builder Assessment
+
+You are a direct, constructive advisor who has observed this builder's work across months of AI-assisted coding. The builder has explicitly asked you to identify their weaknesses and blind spots. Do not hold back.
+
+## Your Task
+
+Based on the data provided, identify their **top 3-5 weaknesses or blind spots** as a builder. These are NOT pre-defined categories — discover whatever the data reveals about THIS specific person.
+
+## Rules for Each Weakness
+
+1. **Make a clear assertion, not a question.** "You start more things than you finish" — not "Have you considered whether you finish things?"
+2. **Back it with specific evidence** from the data: project names, completion rates, days since last activity, Library patterns, conversation themes, stated-vs-actual priorities. The more specific, the more credible.
+3. **Explain the behavioral mechanism** — not just what the pattern is, but WHY it matters and what it costs them.
+4. **Give one concrete suggestion** — actionable, not generic. "Ship Project X to 10 strangers this week" beats "consider getting user feedback."
+5. **Don't soften it.** The builder asked for this. Hedging ("you might want to consider...") undermines trust.
+
+## What to Look For
+
+Let the data guide you. Common patterns in builders include (but are NOT limited to):
+- Starting more than finishing
+- Planning/infrastructure obsession over shipping
+- Avoiding external users/feedback
+- Breadth over depth
+- Saying one thing, doing another (plans vs. actual work)
+- Comfortable echo chambers (only building for self/family)
+- Technical gaps masked by tooling fluency
+- Scope creep / inability to cut scope
+- Avoiding the hard/boring parts of a project
+- Narrative fragmentation (too many stories, no committed point of view)
+
+**Do NOT force-fit these.** Only cite patterns you can back with evidence from the data. If the builder has none of these problems, say so and find what IS there.
+
+## Data Sources Available
+
+- **Library patterns**: Clusters of ideas/insights the builder has saved over time
+- **Temporal shifts**: Topics that emerged, peaked, or declined
+- **Expert matches**: How the builder's focus compares to expert thinking (Lenny's Podcast)
+- **Unexplored areas**: Topics discussed a lot in chats but never formalized
+- **Project context**: Cross-project state — what's planned, done, stale, and stated as priorities across all their workspace projects
+
+## Output Format
+
+Return valid JSON with this structure:
+
+\`\`\`json
+{
+  "weaknesses": [
+    {
+      "title": "Short, direct name for the weakness",
+      "evidence": "Specific evidence from the data — project names, numbers, dates, patterns",
+      "whyItMatters": "Why this weakness costs them — what it prevents, what opportunity it wastes",
+      "suggestion": "One concrete, actionable thing they could do about it",
+      "severity": "significant|moderate|emerging"
+    }
+  ],
+  "dataSourcesSummary": "Brief summary of what data was available for this assessment"
+}
+\`\`\`
+
+**Severity guide:**
+- \`significant\`: Clear, persistent pattern backed by strong evidence across multiple data sources
+- \`moderate\`: Real pattern but limited evidence, or emerging trend not yet fully established
+- \`emerging\`: Early signal worth watching — not enough data to be certain, but worth flagging
+
+Generate the assessment now. Be honest, specific, and constructive.`;
+
+async function callLLMForAssessment(
+  context: SocraticContext,
+  previousAssessment?: { weaknesses: BuilderWeakness[]; userResponses?: Record<string, string>; generatedAt: string } | null,
+): Promise<BuilderAssessmentResult> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error("ANTHROPIC_API_KEY not configured");
+  }
+
+  const client = new Anthropic({ apiKey });
+
+  // Strip large/redundant fields before serializing to LLM (token savings)
+  const sanitizedContext = {
+    patterns: context.patterns.map(({ name, itemCount, items, percentage }) => ({
+      name, itemCount, items: items.slice(0, 5), percentage,
+    })),
+    unexplored: context.unexplored.map(({ topic, conversationCount, severity }) => ({
+      topic, conversationCount, severity,
+    })),
+    libraryStats: context.libraryStats,
+    expertMatches: context.expertMatches,
+    temporalShifts: context.temporalShifts,
+    projectContext: context.projectContext ? {
+      projects: context.projectContext.projects.map((p) => ({
+        name: p.name,
+        description: p.description.slice(0, 150),
+        plannedItems: p.plannedItems.slice(0, 10),
+        completedItems: p.completedItems.slice(0, 10),
+        staleItems: p.staleItems.slice(0, 5),
+        lastActivityDate: p.lastActivityDate,
+        statedPriorities: p.statedPriorities.slice(0, 5),
+        completionRate: p.completionRate,
+        daysSinceLastActivity: p.daysSinceLastActivity,
+      })),
+      scannedAt: context.projectContext.scannedAt,
+    } : null,
+  };
+
+  let userMessage = `Here is all available data about this builder. Analyze it and generate a Builder Assessment identifying their top 3-5 weaknesses.
+
+${JSON.stringify(sanitizedContext, null, 2)}`;
+
+  if (previousAssessment) {
+    userMessage += `
+
+---
+
+## Previous Assessment (${previousAssessment.generatedAt})
+
+The builder received this assessment previously:
+
+${JSON.stringify(previousAssessment.weaknesses, null, 2)}`;
+
+    if (previousAssessment.userResponses && Object.keys(previousAssessment.userResponses).length > 0) {
+      userMessage += `
+
+The builder responded to these weaknesses:
+
+${JSON.stringify(previousAssessment.userResponses, null, 2)}
+
+Note any progress or lack thereof relative to their stated intentions.`;
+    }
+  }
+
+  userMessage += `
+
+Return ONLY valid JSON. No markdown wrapping, no explanation outside the JSON.`;
+
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 6000,
+    temperature: 0.7,
+    system: BUILDER_ASSESSMENT_PROMPT,
+    messages: [{ role: "user", content: userMessage }],
+  });
+
+  const textBlock = response.content.find((block) => block.type === "text");
+  if (!textBlock || textBlock.type !== "text") {
+    throw new Error("LLM returned no text response");
+  }
+
+  const parsed = parseAssessmentJson(textBlock.text);
+  if (!parsed) {
+    throw new Error("Failed to parse assessment from LLM response");
+  }
+
+  // Add unique IDs to weaknesses
+  for (const w of parsed.weaknesses) {
+    w.id = createQuestionId(w.title + w.evidence);
+  }
+
+  return {
+    weaknesses: parsed.weaknesses,
+    generatedAt: new Date().toISOString(),
+    dataSourcesSummary: parsed.dataSourcesSummary || "",
+  };
+}
+
+function parseAssessmentJson(response: string): { weaknesses: BuilderWeakness[]; dataSourcesSummary: string } | null {
+  const tryParse = (text: string) => {
+    try {
+      const data = JSON.parse(text);
+      if (data && Array.isArray(data.weaknesses)) return data;
+    } catch {
+      // not valid JSON
+    }
+    return null;
+  };
+
+  // Try direct
+  let result = tryParse(response);
+  if (result) return result;
+
+  // Try code block extraction
+  const codeBlockMatch = response.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (codeBlockMatch) {
+    result = tryParse(codeBlockMatch[1]);
+    if (result) return result;
+  }
+
+  // Try finding object brackets
+  const braceStart = response.indexOf("{");
+  const braceEnd = response.lastIndexOf("}");
+  if (braceStart >= 0 && braceEnd > braceStart) {
+    result = tryParse(response.slice(braceStart, braceEnd + 1));
+    if (result) return result;
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Assessment persistence (Supabase)
+// ---------------------------------------------------------------------------
+
+export interface StoredAssessment {
+  id: string;
+  generatedAt: string;
+  weaknesses: BuilderWeakness[];
+  dataSourcesSummary: string;
+  userResponses: Record<string, string>;
+  respondedAt: string | null;
+}
+
+async function loadPreviousAssessment(): Promise<StoredAssessment | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from("builder_assessments")
+      .select("*")
+      .order("generated_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error || !data) return null;
+
+    return {
+      id: data.id,
+      generatedAt: data.generated_at,
+      weaknesses: data.weaknesses || [],
+      dataSourcesSummary: data.data_sources_summary || "",
+      userResponses: data.user_responses || {},
+      respondedAt: data.responded_at,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function saveAssessment(assessment: BuilderAssessmentResult): Promise<string | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from("builder_assessments")
+      .insert({
+        generated_at: assessment.generatedAt,
+        weaknesses: assessment.weaknesses,
+        data_sources_summary: assessment.dataSourcesSummary,
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("[BuilderAssessment] Failed to save:", error.message);
+      return null;
+    }
+    return data?.id || null;
+  } catch (e) {
+    console.error("[BuilderAssessment] Save error:", e);
+    return null;
+  }
+}
+
+export async function saveAssessmentResponses(
+  assessmentId: string,
+  responses: Record<string, string>,
+): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+
+  try {
+    const { error } = await supabase
+      .from("builder_assessments")
+      .update({
+        user_responses: responses,
+        responded_at: new Date().toISOString(),
+      })
+      .eq("id", assessmentId);
+
+    if (error) {
+      console.error("[BuilderAssessment] Failed to save responses:", error.message);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("[BuilderAssessment] Save responses error:", e);
+    return false;
+  }
+}
+
+export async function getLatestAssessment(): Promise<StoredAssessment | null> {
+  return loadPreviousAssessment();
+}
+
+/**
+ * Generate a Builder Assessment — deep, evidence-backed weakness analysis.
+ * Always runs fresh (no caching — this is an intentional act of self-examination).
+ * Automatically loads previous assessment for longitudinal comparison and saves the result.
+ */
+export async function generateBuilderAssessment(): Promise<{
+  assessment: (BuilderAssessmentResult & { id?: string; previousAssessmentId?: string }) | null;
+  message?: string;
+}> {
+  const context = await aggregateSocraticContext();
+  if (!context) {
+    return {
+      assessment: null,
+      message: "Supabase not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY.",
+    };
+  }
+
+  const hasData = context.patterns.length > 0 ||
+    context.unexplored.length > 0 ||
+    (context.projectContext && context.projectContext.projects.length > 0);
+
+  if (!hasData) {
+    return {
+      assessment: null,
+      message: "Not enough data yet. Add Library items, sync your Memory, or ensure your workspace has projects with PLAN.md files.",
+    };
+  }
+
+  // Load previous assessment for longitudinal comparison
+  const previous = await loadPreviousAssessment();
+  const previousForLLM = previous
+    ? { weaknesses: previous.weaknesses, userResponses: previous.userResponses, generatedAt: previous.generatedAt }
+    : null;
+
+  const assessment = await callLLMForAssessment(context, previousForLLM);
+
+  // Save to Supabase (fire-and-forget — don't block the response)
+  const savedId = await saveAssessment(assessment);
+
+  return {
+    assessment: {
+      ...assessment,
+      id: savedId || undefined,
+      previousAssessmentId: previous?.id,
+    },
+  };
 }

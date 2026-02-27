@@ -85,7 +85,7 @@ interface SavedThemeMap {
  * GET /api/theme-map
  * Load saved Theme Map (size-based, most recent ~500MB)
  */
-export async function GET(request: Request) {
+export async function GET(_request: Request) {
   try {
     const supabase = getSupabaseClient();
     const cacheKey = "theme_map_latest"; // Always use "latest" for size-based Theme Maps
@@ -274,7 +274,7 @@ export async function POST(request: Request) {
  * DELETE /api/theme-map
  * Clear saved Theme Map (size-based, most recent ~500MB)
  */
-export async function DELETE(request: Request) {
+export async function DELETE(_request: Request) {
   try {
     const supabase = getSupabaseClient();
     const cacheKey = "theme_map_latest";

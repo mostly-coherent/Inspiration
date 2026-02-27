@@ -36,9 +36,9 @@ interface VectorDBSectionProps {
   chatHistory?: ChatHistoryInfo; // Made optional since it's now in a separate section
 }
 
-export function VectorDBSection({ vectordb, chatHistory }: VectorDBSectionProps) {
+export function VectorDBSection({ vectordb, chatHistory: _chatHistory }: VectorDBSectionProps) {
   const [indexingStatus, setIndexingStatus] = useState<IndexingStatus | null>(null);
-  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [_loadingStatus, setLoadingStatus] = useState(false);
   const [showIndexMore, setShowIndexMore] = useState(false);
 
   // Fetch indexing status when component mounts or after indexing completes

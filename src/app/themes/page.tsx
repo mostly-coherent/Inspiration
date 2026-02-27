@@ -93,8 +93,8 @@ function getZoomLabel(threshold: number): { label: string; description: string }
 
 function ThemesPage() {
   // NEW: Theme Map regeneration state
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const [themeMapFromFastStart, setThemeMapFromFastStart] = useState<any>(null); // Loaded from cache
+  const [_isRegenerating, setIsRegenerating] = useState(false);
+  const [_themeMapFromFastStart, setThemeMapFromFastStart] = useState<any>(null); // Loaded from cache
   
   // Item type filter
   const [itemTypeFilter, setItemTypeFilter] = useState<ItemTypeFilter>("all");
@@ -180,7 +180,7 @@ function ThemesPage() {
   }, []);
   
   // NEW: Regenerate theme map function (no time limit - patterns over all time)
-  const regenerateThemeMap = useCallback(async () => {
+  const _regenerateThemeMap = useCallback(async () => {
     setIsRegenerating(true);
     setError(null);
     

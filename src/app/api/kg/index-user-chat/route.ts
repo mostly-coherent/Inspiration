@@ -59,20 +59,6 @@ async function ensureProgressDir() {
   }
 }
 
-async function getProgress(jobId: string): Promise<IndexingProgress | null> {
-  try {
-    await ensureProgressDir();
-    if (!existsSync(PROGRESS_FILE)) {
-      return null;
-    }
-    const content = await readFile(PROGRESS_FILE, "utf-8");
-    const data = JSON.parse(content);
-    return data[jobId] || null;
-  } catch {
-    return null;
-  }
-}
-
 async function saveProgress(progress: IndexingProgress) {
   try {
     await ensureProgressDir();
@@ -250,7 +236,7 @@ export async function POST(request: NextRequest) {
       withDecisions = true,
       workers = 4,
       dryRun = false,
-      incremental = true, // Default to incremental (skip already-indexed)
+      incremental: _incremental = true, // Default to incremental; Python script handles skip logic
       daysBack = 90,
     } = body;
 

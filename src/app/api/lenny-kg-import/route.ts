@@ -3,7 +3,6 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import * as path from "path";
 import * as fs from "fs";
-import { createClient } from "@supabase/supabase-js";
 
 const execAsync = promisify(exec);
 

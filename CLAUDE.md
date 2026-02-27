@@ -6,7 +6,7 @@
 
 ## What This Is
 
-A thinking partner for builders who use AI coding tools. Mines your Cursor conversations, Claude sessions (Code + Cowork), and workspace artifacts (markdown, TODOs, code comments) to surface patterns, blind spots, and probing questions. Powered by Supabase Vector DB (pgvector) for semantic search across your entire history. **v6** adds Multi-Source Memory and Socratic Mode (Reflect tab).
+A thinking partner for builders who use AI coding tools. Mines your Cursor conversations, Claude sessions (Code + Cowork), and workspace artifacts (markdown, TODOs, code comments) to surface patterns, blind spots, and probing questions. Powered by Supabase Vector DB (pgvector) for semantic search across your entire history. **v6** adds Multi-Source Memory and Socratic Mode (Reflect tab). **v7** adds Builder Assessment — direct, evidence-backed weakness analysis with response tracking and longitudinal comparison.
 
 ### Core Concepts
 
@@ -25,7 +25,7 @@ A thinking partner for builders who use AI coding tools. Mines your Cursor conve
 - **Memory** — Multi-source indexed history: Cursor chats, Claude Code, Claude Cowork, workspace docs
 - **Theme Explorer** — 3 tabs:
   - **Patterns** — Semantic clustering (forest → tree zoom), AI synthesis per theme
-  - **Reflect** (Socratic Mode) — Probing questions generated from your patterns, gaps, and expert knowledge
+  - **Reflect** (Socratic Mode) — Probing questions + **Builder Assessment** (evidence-backed weakness analysis, response tracking, longitudinal comparison)
   - **Unexplored** — Topics in Memory but missing from Library (experimental)
 - **Expert Perspectives (Lenny's Podcast)** — 300+ episodes with YouTube timestamp deep-links (`00:15:30` → `?t=930`)
 - **Theme Map** — Fast generation from local SQLite with cost estimation before generation
@@ -34,6 +34,7 @@ A thinking partner for builders who use AI coding tools. Mines your Cursor conve
 
 **Longitudinal Intelligence Status:**
 - ✅ Theme Explorer (v4-v6) — Patterns, Reflect, Unexplored tabs operational
+- ✅ Builder Assessment (v7) — Cross-project awareness, evidence-backed weakness analysis, response tracking, longitudinal comparison
 - ✅ Knowledge Graph (v2.0) — Complete foundation: Lenny's Expert KG (13,878 entities), User KG (1,571 entities)
 - ⏳ Learning Trajectory (LIB-9) — Track interest shifts over time (next major feature)
 
@@ -226,16 +227,19 @@ npm run dev
 | **Frontend — Components** | |
 | `src/components/ScoreboardHeader.tsx` | "Your Memory Sources" — AI chats, docs, code comments |
 | `src/components/ThemeExplorerTabs.tsx` | Tab config (Patterns \| Reflect \| Unexplored) |
-| `src/components/ReflectTab.tsx` | Socratic Mode — probing questions UI |
+| `src/components/ReflectTab.tsx` | Socratic Mode — probing questions + Builder Assessment |
+| `src/components/BuilderAssessment.tsx` | Builder Assessment — evidence-backed weakness analysis, response UI |
 | `src/components/UnexploredTab.tsx` | Gap detection — Memory topics missing from Library |
 | `src/components/CounterIntuitiveTab.tsx` | LLM reflection prompts (used within Reflect) |
 | `src/components/LibraryView.tsx` | Full-width library browser with detail panel |
 | **Frontend — Lib** | |
-| `src/lib/socratic.ts` | Socratic Engine — data aggregation + LLM question generation |
+| `src/lib/socratic.ts` | Socratic Engine + Builder Assessment — data aggregation, LLM questions, assessment generation |
+| `src/lib/projectScanner.ts` | Cross-project doc scanner (PLAN.md, BUILD_LOG.md) for Builder Assessment context |
 | `src/lib/youtube.ts` | YouTube timestamp deep-links (HH:MM:SS → ?t=seconds) |
 | **API Routes** | |
 | `src/app/api/generate-themes/route.ts` | Theme Map generation + cost estimation API |
 | `src/app/api/themes/socratic/route.ts` | Socratic question generation (24h cache) |
+| `src/app/api/themes/builder-assessment/route.ts` | Builder Assessment — generate, load latest, save responses |
 | `src/app/api/expert-perspectives/route.ts` | Lenny semantic search for Theme Explorer |
 | `src/app/api/brain-stats/sources/route.ts` | Source breakdown (Cursor, Claude, Docs) |
 | `src/app/api/sync/route.ts` | Multi-source sync trigger |
@@ -411,6 +415,10 @@ npm run dev
 ### Items Bank (Supabase `library_items` table)
 
 Library items are stored in Supabase PostgreSQL (migrated from JSON in v3). Key fields: `id`, `mode`, `name`, `content`, `occurrence`, `first_seen_date`, `last_seen_date`, `embedding` (vector(1536)), `category_id`. See `engine/scripts/add_library_tables.sql` for schema.
+
+### Builder Assessments (Supabase `builder_assessments` table — v7)
+
+Builder Assessment results and user responses. Key fields: `id` (UUID), `generated_at`, `weaknesses` (JSONB), `data_sources_summary`, `user_responses` (JSONB), `responded_at`. Migration: `engine/scripts/migrations/007_builder_assessments.sql`.
 
 ---
 

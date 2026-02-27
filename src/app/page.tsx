@@ -12,7 +12,6 @@ import {
   ThemeType,
   ModeType,
 } from "@/lib/types";
-import { BanksOverview } from "@/components/BanksOverview";
 import { ResultsPanel } from "@/components/ResultsPanel";
 import { SeekSection } from "@/components/SeekSection";
 import { ProgressPanel, ProgressPhase, ProgressPhaseData, ErrorExplanation } from "@/components/ProgressPanel";
@@ -301,7 +300,7 @@ export default function Home() {
   
   // Library delta tracking (v3)
   const [libraryCountBefore, setLibraryCountBefore] = useState<number | null>(null);
-  const [libraryCountAfter, setLibraryCountAfter] = useState<number | null>(null);
+  const [_libraryCountAfter, setLibraryCountAfter] = useState<number | null>(null);
   
   // Progress tracking
   const [progress, setProgress] = useState(0);
@@ -819,7 +818,7 @@ export default function Home() {
           } else {
             throw new Error("Generation stream closed unexpectedly - items may not have been saved. Please check the Library or try again.");
           }
-        } catch (checkErr) {
+        } catch {
           throw new Error("Generation stream closed unexpectedly - items may not have been saved. Please check the Library or try again.");
         }
       }
@@ -845,7 +844,7 @@ export default function Home() {
               const refData = progressPhaseDataRef.current;
               const itemsAdded = refData.itemsAdded || 0;
               const itemsMerged = refData.itemsMerged || 0;
-              const hasChanges = itemsAdded > 0 || itemsMerged > 0;
+              const _hasChanges = itemsAdded > 0 || itemsMerged > 0;
               
               // If we added items but count didn't increase, retry (DB might not be updated yet)
               // If all items were duplicates (itemsAdded=0, itemsMerged>0), count won't increase but DB is updated

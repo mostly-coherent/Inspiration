@@ -10,7 +10,7 @@
  */
 
 const isDevelopment = process.env.NODE_ENV === "development";
-const isCloud = typeof window === "undefined" && (
+const _isCloud = typeof window === "undefined" && (
   process.env.VERCEL || 
   process.env.RAILWAY_ENVIRONMENT || 
   process.env.RENDER
@@ -112,7 +112,7 @@ export const logger = {
     };
 
     // Always log errors
-    const { error: _, ...restContext } = errorContext;
+    const { error: _err, ...restContext } = errorContext;
     console.error("[ERROR]", {
       message,
       error: errorContext.error,

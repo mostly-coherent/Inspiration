@@ -13,6 +13,10 @@ const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
     rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
       "jsx-a11y/aria-props": "off",
       "jsx-a11y/aria-proptypes": "off",
       "jsx-a11y/aria-unsupported-elements": "warn",

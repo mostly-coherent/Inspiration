@@ -16,7 +16,7 @@ import { createClient } from "@supabase/supabase-js";
  *   - Body: { canonical_mappings: { [old_type: string]: string } }
  */
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey =

@@ -30,52 +30,39 @@ export function parseRankedItems(
   
   const items: RankedItem[] = [];
 
-  if (mode === "insights") {
-    // Parse insights format: ## Post 1: Title\n\n**Hook:** ...\n**Insight:** ...
-    const postPattern = /^## Post (\d+):\s*(.+?)(?=^## |\Z)/gms;
-    let match;
-    
-    while ((match = postPattern.exec(mainContent)) !== null) {
-      const postNumber = parseInt(match[1]);
-      const postContent = match[0];
-      const title = match[2].trim().split('\n')[0];
-      
-      // Extract hook and insight
-      const hookMatch = postContent.match(/\*\*Hook:?\*\*[:\s]*(.+?)(?=\*\*|$)/s);
-      const insightMatch = postContent.match(/\*\*(?:Key )?Insight:?\*\*[:\s]*(.+?)(?=\*\*|$)/s);
-      
-      items.push({
-        id: `post-${postNumber}`,
-        rank: postNumber,
-        isBest: postNumber === 1, // First post is best
-        name: title,
-        content: hookMatch?.[1]?.trim() || insightMatch?.[1]?.trim() || title,
-        rawMarkdown: postContent.trim(),
-      });
+  const prefix = mode === "insights" ? "Post" : "Idea";
+  const idPrefix = mode === "insights" ? "post" : "idea";
+
+  // Split by ANY ## heading, then only process sections that match our item pattern
+  const allSections = mainContent.split(/(?=^## )/m).filter((s) => s.trim());
+  const itemPattern = new RegExp(`^## ${prefix} (\\d+):\\s*(.+)`);
+
+  for (const section of allSections) {
+    const headerMatch = section.match(itemPattern);
+    if (!headerMatch) continue;
+
+    const num = parseInt(headerMatch[1]);
+    const title = headerMatch[2].trim().split("\n")[0];
+
+    let extracted = title;
+    if (mode === "insights") {
+      const hookMatch = section.match(/\*\*Hook:?\*\*[:\s]*(.+?)(?=\*\*|$)/s);
+      const insightMatch = section.match(/\*\*(?:Key )?Insight:?\*\*[:\s]*(.+?)(?=\*\*|$)/s);
+      extracted = hookMatch?.[1]?.trim() || insightMatch?.[1]?.trim() || title;
+    } else {
+      const problemMatch = section.match(/\*\*Problem:?\*\*[:\s]*(.+?)(?=\*\*|$)/s);
+      const solutionMatch = section.match(/\*\*Solution:?\*\*[:\s]*(.+?)(?=\*\*|$)/s);
+      extracted = problemMatch?.[1]?.trim() || solutionMatch?.[1]?.trim() || title;
     }
-  } else if (mode === "ideas") {
-    // Parse ideas format: ## Idea 1: Title\n\n**Problem:** ...\n**Solution:** ...
-    const ideaPattern = /^## Idea (\d+):\s*(.+?)(?=^## |\Z)/gms;
-    let match;
-    
-    while ((match = ideaPattern.exec(mainContent)) !== null) {
-      const ideaNumber = parseInt(match[1]);
-      const ideaContent = match[0];
-      const title = match[2].trim().split('\n')[0];
-      
-      // Extract problem and solution
-      const problemMatch = ideaContent.match(/\*\*Problem:?\*\*[:\s]*(.+?)(?=\*\*|$)/s);
-      const solutionMatch = ideaContent.match(/\*\*Solution:?\*\*[:\s]*(.+?)(?=\*\*|$)/s);
-      
-      items.push({
-        id: `idea-${ideaNumber}`,
-        rank: ideaNumber,
-        isBest: ideaNumber === 1, // First idea is best
-        name: title,
-        content: problemMatch?.[1]?.trim() || solutionMatch?.[1]?.trim() || title,
-        rawMarkdown: ideaContent.trim(),
-      });
-    }
+
+    items.push({
+      id: `${idPrefix}-${num}`,
+      rank: num,
+      isBest: num === 1,
+      name: title,
+      content: extracted,
+      rawMarkdown: section.trim(),
+    });
   }
 
   // Sort by rank (already sorted, but ensure it)

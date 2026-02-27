@@ -39,13 +39,13 @@ export function validatePromptTemplate(content: string): ValidationResult {
     const jsonBlockRegex = /```json/i;
     const codeBlockEndRegex = /```$/;
     
-    let inJsonBlock = false;
+    let _inJsonBlock = false;
     
     // Check if we're starting/ending a JSON block
     if (jsonBlockRegex.test(line)) {
-      inJsonBlock = true;
+      _inJsonBlock = true;
     } else if (codeBlockEndRegex.test(line)) {
-      inJsonBlock = false;
+      _inJsonBlock = false;
     }
     
     // If inside JSON block, check for unescaped braces

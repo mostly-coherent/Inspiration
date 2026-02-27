@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch episode metadata for all unique slugs
-    let episodeMetadata: Record<string, any> = {};
+    const episodeMetadata: Record<string, any> = {};
     if (episodeSlugs.size > 0) {
       const { data: episodes, error: episodesError } = await supabase
         .from("kg_episode_metadata")

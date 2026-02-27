@@ -20,7 +20,7 @@ import { createClient } from "@supabase/supabase-js";
  *   - Body: { new_type: string, entity_ids: string[] }
  */
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey =
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const _supabase = createClient(supabaseUrl, supabaseKey);
 
     // Fetch pending type proposals (stored in a table or cache)
     // For now, return empty array - proposals are generated on-demand
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
         note: "Run discover_entity_types.py script to generate proposals",
       });
     } else if (action === "approve") {
-      const { proposed_type, description } = body;
+      const { proposed_type } = body;
       if (!proposed_type) {
         return NextResponse.json(
           { error: "proposed_type required" },

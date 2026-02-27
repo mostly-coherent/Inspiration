@@ -12,7 +12,7 @@ import { createClient } from "@supabase/supabase-js";
  *   [nodeId]: { date: "YYYY-MM-DD", type: "conversation" | "episode" | "entity" }
  * }
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey =

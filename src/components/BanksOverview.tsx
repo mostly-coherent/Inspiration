@@ -122,7 +122,7 @@ export const BanksOverview = memo(function BanksOverview({ compact = false }: Ba
     return generateItemsMarkdown(filteredItems);
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const generateItemsMarkdown = (_items?: Item[]): string => {
     const lines = ["# Items Library", ""];
     lines.push(`> **${items.length} items**`);
