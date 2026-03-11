@@ -73,7 +73,11 @@ export async function POST(request: NextRequest) {
 
     if (!saved) {
       return NextResponse.json(
-        { success: false, error: "Failed to save responses. Supabase table may not exist — run migration 007_builder_assessments.sql." },
+        {
+          success: false,
+          error:
+            "Failed to save responses. Supabase table or RLS policies may be missing — run migrations 007_builder_assessments.sql and 008_enable_rls_builder_assessments.sql.",
+        },
         { status: 500 }
       );
     }

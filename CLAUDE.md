@@ -418,7 +418,7 @@ Library items are stored in Supabase PostgreSQL (migrated from JSON in v3). Key 
 
 ### Builder Assessments (Supabase `builder_assessments` table — v7)
 
-Builder Assessment results and user responses. Key fields: `id` (UUID), `generated_at`, `weaknesses` (JSONB), `data_sources_summary`, `user_responses` (JSONB), `responded_at`. Migration: `engine/scripts/migrations/007_builder_assessments.sql`.
+Builder Assessment results and user responses. Key fields: `id` (UUID), `generated_at`, `weaknesses` (JSONB), `data_sources_summary`, `user_responses` (JSONB), `responded_at`. Migrations: `engine/scripts/migrations/007_builder_assessments.sql` (table) and `engine/scripts/migrations/008_enable_rls_builder_assessments.sql` (RLS + policies).
 
 ---
 

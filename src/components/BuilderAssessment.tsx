@@ -393,7 +393,9 @@ export function BuilderAssessment() {
               <span className="text-xs text-emerald-400">✓ Saved — your next assessment will reference these.</span>
             )}
             {responseSaveStatus === "error" && (
-              <span className="text-xs text-red-400">Failed to save. The builder_assessments table may not exist yet.</span>
+              <span className="text-xs text-red-400">
+                Failed to save. The builder_assessments table or RLS policies may not be set up yet.
+              </span>
             )}
           </div>
         )}
@@ -401,7 +403,8 @@ export function BuilderAssessment() {
         {!assessment.id && (
           <div className="text-center pt-2">
             <p className="text-[10px] text-slate-600">
-              Responses require the builder_assessments table in Supabase. Run migration 007_builder_assessments.sql to enable.
+              Responses require Supabase setup. Run migrations 007_builder_assessments.sql and
+              008_enable_rls_builder_assessments.sql.
             </p>
           </div>
         )}

@@ -2647,10 +2647,11 @@ Builder Assessment is a direct, evidence-backed weakness analysis that runs on d
 - `src/app/api/themes/builder-assessment/route.ts` — GET (generate or ?latest=true), POST (save responses)
 - `src/components/BuilderAssessment.tsx` — Assessment UI with response flow
 - `engine/scripts/migrations/007_builder_assessments.sql` — Supabase table schema
+- `engine/scripts/migrations/008_enable_rls_builder_assessments.sql` — RLS + policies for `builder_assessments`
 
 **Database:** `builder_assessments` — id (UUID), generated_at, weaknesses (JSONB), data_sources_summary, user_responses (JSONB), responded_at
 
-**Last Updated:** 2026-02-26
+**Last Updated:** 2026-03-11
 
 ---
 
